@@ -73,6 +73,19 @@ class Diversion:
 
 
 @dataclass(frozen=True, slots=True)
+class MigrationRun:
+    """A migration that happened: what was planned, and what came of it.
+
+    Both, because the summary shown afterwards needs the plan to say what moved
+    and the outcome to say what could not. Returning only one would have the
+    caller rebuild the other and risk describing something that did not happen.
+    """
+
+    plan: MigrationPlan
+    outcome: MigrationOutcome
+
+
+@dataclass(frozen=True, slots=True)
 class MigrationOutcome:
     diverted: tuple[Diversion, ...] = ()
     rewritten: tuple[str, ...] = ()
@@ -84,7 +97,7 @@ def startup_migration(
     decide: Callable[[LegacyInstall | None], LegacyInstall | None],
     probe_root: Path | None = None,
     progress: Progress | None = None,
-) -> MigrationOutcome | None:
+) -> MigrationRun | None:
     """Bring the data directory up to date, asking `decide` what to import.
 
     Runs before configuration is loaded, because configuration is read from the
@@ -105,7 +118,8 @@ def startup_migration(
 
     found = recognise_legacy_install(probe_root or CURRENT_DIR)
     chosen = decide(found)
-    outcome = migrate_layout(_plan_for(paths, chosen), progress=progress)
+    plan = _plan_for(paths, chosen)
+    outcome = migrate_layout(plan, progress=progress)
 
     if found is not None and chosen is None:
         # Recorded apart from "nothing was found", because the two are different
@@ -114,7 +128,7 @@ def startup_migration(
         write_layout_version(
             paths.state_root, CURRENT_LAYOUT_VERSION, record={"import_declined": True}
         )
-    return outcome
+    return MigrationRun(plan=plan, outcome=outcome)
 
 
 def import_legacy(paths: AppPaths, legacy: LegacyInstall) -> MigrationOutcome:

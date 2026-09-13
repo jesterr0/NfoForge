@@ -14,6 +14,7 @@ from src.config.layout_version import (
     CURRENT_LAYOUT_VERSION,
     LEGACY_LAYOUT_VERSION,
     LayoutRecordError,
+    migration_pending,
     pending_hops,
     read_layout_version,
     record_import,
@@ -215,3 +216,22 @@ def test_a_second_import_is_added_rather_than_replacing_the_first(
         "first",
         "second",
     ]
+
+
+def test_whether_a_migration_is_pending_is_a_single_cheap_question(
+    tmp_path: Path,
+) -> None:
+    """Startup asks this before starting a thread or showing anything.
+
+    One record read, so the answer is available while the splash screen is still
+    the only thing on screen, and an unreadable record stops the launch before
+    any of the machinery exists.
+    """
+    state_root = tmp_path / "user_data"
+    state_root.mkdir()
+
+    assert migration_pending(state_root) is True
+
+    write_layout_version(state_root, CURRENT_LAYOUT_VERSION)
+
+    assert migration_pending(state_root) is False

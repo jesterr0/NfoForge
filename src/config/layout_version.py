@@ -147,3 +147,13 @@ def pending_hops(version: int) -> tuple[int, ...]:
     own layout means.
     """
     return tuple(range(version + 1, CURRENT_LAYOUT_VERSION + 1))
+
+
+def migration_pending(state_root: Path) -> bool:
+    """Whether `state_root` still needs a hop run against it.
+
+    Asked by startup before it starts a thread or shows anything, so it is one
+    record read. Raises `LayoutRecordError` for a record it cannot understand,
+    which stops the launch before any of the migration machinery exists.
+    """
+    return bool(pending_hops(read_layout_version(state_root)))

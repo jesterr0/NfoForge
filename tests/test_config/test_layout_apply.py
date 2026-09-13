@@ -488,11 +488,11 @@ def test_startup_does_nothing_when_the_layout_is_current(tmp_path: Path) -> None
     paths = AppPaths(state_root=state_root, asset_root=tmp_path / "assets")
     asked = []
 
-    outcome = startup_migration(
+    run = startup_migration(
         paths, decide=lambda found: asked.append(found), probe_root=tmp_path
     )
 
-    assert outcome is None
+    assert run is None
     assert asked == []
     assert (state_root / "jobs").exists()
 
