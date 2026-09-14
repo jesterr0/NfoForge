@@ -202,7 +202,14 @@ class LegacySettings:
     directories, not one entry per profile.
     """
 
-    configured_paths: tuple[tuple[str, Path], ...]
+    configured_paths: tuple[tuple[str, str, Path], ...]
+    """Each as the profile holding it, the setting's name, and the path.
+
+    Kept apart rather than pre-joined into a label because the two consumers
+    need different halves. A finding is about one profile's setting and needs
+    both; a rewrite is about a value and applies to every profile, so a profile
+    name on one is wrong however it reads.
+    """
 
 
 def read_legacy_settings(legacy: LegacyInstall) -> LegacySettings:
@@ -220,7 +227,7 @@ def read_legacy_settings(legacy: LegacyInstall) -> LegacySettings:
     One damaged document does not cost the user every other profile's plan.
     """
     working_dirs: dict[Path, list[str]] = {}
-    configured: list[tuple[str, Path]] = []
+    configured: list[tuple[str, str, Path]] = []
 
     for document_path in sorted((legacy.state / "config" / "user").glob("*.toml")):
         try:
@@ -244,7 +251,7 @@ def read_legacy_settings(legacy: LegacyInstall) -> LegacySettings:
                 continue
             if not value.strip():
                 continue
-            configured.append((f"{profile}: dependency {name}", Path(value)))
+            configured.append((profile, f"dependency {name}", Path(value)))
 
     return LegacySettings(
         working_dirs=tuple(
@@ -340,7 +347,7 @@ directory copied whole, so what is nested inside arrives with it -- a profile's
 def plan_migration(
     state_root: Path,
     legacy: LegacyInstall | None = None,
-    configured_paths: Iterable[tuple[str, Path]] = (),
+    configured_paths: Iterable[tuple[str, str, Path]] = (),
     working_dirs: Iterable[tuple[str, Path]] = (),
     shipped_plugins: Path | None = None,
 ) -> MigrationPlan:
@@ -451,26 +458,34 @@ def plan_migration(
             actions.append(_copy(entry, state_root / PLUGINS_DIR_NAME / entry.name))
 
         legacy_tools = legacy.state / LEGACY_TOOLS_DIR_NAME
-        for label, configured in configured_paths:
+        for profile, setting, configured in configured_paths:
             if _is_inside(configured, legacy_tools):
                 remainder = normalise_path(configured).relative_to(
                     normalise_path(legacy_tools)
                 )
-                actions.append(
-                    PlannedAction(
-                        kind=ActionKind.REWRITE,
-                        source=configured,
-                        destination=state_root / TOOLS_DIR_NAME / remainder,
-                        size=0,
-                        detail=label,
-                    )
+                # Named for the setting and not the profile it was read from.
+                # Applying a rewrite walks every profile and repoints any holding
+                # that value, so the action belongs to all of them: two profiles
+                # sharing a tool are one operation, and the profile actually
+                # written is named by the report at the point it is written.
+                repoint = PlannedAction(
+                    kind=ActionKind.REWRITE,
+                    source=configured,
+                    destination=state_root / TOOLS_DIR_NAME / remainder,
+                    size=0,
+                    detail=setting,
                 )
+                if repoint not in actions:
+                    actions.append(repoint)
             elif _is_inside(configured, legacy.root):
+                # A finding is the opposite case: it is about one profile's
+                # setting, which nothing is going to change, so the profile is
+                # the only way the user knows where to go.
                 findings.append(
                     Finding(
                         kind=FindingKind.PATH_INSIDE_LEGACY_INSTALL,
                         path=configured,
-                        detail=label,
+                        detail=f"{profile}: {setting}",
                     )
                 )
 

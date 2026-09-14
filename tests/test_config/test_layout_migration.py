@@ -363,14 +363,16 @@ def test_a_configured_path_inside_the_legacy_install_is_reported(
     script.write_bytes(b"s")
 
     plan = plan_migration(
-        state_root, legacy=legacy, configured_paths=[("example setting", script)]
+        state_root,
+        legacy=legacy,
+        configured_paths=[("main", "example setting", script)],
     )
 
     assert (
         Finding(
             kind=FindingKind.PATH_INSIDE_LEGACY_INSTALL,
             path=script,
-            detail="example setting",
+            detail="main: example setting",
         )
         in plan.findings
     )
@@ -393,7 +395,9 @@ def test_a_configured_path_outside_the_legacy_install_is_not_reported(
     elsewhere.write_bytes(b"s")
 
     plan = plan_migration(
-        state_root, legacy=legacy, configured_paths=[("example setting", elsewhere)]
+        state_root,
+        legacy=legacy,
+        configured_paths=[("main", "example setting", elsewhere)],
     )
 
     assert plan.findings == ()
@@ -533,7 +537,9 @@ def test_a_dependency_under_the_legacy_tools_directory_is_rewritten(
     tool.write_bytes(b"t")
 
     plan = plan_migration(
-        state_root, legacy=legacy, configured_paths=[("dependency: example tool", tool)]
+        state_root,
+        legacy=legacy,
+        configured_paths=[("main", "dependency example_tool", tool)],
     )
 
     assert (
@@ -542,11 +548,53 @@ def test_a_dependency_under_the_legacy_tools_directory_is_rewritten(
             source=tool,
             destination=state_root / "tools" / "example_tool" / "example_tool.exe",
             size=0,
-            detail="dependency: example tool",
+            detail="dependency example_tool",
         )
         in plan.actions
     )
     assert [finding.kind for finding in plan.findings] == []
+
+
+def test_profiles_sharing_a_dependency_yield_one_rewrite_named_for_the_setting(
+    tmp_path: Path,
+) -> None:
+    """A rewrite is about a value, not about the profile it was spotted in.
+
+    Applying one walks every profile and repoints any document holding that
+    value, so a profile name on the action is wrong twice over: it claims the
+    change belongs to one profile when it belongs to all of them, and the
+    report then prefixes the profile actually written, naming a different one
+    beside it.
+
+    Naming the setting alone also collapses what is really one operation. Two
+    profiles pointing at the same tool produced two identical actions that
+    differed only in a label neither of them owned.
+    """
+    state_root = tmp_path / "user_data"
+    state_root.mkdir()
+    legacy = _frozen_install(tmp_path)
+    tool = legacy.state / "apps" / "example_tool" / "example_tool.exe"
+    tool.parent.mkdir(parents=True)
+    tool.write_bytes(b"t")
+
+    plan = plan_migration(
+        state_root,
+        legacy=legacy,
+        configured_paths=[
+            ("alpha", "dependency example_tool", tool),
+            ("beta", "dependency example_tool", tool),
+        ],
+    )
+
+    assert [action for action in plan.actions if action.kind is ActionKind.REWRITE] == [
+        PlannedAction(
+            kind=ActionKind.REWRITE,
+            source=tool,
+            destination=state_root / "tools" / "example_tool" / "example_tool.exe",
+            size=0,
+            detail="dependency example_tool",
+        )
+    ]
 
 
 def test_a_plan_renders_as_text_grouped_by_what_it_does(tmp_path: Path) -> None:
@@ -594,7 +642,7 @@ def test_findings_are_grouped_by_what_they_ask_of_the_user(tmp_path: Path) -> No
             state_root,
             legacy=legacy,
             working_dirs=[("main: working directory", working_dir)],
-            configured_paths=[("example setting", script)],
+            configured_paths=[("main", "example setting", script)],
         )
     )
 
@@ -631,7 +679,9 @@ def test_a_repointed_setting_is_rendered_without_a_size(tmp_path: Path) -> None:
 
     rendered = render_plan(
         plan_migration(
-            state_root, legacy=legacy, configured_paths=[("a setting", tool)]
+            state_root,
+            legacy=legacy,
+            configured_paths=[("main", "a setting", tool)],
         )
     )
 
@@ -867,7 +917,7 @@ def test_configured_paths_are_read_from_a_previous_installation(
 
     assert settings.working_dirs == (("main: working directory", Path("C:/user data")),)
     assert settings.configured_paths == (
-        ("main: dependency ffmpeg", Path("C:/tools/ffmpeg.exe")),
+        ("main", "dependency ffmpeg", Path("C:/tools/ffmpeg.exe")),
     )
 
 
@@ -891,9 +941,11 @@ def test_settings_are_read_from_every_profile(tmp_path: Path) -> None:
     assert settings.working_dirs == (
         ("alpha, beta: working directory", Path("C:/shared")),
     )
-    assert sorted(label for label, _ in settings.configured_paths) == [
-        "alpha: dependency mkbrr",
-        "beta: dependency mkbrr",
+    assert sorted(
+        (profile, setting) for profile, setting, _ in settings.configured_paths
+    ) == [
+        ("alpha", "dependency mkbrr"),
+        ("beta", "dependency mkbrr"),
     ]
 
 
