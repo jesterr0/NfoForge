@@ -57,12 +57,14 @@ Anything already inside your data folder from an earlier version — saved jobs,
 
 ## What you will be told afterward
 
-A summary appears once, listing everything that happened. It is the only time you will see it, so read it before closing. It can include:
+A summary appears once, listing everything that happened. It can include:
 
 - **Files of your own** that were sitting in the data folder and are not part of the layout. They are left where they are.
 - **Run output you can delete**, with its size, in a working directory you chose. Nothing is removed for you.
 - **Settings pointing into the previous installation** — usually a tool or a working directory you set yourself. These keep working until you delete that folder, and then stop. NfoForge names them rather than guessing where you would like them to go.
 - **The profile that was in use**, if it did not arrive. NfoForge starts on defaults under that name until you pick another profile or bring the missing one across.
+
+The window is shown once and nothing on it is checked again, so a copy is saved in `logs/migration.log` inside your data folder. Read it whenever you like; it is not removed when old logs are tidied up, and importing again from Settings adds to it rather than replacing it.
 
 ## If something was already there
 
