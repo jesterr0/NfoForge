@@ -12,7 +12,12 @@ from PySide6.QtWidgets import (
 
 from src.backend.utils.file_utilities import file_bytes_to_str, open_explorer
 from src.config.layout_apply import CONFLICTS_DIR_NAME, MigrationOutcome
-from src.config.layout_migration import FindingKind, MigrationPlan, render_plan
+from src.config.layout_migration import (
+    ActionKind,
+    FindingKind,
+    MigrationPlan,
+    render_plan,
+)
 
 
 class MigrationSummaryDialog(QDialog):
@@ -94,15 +99,29 @@ class MigrationSummaryDialog(QDialog):
             lines = ["Settings updated to their new locations:"]
             lines.extend(f"  {entry}" for entry in sorted(self._outcome.rewritten))
             sections.append("\n".join(lines))
+        elif self._unapplied_repoints():
+            lines = [
+                "These settings were not repointed, because the profiles holding "
+                "them were set aside below rather than brought into use. They "
+                "still name the previous installation:"
+            ]
+            lines.extend(f"  {detail}" for detail in self._unapplied_repoints())
+            lines.append("Check them before putting any of those profiles into use.")
+            sections.append("\n".join(lines))
 
         if self._outcome.diverted:
             lines = [
-                "Something was already in the way, so these were put aside for "
-                "you to look at rather than replacing what was there:"
+                "Something was already in the way, so what came in was set aside "
+                "for you to look at. Anything already here has not been changed "
+                "or replaced:"
             ]
             for diversion in self._outcome.diverted:
-                lines.append(f"  {diversion.planned}")
-                lines.append(f"    kept instead at {diversion.actual}")
+                # The set-aside copy first, because that is the thing the user
+                # goes and looks at. Leading with the occupied destination reads
+                # as the existing folder having been moved out of the way, which
+                # is the reverse of what happened.
+                lines.append(f"  {diversion.actual}")
+                lines.append(f"    would have gone to {diversion.planned}")
             sections.append("\n".join(lines))
 
         if self._missing_profile:
@@ -121,6 +140,31 @@ class MigrationSummaryDialog(QDialog):
             "installation can still be imported from Settings at any time."
         )
         return "\n\n".join(sections)
+
+    def _unapplied_repoints(self) -> tuple[str, ...]:
+        """Repoints the plan promised that the profiles never received.
+
+        A rewrite is applied to the profiles in the data directory. If the
+        incoming profiles collided they were set aside instead, so there was
+        nothing there to repoint and those settings still name the installation
+        the summary goes on to invite the user to delete.
+
+        Deliberately narrow: only when the profiles themselves were diverted, so
+        that a rewrite matching nothing for some other reason is not explained
+        with a cause that did not apply.
+        """
+        if self._outcome.rewritten:
+            return ()
+        profiles = self._plan.state_root / "config" / "profiles"
+        if not any(
+            diversion.planned == profiles for diversion in self._outcome.diverted
+        ):
+            return ()
+        return tuple(
+            action.detail
+            for action in self._plan.actions
+            if action.kind is ActionKind.REWRITE and action.detail
+        )
 
     def _legacy_note(self) -> str:
         """What to say about the folder the data came from.

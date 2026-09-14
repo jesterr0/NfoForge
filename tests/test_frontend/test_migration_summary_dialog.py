@@ -184,6 +184,85 @@ def test_it_reports_anything_that_could_not_go_where_planned(
         widget.deleteLater()
 
 
+def test_a_diversion_says_the_incoming_copy_moved_and_not_the_occupant(
+    plan: MigrationPlan, state_root: Path
+) -> None:
+    """Which of the two ended up in the conflicts folder has to be unambiguous.
+
+    Leading with the occupied destination and following it with the conflicts
+    path reads as the existing folder having been moved out of the way, which is
+    the reverse of what happened and the most alarming reading available: a user
+    scans the list and concludes the import relocated data they already had.
+
+    So the set-aside copy is named first, because that is the thing they will go
+    and look at, and the line that follows explains why it is there.
+    """
+    occupied = state_root / "templates"
+    conflicts = state_root / "migration-conflicts" / "templates"
+    outcome = MigrationOutcome(
+        diverted=(Diversion(planned=occupied, actual=conflicts),)
+    )
+    widget = MigrationSummaryDialog(plan, outcome, parent=None)
+    try:
+        body = widget.summary_text()
+    finally:
+        widget.deleteLater()
+
+    lines = body.splitlines()
+    first = next(i for i, line in enumerate(lines) if str(conflicts) in line)
+    assert str(occupied) in lines[first + 1], (
+        "the set-aside copy must be named before the destination it could not take"
+    )
+    assert "already here has not been changed" in body
+
+
+def test_repoints_that_could_not_run_are_not_reported_as_done(
+    state_root: Path, legacy_root: Path
+) -> None:
+    """A promised repoint that never happened is worse than no promise.
+
+    Rewrites are applied to the profiles in the data directory. When the
+    incoming profiles collide they are set aside instead, so there is nothing
+    there to repoint and the settings keep naming the old installation -- the
+    one the summary goes on to invite the user to delete.
+
+    Saying so is the whole fix. Repointing files inside the conflicts folder
+    would be the migration acting on a directory that exists precisely because
+    nothing about it has been decided yet.
+    """
+    plan = MigrationPlan(
+        actions=(
+            PlannedAction(
+                kind=ActionKind.REWRITE,
+                source=legacy_root / "bundle" / "runtime" / "apps" / "tool.exe",
+                destination=state_root / "tools" / "tool.exe",
+                size=0,
+                detail="dependency tool",
+            ),
+        ),
+        state_root=state_root,
+        legacy_root=legacy_root,
+    )
+    outcome = MigrationOutcome(
+        diverted=(
+            Diversion(
+                planned=state_root / "config" / "profiles",
+                actual=state_root / "migration-conflicts" / "config" / "profiles",
+            ),
+        ),
+        rewritten=(),
+    )
+    widget = MigrationSummaryDialog(plan, outcome, parent=None)
+    try:
+        body = widget.summary_text()
+    finally:
+        widget.deleteLater()
+
+    assert "Settings updated to their new locations" not in body
+    assert "were not repointed" in body
+    assert "dependency tool" in body
+
+
 def test_the_conflicts_button_is_absent_when_nothing_collided(
     dialog: MigrationSummaryDialog,
 ) -> None:
