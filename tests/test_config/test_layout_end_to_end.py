@@ -13,9 +13,10 @@ user could see afterwards: the files on disk and the record kept beside them.
 
 from pathlib import Path
 
+import pytest
 import tomllib
 
-from src.config.layout_apply import import_legacy
+from src.config.layout_apply import import_legacy, render_summary
 from src.config.layout_migration import FindingKind, LegacyInstall
 from src.config.paths import AppPaths
 
@@ -241,3 +242,70 @@ def test_the_installation_it_read_from_is_left_exactly_as_it_was(
         for path in sorted(legacy.root.rglob("*"))
         if path.is_file()
     } == before
+
+
+def test_the_summary_is_saved_so_it_can_be_read_again(tmp_path: Path) -> None:
+    """It is shown once and says so, which is an argument for keeping a copy.
+
+    Everything wanting a decision is in that window -- files left in place, run
+    output worth reclaiming, settings that break when the old folder goes. Close
+    it and the only record of the machine-readable facts is `layout.json`, which
+    is not what anyone wants to read at the moment they remember there was a
+    warning about something.
+    """
+    legacy = _install(tmp_path)
+    paths = _paths(tmp_path)
+
+    run = import_legacy(paths, legacy)
+
+    saved = paths.logs / "migration.log"
+    assert saved.is_file()
+    body = saved.read_text(encoding="utf-8")
+    assert render_summary(run) in body
+    assert str(saved) in body, "the summary has to say where it was kept"
+
+
+def test_a_second_import_is_appended_rather_than_replacing_the_first(
+    tmp_path: Path,
+) -> None:
+    """Importing is offered from Settings at any time, so there can be several.
+
+    Overwriting would lose the account of the run that actually brought the
+    data in, which is the one worth keeping.
+    """
+    legacy = _install(tmp_path)
+    paths = _paths(tmp_path)
+
+    import_legacy(paths, legacy)
+    import_legacy(paths, legacy)
+
+    body = (paths.logs / "migration.log").read_text(encoding="utf-8")
+    assert body.count("Your settings and data are now in:") == 2
+
+
+def test_a_summary_that_cannot_be_written_does_not_fail_the_migration(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The data is already copied by the time this runs.
+
+    Losing the transcript is a worse outcome than not having it, but it is not
+    worth undoing a migration that otherwise worked, and there is nothing to
+    undo it to.
+    """
+    legacy = _install(tmp_path)
+    paths = _paths(tmp_path)
+
+    real_open = Path.open
+
+    def refuse_the_summary(self: Path, *args: object, **kwargs: object):
+        if self.name == "migration.log":
+            raise OSError("read-only")
+        return real_open(self, *args, **kwargs)  # pyright: ignore[reportCallIssue]
+
+    monkeypatch.setattr(Path, "open", refuse_the_summary)
+
+    run = import_legacy(paths, legacy)
+
+    assert run.outcome.rewritten, "the migration itself still completed"
+    assert (paths.user_configs / "alpha.toml").is_file()
+    assert not (paths.logs / "migration.log").exists()

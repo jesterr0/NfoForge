@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from src.config.layout_apply import Diversion, MigrationOutcome
+from src.config.layout_apply import Diversion, MigrationOutcome, MigrationRun
 from src.config.layout_migration import (
     ActionKind,
     Finding,
@@ -65,7 +65,7 @@ def plan(state_root: Path, legacy_root: Path) -> MigrationPlan:
 def _dialog(
     plan: MigrationPlan, outcome: MigrationOutcome
 ) -> Iterator[MigrationSummaryDialog]:
-    widget = MigrationSummaryDialog(plan, outcome, parent=None)
+    widget = MigrationSummaryDialog(MigrationRun(plan, outcome), parent=None)
     yield widget
     widget.deleteLater()
 
@@ -145,7 +145,7 @@ def test_it_warns_when_a_setting_still_points_inside_the_old_folder(
             ),
         ),
     )
-    widget = MigrationSummaryDialog(plan, MigrationOutcome(), parent=None)
+    widget = MigrationSummaryDialog(MigrationRun(plan, MigrationOutcome()), parent=None)
     try:
         body = widget.summary_text()
     finally:
@@ -158,7 +158,7 @@ def test_it_warns_when_a_setting_still_points_inside_the_old_folder(
 def test_it_reports_settings_it_repointed(plan: MigrationPlan) -> None:
     """Changing a user's settings silently is not acceptable, even when correct."""
     outcome = MigrationOutcome(rewritten=("main: working directory",))
-    widget = MigrationSummaryDialog(plan, outcome, parent=None)
+    widget = MigrationSummaryDialog(MigrationRun(plan, outcome), parent=None)
     try:
         body = widget.summary_text()
     finally:
@@ -175,7 +175,7 @@ def test_it_reports_anything_that_could_not_go_where_planned(
     outcome = MigrationOutcome(
         diverted=(Diversion(planned=state_root / "templates", actual=conflicts),)
     )
-    widget = MigrationSummaryDialog(plan, outcome, parent=None)
+    widget = MigrationSummaryDialog(MigrationRun(plan, outcome), parent=None)
     try:
         body = widget.summary_text()
         assert str(conflicts) in body
@@ -202,7 +202,7 @@ def test_a_diversion_says_the_incoming_copy_moved_and_not_the_occupant(
     outcome = MigrationOutcome(
         diverted=(Diversion(planned=occupied, actual=conflicts),)
     )
-    widget = MigrationSummaryDialog(plan, outcome, parent=None)
+    widget = MigrationSummaryDialog(MigrationRun(plan, outcome), parent=None)
     try:
         body = widget.summary_text()
     finally:
@@ -252,7 +252,7 @@ def test_repoints_that_could_not_run_are_not_reported_as_done(
         ),
         rewritten=(),
     )
-    widget = MigrationSummaryDialog(plan, outcome, parent=None)
+    widget = MigrationSummaryDialog(MigrationRun(plan, outcome), parent=None)
     try:
         body = widget.summary_text()
     finally:
@@ -290,7 +290,10 @@ def test_a_profile_that_did_not_arrive_is_called_out(plan: MigrationPlan) -> Non
     sentence.
     """
     widget = MigrationSummaryDialog(
-        plan, MigrationOutcome(), missing_profile="the one they were using", parent=None
+        MigrationRun(
+            plan, MigrationOutcome(), missing_profile="the one they were using"
+        ),
+        parent=None,
     )
     try:
         body = widget.summary_text()

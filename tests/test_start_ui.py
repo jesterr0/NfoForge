@@ -617,8 +617,8 @@ def test_the_summary_is_shown_then_the_launch_continues(
     shown: list[tuple[object, object]] = []
 
     class _StubSummary:
-        def __init__(self, plan: object, outcome: object, **_kwargs: object) -> None:
-            shown.append((plan, outcome))
+        def __init__(self, run: object, **_kwargs: object) -> None:
+            shown.append(run)
 
         def exec(self) -> None:
             return None
@@ -631,7 +631,7 @@ def test_the_summary_is_shown_then_the_launch_continues(
 
     app._on_migration_finished(run)  # type: ignore[arg-type]
 
-    assert shown == [(run.plan, run.outcome)]
+    assert shown == [run]
     assert app.selected is True  # type: ignore[reportAttributeAccessIssue]
 
 

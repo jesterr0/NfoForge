@@ -29,6 +29,7 @@ from src.backend.utils.file_utilities import file_bytes_to_str
 from src.backend.utils.working_dir import CURRENT_DIR, normalise_path
 from src.config.layout_migration import (
     ActionKind,
+    FindingKind,
     LegacyInstall,
     LegacySettings,
     MigrationPlan,
@@ -37,6 +38,7 @@ from src.config.layout_migration import (
     plan_migration,
     read_legacy_settings,
     recognise_legacy_install,
+    render_plan,
 )
 from src.config.layout_version import (
     CURRENT_LAYOUT_VERSION,
@@ -100,6 +102,169 @@ class MigrationOutcome:
     """Which settings were repointed, named by profile, for the summary."""
 
 
+SUMMARY_LOG_NAME = "migration.log"
+"""Where the summary is kept so it can be read again.
+
+Beside the application's logs rather than at the root of the data directory,
+because that is where someone looks for an account of something that already
+happened. Named without a timestamp so that log retention leaves it alone:
+`clean_up_logs` only removes `nfoforge_<timestamp>_<id>.log`, which is the same
+protection the crash dump relies on.
+"""
+
+
+def render_summary(run: MigrationRun, saved_to: Path | None = None) -> str:
+    """Everything that happened, and everything still wanting attention.
+
+    Lives here rather than in the dialog that shows it, so the window and the
+    saved copy cannot become two accounts of the same run that disagree. The
+    moved and copied entries come from the same renderer the plan itself uses,
+    for the same reason.
+    """
+    plan, outcome = run.plan, run.outcome
+    sections = [f"Your settings and data are now in:\n  {plan.state_root}"]
+
+    rendered = render_plan(plan)
+    if rendered:
+        sections.append(rendered)
+
+    if outcome.rewritten:
+        lines = ["Settings updated to their new locations:"]
+        lines.extend(f"  {entry}" for entry in sorted(outcome.rewritten))
+        sections.append("\n".join(lines))
+    elif unapplied := _unapplied_repoints(run):
+        lines = [
+            "These settings were not repointed, because the profiles holding "
+            "them were set aside below rather than brought into use. They "
+            "still name the previous installation:"
+        ]
+        lines.extend(f"  {detail}" for detail in unapplied)
+        lines.append("Check them before putting any of those profiles into use.")
+        sections.append("\n".join(lines))
+
+    if outcome.diverted:
+        lines = [
+            "Something was already in the way, so what came in was set aside "
+            "for you to look at. Anything already here has not been changed "
+            "or replaced:"
+        ]
+        for diversion in outcome.diverted:
+            # The set-aside copy first, because that is the thing the user goes
+            # and looks at. Leading with the occupied destination reads as the
+            # existing folder having been moved out of the way, which is the
+            # reverse of what happened.
+            lines.append(f"  {diversion.actual}")
+            lines.append(f"    would have gone to {diversion.planned}")
+        sections.append("\n".join(lines))
+
+    if run.missing_profile:
+        sections.append(
+            f'The profile "{run.missing_profile}" was in use before, and is '
+            "not among the ones now here. NfoForge will start with default "
+            "settings under that name until you pick another profile, or "
+            "bring that one across. Nothing has been lost from wherever it "
+            "was; it simply did not arrive here."
+        )
+
+    sections.append(_legacy_note(plan))
+    sections.append(
+        "None of these locations will be checked again. Anything above that "
+        "you want to deal with later is yours to come back to, and a previous "
+        "installation can still be imported from Settings at any time."
+    )
+    if saved_to is not None:
+        sections.append(f"A copy of this summary is kept at:\n  {saved_to}")
+    return "\n\n".join(sections)
+
+
+def _unapplied_repoints(run: MigrationRun) -> tuple[str, ...]:
+    """Repoints the plan promised that the profiles never received.
+
+    A rewrite is applied to the profiles in the data directory. If the incoming
+    profiles collided they were set aside instead, so there was nothing there to
+    repoint and those settings still name the installation the summary goes on
+    to invite the user to delete.
+
+    Deliberately narrow: only when the profiles themselves were diverted, so
+    that a rewrite matching nothing for some other reason is not explained with
+    a cause that did not apply.
+    """
+    if run.outcome.rewritten:
+        return ()
+    profiles = run.plan.state_root / "config" / "profiles"
+    if not any(diversion.planned == profiles for diversion in run.outcome.diverted):
+        return ()
+    return tuple(
+        action.detail
+        for action in run.plan.actions
+        if action.kind is ActionKind.REWRITE and action.detail
+    )
+
+
+def _legacy_note(plan: MigrationPlan) -> str:
+    """What to say about the folder the data came from.
+
+    It is intact and deleting it is the user's call: they are the only one who
+    can judge whether it holds anything else. A setting still pointing inside it
+    gets its own warning, because that is the one consequence they cannot see
+    coming -- it keeps working right up until they act on this advice, and then
+    fails for reasons that look unrelated.
+    """
+    if plan.legacy_root is None:
+        return (
+            "Nothing was imported from a previous installation, so nothing "
+            "outside this folder was read."
+        )
+
+    lines = [
+        f"Your previous installation is still at:\n  {plan.legacy_root}",
+        "Nothing was removed from it. Review it before deleting anything.",
+    ]
+    inside = [
+        finding
+        for finding in plan.findings
+        if finding.kind is FindingKind.PATH_INSIDE_LEGACY_INSTALL
+    ]
+    if inside:
+        lines.append(
+            "Emptying that folder will break these settings, which still "
+            "point inside it:"
+        )
+        for finding in inside:
+            suffix = f" ({file_bytes_to_str(finding.size)})" if finding.size else ""
+            lines.append(f"  {finding.detail}: {finding.path}{suffix}")
+    return "\n".join(lines)
+
+
+def _save_summary(run: MigrationRun, paths: AppPaths) -> None:
+    """Keep a readable copy of the summary, appended to whatever is there.
+
+    Best effort throughout. By the time this runs the data is copied and the
+    record is written, so a directory that cannot be created or a file that
+    cannot be appended to costs the user a transcript and nothing else --
+    failing the migration over it would be trading something that worked for
+    nothing at all.
+
+    Appended rather than replaced because importing is offered from Settings at
+    any time, and the run that actually brought the data in is the one worth
+    keeping.
+    """
+    destination = paths.logs / SUMMARY_LOG_NAME
+    try:
+        paths.logs.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        with destination.open("a", encoding="utf-8") as handle:
+            handle.write(f"===== {stamp} =====\n\n")
+            handle.write(render_summary(run, saved_to=destination))
+            handle.write("\n\n")
+    except OSError as error:
+        LOG.warning(
+            LOG.LOG_SOURCE.BE,
+            f"Could not keep a copy of the migration summary at {destination}, "
+            f"so it will only be shown once: {error}",
+        )
+
+
 def startup_migration(
     paths: AppPaths,
     decide: Callable[[LegacyInstall | None], LegacyInstall | None],
@@ -136,9 +301,11 @@ def startup_migration(
         write_layout_version(
             paths.state_root, CURRENT_LAYOUT_VERSION, record={"import_declined": True}
         )
-    return MigrationRun(
+    run = MigrationRun(
         plan=plan, outcome=outcome, missing_profile=missing_active_profile(paths)
     )
+    _save_summary(run, paths)
+    return run
 
 
 def import_legacy(
@@ -161,9 +328,11 @@ def import_legacy(
     plan = _plan_for(paths, legacy)
     outcome = apply_plan(plan, progress=progress)
     record_import(paths.state_root, _record(plan, outcome))
-    return MigrationRun(
+    run = MigrationRun(
         plan=plan, outcome=outcome, missing_profile=missing_active_profile(paths)
     )
+    _save_summary(run, paths)
+    return run
 
 
 def _plan_for(paths: AppPaths, legacy: LegacyInstall | None) -> MigrationPlan:
