@@ -529,6 +529,7 @@ def _media_search_to_dict(
         "title": payload.title,
         "year": payload.year,
         "original_title": payload.original_title,
+        "title_override": payload.title_override,
         "genres": [
             {"enum": type(genre).__name__, "name": genre.name}
             for genre in payload.genres
@@ -563,6 +564,7 @@ def _media_search_from_dict(
     restored.title = document.get("title")
     restored.year = document.get("year")
     restored.original_title = document.get("original_title")
+    restored.title_override = document.get("title_override")
     restored.plot = document.get("plot")
     restored.poster_url = document.get("poster_url")
 

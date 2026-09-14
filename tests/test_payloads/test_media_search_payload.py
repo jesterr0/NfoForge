@@ -117,6 +117,7 @@ def test_reset_clears_canonical_and_plugin_metadata() -> None:
     assert payload.genre_names == ()
     assert payload.media_kind is None
     assert payload.plugin_data == {}
+    assert payload.title_override is None
 
 
 def test_populate_from_tmdb_normalizes_superscript_titles() -> None:
@@ -152,3 +153,59 @@ def test_populate_from_tmdb_normalizes_a_name_fallback_title() -> None:
 
     assert payload.title == "Cosmos 3"
     assert payload.original_title == "Kosmos 3"
+
+
+def test_title_override_outranks_the_tmdb_title() -> None:
+    """A title the user picked has to survive the rebuild from `tmdb_data`.
+
+    `populate_from_tmdb` runs again after the metadata lookup, so without the
+    override leading the chain the raw API string wins and the pick is lost
+    before it reaches a filename or an NFO.
+    """
+    payload = _tmdb_payload()
+    payload.title_override = "Star Trek: The Animated Series"
+
+    payload.populate_from_tmdb()
+
+    assert payload.title == "Star Trek: The Animated Series"
+    # Scope: the override names the release, not the native-language title.
+    assert payload.original_title == "TMDb Original"
+
+
+@pytest.mark.parametrize("override", ["", "   "])
+def test_a_blank_title_override_leaves_the_tmdb_title_alone(override: str) -> None:
+    payload = _tmdb_payload()
+    payload.title_override = override
+
+    payload.populate_from_tmdb()
+
+    assert payload.title == "TMDb Localized"
+
+
+def test_title_override_is_normalized_like_any_other_title() -> None:
+    payload = _tmdb_payload()
+    payload.title_override = "Spider-Man\u00b2"
+
+    payload.populate_from_tmdb()
+
+    assert payload.title == "Spider-Man 2"
+
+
+def test_validate_rejects_a_non_string_title_override() -> None:
+    payload = _tmdb_payload()
+    payload.title_override = 7  # type: ignore[assignment]
+
+    with pytest.raises(TypeError, match="title_override"):
+        payload.validate()
+
+
+def test_copy_from_carries_the_title_override() -> None:
+    payload = _tmdb_payload()
+    transformed = _tmdb_payload()
+    transformed.title_override = "Picked"
+    transformed.populate_from_tmdb()
+
+    payload.copy_from(transformed)
+
+    assert payload.title_override == "Picked"
+    assert payload.title == "Picked"

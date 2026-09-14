@@ -16,7 +16,14 @@ from weakref import WeakMethod
 import webbrowser
 
 from PySide6.QtCore import QObject, QSize, Qt, QThread, QTimer, QUrl, Signal, Slot
-from PySide6.QtGui import QCursor, QImage, QMouseEvent, QPixmap
+from PySide6.QtGui import (
+    QCursor,
+    QEnterEvent,
+    QFocusEvent,
+    QImage,
+    QMouseEvent,
+    QPixmap,
+)
 from PySide6.QtNetwork import QNetworkAccessManager, QNetworkReply, QNetworkRequest
 from PySide6.QtWidgets import (
     QFormLayout,
@@ -39,7 +46,7 @@ from PySide6.QtWidgets import (
 )
 from qtawesome import IconWidget
 
-from src.backend.media_search import MediaSearchBackEnd
+from src.backend.media_search import MediaSearchBackEnd, TmdbAlternativeTitle
 from src.backend.utils.title_inference import MediaTitleInferer
 from src.backend.utils.tmdb_reference import TmdbReference, parse_tmdb_reference
 from src.backend.utils.working_dir import RUNTIME_DIR
@@ -58,9 +65,11 @@ from src.frontend.custom_widgets.adv_tooltip import (
     PopupTrigger,
     QTAIconStr,
 )
+from src.frontend.custom_widgets.combo_box import CustomComboBox
 from src.frontend.custom_widgets.custom_splitter import CustomSplitter
 from src.frontend.custom_widgets.elided_label import EllipsisLabel
 from src.frontend.custom_widgets.image_label import ImageLabel
+from src.frontend.custom_widgets.shared import scaled_font
 from src.frontend.global_signals import GSigs
 from src.frontend.utils import QWidgetTempStyle
 from src.frontend.utils.general_worker import GeneralWorker
@@ -263,6 +272,9 @@ class IDParseWorker(QThread):
             async_loop.close()
 
 
+_ALT_TITLE_MAX_COUNTRIES = 3
+
+
 class LinkLabel(QLabel):
     def __init__(
         self,
@@ -292,8 +304,79 @@ class LinkLabel(QLabel):
         super().mousePressEvent(event)
 
 
+def _alternative_title_regions(entry: TmdbAlternativeTitle) -> str:
+    """The regions TMDB lists a title for, short enough to sit on one line.
+
+    At most three are named; beyond that the qualifier is longer than the
+    title it qualifies and the exact tail does not help anyone choose.
+    """
+    if not entry.countries:
+        return ""
+    countries = entry.countries[:_ALT_TITLE_MAX_COUNTRIES]
+    remainder = len(entry.countries) - len(countries)
+    regions = ", ".join(countries)
+    return f"{regions} +{remainder}" if remainder > 0 else regions
+
+
+class _AlternativeTitleComboBox(CustomComboBox):
+    """Title picker that says when the user first reaches for it.
+
+    The alternatives cost a TMDB request and most uploads never want one, so
+    the request waits for evidence of interest rather than firing on every
+    result the user clicks through.
+
+    A popup opened before that request lands would grow rows underneath the
+    cursor, changing which title sits under the pointer mid-click. So an
+    unready popup is deferred instead: the click is absorbed, and the page
+    calls `popup_when_ready` once the list is populated. Hovering emits the
+    same request, which in practice means the travel from the combo body to
+    the arrow is enough to have the data ready and the deferral never shows.
+    """
+
+    load_requested = Signal()
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(disable_mouse_wheel=True, parent=parent)
+        self._ready = False
+        self._open_when_ready = False
+
+    def mark_ready(self, ready: bool) -> None:
+        self._ready = ready
+
+    def cancel_pending_popup(self) -> None:
+        self._open_when_ready = False
+
+    def popup_when_ready(self) -> None:
+        if self._open_when_ready and self._ready:
+            self._open_when_ready = False
+            super().showPopup()
+
+    def showPopup(self) -> None:
+        self.load_requested.emit()
+        if self._ready:
+            super().showPopup()
+            return
+        self._open_when_ready = True
+
+    def enterEvent(self, event: QEnterEvent) -> None:
+        self.load_requested.emit()
+        super().enterEvent(event)
+
+    def focusOutEvent(self, event: QFocusEvent) -> None:
+        self.cancel_pending_popup()
+        super().focusOutEvent(event)
+
+
 class MediaSearch(BaseWizardPage):
     _RESULT_KEY_ROLE = Qt.ItemDataRole.UserRole
+    _ALT_TITLE_DEFAULT = "TMDb's own title for this record"
+    _ALT_TITLE_LOADING = "Loading alternative titles…"
+    _ALT_TITLE_NONE = "TMDb lists no alternative titles for this record"
+    _ALT_TITLE_ERROR = "Alternative titles could not be loaded"
+    _ALT_TITLE_NEEDS_ID = "Enter a TMDB ID to load alternative titles"
+    # A dead network would otherwise pop a menu open a minute after the click
+    # that asked for it, since the backend honors the configured timeout.
+    _ALT_TITLE_POPUP_GRACE_MS = 8000
 
     def __init__(
         self,
@@ -370,6 +453,19 @@ class MediaSearch(BaseWizardPage):
         self._poster_reply: QNetworkReply | None = None
         self._poster_cache: dict[str, QImage] = {}
 
+        # Alternative titles are keyed by the pair that decides which record
+        # TMDB answers for, so a hand-edited ID can never be served another
+        # record's titles. `_alt_titles_key` is what the combo currently holds,
+        # `_alt_title_request` is what is in flight.
+        self._alt_title_cache: dict[
+            tuple[str, MediaType], tuple[TmdbAlternativeTitle, ...]
+        ] = {}
+        self._alt_titles_key: tuple[str, MediaType] | None = None
+        self._alt_title_entries: tuple[TmdbAlternativeTitle, ...] = ()
+        self._alt_title_status: str | None = None
+        self._alt_title_request: tuple[str, MediaType] | None = None
+        self._alt_title_worker: GeneralWorker | None = None
+
         imdb_image = QPixmap(str(Path(RUNTIME_DIR / "images" / "imdb.png").resolve()))
         imdb_image = imdb_image.scaled(
             28,
@@ -399,6 +495,10 @@ class MediaSearch(BaseWizardPage):
         self.tmdb_id_entry = QLineEdit()
         self.tmdb_id_entry.setToolTip("TMDB ID")
         self.tmdb_id_entry.textEdited.connect(self._mark_metadata_dirty)
+        # Its own connection rather than a line inside `_mark_metadata_dirty`:
+        # that slot also fires for the IMDb and TVDB entries, and editing those
+        # says nothing about which TMDB record's titles are on offer.
+        self.tmdb_id_entry.textEdited.connect(self._reset_alternative_titles)
 
         tvdb_image = QPixmap(str(Path(RUNTIME_DIR / "images" / "tvdb.png").resolve()))
         tvdb_image = tvdb_image.scaled(
@@ -501,11 +601,105 @@ class MediaSearch(BaseWizardPage):
             Qt.TextInteractionFlag.TextSelectableByMouse
         )
 
+        self.alt_title_combo = _AlternativeTitleComboBox(parent=self)
+        self.alt_title_combo.setToolTip(
+            "Title used for the release name, filename, and NFO"
+        )
+        # A long regional title must not be allowed to widen the panel and
+        # shove the splitter, so the combo sizes to a fixed minimum instead of
+        # to its contents.
+        self.alt_title_combo.setSizeAdjustPolicy(
+            CustomComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
+        )
+        self.alt_title_combo.setMinimumContentsLength(24)
+        self.alt_title_combo.load_requested.connect(self._ensure_alternative_titles)
+        self.alt_title_combo.activated.connect(self._alternative_title_selected)
+        self.alt_title_combo.currentIndexChanged.connect(
+            self._refresh_alternative_title_details
+        )
+
+        alt_title_purpose_icon = IconWidget()
+        QTAThemeSwap().register(
+            alt_title_purpose_icon, "ph.info-light", icon_size=QSize(14, 14)
+        )
+        self.alt_title_purpose_label = EllipsisLabel(
+            "Sets the tracker release title, renamed filename, and NFO",
+            parent=self,
+            font_scale=0.9,
+            tool_tip=True,
+        )
+        # Italic so the standing hint reads as guidance rather than as another
+        # fact about the selection -- the status line directly below it is the
+        # same size and would otherwise be indistinguishable.
+        purpose_font = self.alt_title_purpose_label.font()
+        purpose_font.setItalic(True)
+        self.alt_title_purpose_label.setFont(purpose_font)
+
+        alt_title_purpose_layout = QHBoxLayout()
+        alt_title_purpose_layout.setContentsMargins(0, 0, 0, 0)
+        alt_title_purpose_layout.setSpacing(4)
+        alt_title_purpose_layout.addWidget(alt_title_purpose_icon)
+        alt_title_purpose_layout.addWidget(self.alt_title_purpose_label, stretch=1)
+
+        # TMDB's country and free-text note for the selected title. They live
+        # out here rather than in the row text because they are facts *about*
+        # the title, and a user reading "US - Some Title (retronym)" in a
+        # combo has every reason to think they are picking that whole string.
+        self.alt_title_region_icon = IconWidget()
+        self.alt_title_region_icon.setToolTip("Regions TMDB lists this title for")
+        QTAThemeSwap().register(
+            self.alt_title_region_icon, "ph.globe-light", icon_size=QSize(14, 14)
+        )
+        # Plain labels, not EllipsisLabel: these are a couple of words and
+        # need to size to their content. EllipsisLabel takes an `Ignored`
+        # horizontal policy so it can elide, which in a row with a stretch
+        # collapses it to nothing.
+        self.alt_title_region_label = QLabel(self)
+        self.alt_title_region_label.setFont(
+            scaled_font(self.alt_title_region_label.font(), 0.9)
+        )
+
+        self.alt_title_note_icon = IconWidget()
+        self.alt_title_note_icon.setToolTip("TMDB's note on this title")
+        QTAThemeSwap().register(
+            self.alt_title_note_icon, "ph.tag-light", icon_size=QSize(14, 14)
+        )
+        self.alt_title_note_label = QLabel(self)
+        self.alt_title_note_label.setFont(
+            scaled_font(self.alt_title_note_label.font(), 0.9)
+        )
+
+        self.alt_title_status_label = EllipsisLabel(
+            parent=self, font_scale=0.9, tool_tip=True
+        )
+
+        # The status and the region/note pair are mutually exclusive -- a
+        # status speaks only for the default row -- so they get a row each and
+        # whichever has nothing to say hides, costing no height.
+        alt_title_details_layout = QHBoxLayout()
+        alt_title_details_layout.setContentsMargins(0, 0, 0, 0)
+        alt_title_details_layout.setSpacing(4)
+        alt_title_details_layout.addWidget(self.alt_title_region_icon)
+        alt_title_details_layout.addWidget(self.alt_title_region_label)
+        alt_title_details_layout.addSpacing(8)
+        alt_title_details_layout.addWidget(self.alt_title_note_icon)
+        alt_title_details_layout.addWidget(self.alt_title_note_label)
+        alt_title_details_layout.addStretch(1)
+
+        alt_title_layout = QVBoxLayout()
+        alt_title_layout.setContentsMargins(0, 0, 0, 0)
+        alt_title_layout.setSpacing(2)
+        alt_title_layout.addWidget(self.alt_title_combo)
+        alt_title_layout.addLayout(alt_title_purpose_layout)
+        alt_title_layout.addWidget(self.alt_title_status_label)
+        alt_title_layout.addLayout(alt_title_details_layout)
+
         self.info_box = QGroupBox("TITLE")
         self.info_box.setMinimumWidth(330)
         info_layout = QVBoxLayout(self.info_box)
         info_layout.setSpacing(6)
         info_layout.addWidget(self.selected_title_label)
+        info_layout.addLayout(alt_title_layout)
         info_layout.addLayout(hero_layout)
         info_layout.addLayout(ids_layout)
         info_layout.addWidget(self.plot_text, stretch=1)
@@ -876,6 +1070,9 @@ class MediaSearch(BaseWizardPage):
             raise MediaSearchError("Failed to parse TMDB")
 
         prompted_anilist_data: dict[str, Any] | None = None
+        # Read before the ID entries are rewritten below: `_selected_alternative_title`
+        # refuses to answer once the combo and the TMDB ID entry disagree.
+        selected_alternative_title = self._selected_alternative_title()
 
         # update both payloads with the correct MediaType
         self.context.media_input.media_type = self.context.media_search.media_type = (
@@ -887,8 +1084,10 @@ class MediaSearch(BaseWizardPage):
         self.context.media_search.tmdb_data = item_data.get("raw_data")
         self.context.media_search.tvdb_data = None
 
-        # title selection handled by backend with smart regional preferences
+        # TMDB's own title for the record, unless the user picked one of TMDB's
+        # alternatives on this page. `populate_from_tmdb` below resolves the two.
         self.context.media_search.title = item_data.get("title")
+        self.context.media_search.title_override = selected_alternative_title
         year_value = item_data.get("year")
         self.context.media_search.year = (
             int(year_value)
@@ -952,10 +1151,14 @@ class MediaSearch(BaseWizardPage):
                     if self.context.media_search.mal_id:
                         self.mal_id_entry.setText(self.context.media_search.mal_id)
         else:
-            # title selection handled by backend, no additional processing needed
             LOG.info(
                 LOG.LOG_SOURCE.FE,
-                f"Using TMDB title selected by backend: '{self.context.media_search.title}'",
+                f"Using TMDB title '{self.context.media_search.title}'"
+                + (
+                    " (alternative title chosen by the user)"
+                    if selected_alternative_title
+                    else ""
+                ),
             )
 
         # `genres` must agree with `genre_names`, which `populate_from_tmdb`
@@ -984,6 +1187,18 @@ class MediaSearch(BaseWizardPage):
                     # input therefore takes precedence over that stale copy.
                     if prompted_anilist_data is not None:
                         self._apply_anilist_data(prompted_anilist_data)
+
+                    # Same rule for a title picked by hand on this page: it was
+                    # chosen for this upload, so it outranks a title the
+                    # transformer derived. Untouched when nothing was picked,
+                    # which leaves the transformer authoritative as before.
+                    if selected_alternative_title:
+                        self.context.media_search.title_override = (
+                            selected_alternative_title
+                        )
+                        self.context.media_search.title = normalize_super_sub(
+                            selected_alternative_title
+                        )
 
                     transformed = self.context.media_search
                     if transformed.media_type is not None:
@@ -1387,10 +1602,300 @@ class MediaSearch(BaseWizardPage):
             self.release_date_label.setText(item_data.get("full_release_date", ""))
             self.media_type_label.setText(item_data.get("media_type", ""))
             self._load_poster(item_data.get("poster_path"))
+            self._reset_alternative_titles()
         else:
             self.selected_title_label.setText("Select a result to view its details")
             self._clear_poster()
+            self._reset_alternative_titles()
         self.selected_title_label.setToolTip(self.selected_title_label._text)
+
+    # ------------------------------------------------------------------
+    # alternative titles
+    # ------------------------------------------------------------------
+    def _alternative_title_identity(self) -> tuple[str, MediaType] | None:
+        """The pair that decides which record TMDB answers for.
+
+        The ID comes from the entry rather than the selected row because the
+        entry is what `_search_other_ids` and `_update_payload_data` commit. A
+        picker keyed off the row would happily offer one record's titles for
+        another record's upload the moment the ID is edited by hand.
+        """
+        tmdb_id = self.tmdb_id_entry.text().strip()
+        if not tmdb_id or not tmdb_id.isdecimal():
+            return None
+        item_data = self._get_current_item_data()
+        if not item_data:
+            return None
+        media_type = MediaType.search_type(str(item_data.get("media_type") or ""))
+        if media_type is None:
+            return None
+        return (tmdb_id, media_type)
+
+    def _default_alternative_title(self) -> str:
+        item_data = self._get_current_item_data() or {}
+        title = item_data.get("title")
+        return title if isinstance(title, str) else ""
+
+    def _populate_alternative_titles(
+        self,
+        default_title: str,
+        entries: Sequence[TmdbAlternativeTitle],
+        ready: bool,
+        status: str | None = None,
+    ) -> None:
+        """Rebuild the picker: TMDB's own title first, alternatives after.
+
+        Rows carry the title and nothing else. Where TMDB came by a title --
+        the regions, its own note on it -- is shown under the combo instead,
+        because a qualifier inside a row reads as part of the string being
+        picked, and this is the one control whose value is published verbatim.
+        """
+        combo = self.alt_title_combo
+        # Repopulating walks the index through every intermediate value; the
+        # detail line is refreshed once at the end instead of once per step.
+        combo.blockSignals(True)
+        combo.clear()
+        combo.addItem(default_title, None)
+        combo.setItemData(0, default_title, Qt.ItemDataRole.ToolTipRole)
+        for entry in entries:
+            combo.addItem(entry.title, entry.title)
+            combo.setItemData(
+                combo.count() - 1, entry.title, Qt.ItemDataRole.ToolTipRole
+            )
+        combo.setCurrentIndex(0)
+        combo.blockSignals(False)
+
+        self._alt_title_entries = tuple(entries)
+        # A status speaks for a list that is missing, still loading, or could
+        # not be loaded. Once there are entries, there is nothing left for it
+        # to say and the default row describes itself.
+        self._alt_title_status = status if not entries else None
+        self._refresh_alternative_title_details()
+        combo.mark_ready(ready)
+        combo.popup_when_ready()
+
+    @Slot()
+    def _refresh_alternative_title_details(self) -> None:
+        """Say where the selected title came from, or why there are none."""
+        index = self.alt_title_combo.currentIndex()
+        entry = (
+            self._alt_title_entries[index - 1]
+            if 0 < index <= len(self._alt_title_entries)
+            else None
+        )
+
+        regions = _alternative_title_regions(entry) if entry else ""
+        note = entry.type if entry else ""
+        self.alt_title_region_label.setText(regions)
+        self.alt_title_region_label.setVisible(bool(regions))
+        self.alt_title_region_icon.setVisible(bool(regions))
+        self.alt_title_note_label.setText(note)
+        self.alt_title_note_label.setVisible(bool(note))
+        self.alt_title_note_icon.setVisible(bool(note))
+
+        # A status only speaks for the default row: once an alternative is
+        # selected, its own provenance is the more useful thing to show.
+        status = ""
+        if entry is None:
+            status = self._alt_title_status or self._ALT_TITLE_DEFAULT
+        self.alt_title_status_label.setText(status)
+        self.alt_title_status_label.setVisible(bool(status))
+
+    @Slot(str)
+    def _reset_alternative_titles(self, _text: str = "") -> None:
+        """Return the picker to the selected row's TMDB title.
+
+        Also the invalidation hook for the TMDB ID entry: a different ID is a
+        different record, so any pick made against the old one is dropped
+        rather than carried onto an upload it was never chosen for.
+        """
+        combo = self.alt_title_combo
+        combo.cancel_pending_popup()
+        self._alt_titles_key = None
+        self._alt_title_request = None
+
+        if not self._get_current_item_data():
+            combo.blockSignals(True)
+            combo.clear()
+            combo.blockSignals(False)
+            combo.setEnabled(False)
+            combo.mark_ready(True)
+            self._alt_title_entries = ()
+            self._alt_title_status = None
+            self._refresh_alternative_title_details()
+            return
+
+        combo.setEnabled(True)
+        default_title = self._default_alternative_title()
+        identity = self._alternative_title_identity()
+        cached = self._alt_title_cache.get(identity) if identity else None
+        if cached is not None:
+            self._alt_titles_key = identity
+            self._populate_alternative_titles(
+                default_title, cached, ready=True, status=self._ALT_TITLE_NONE
+            )
+            return
+        # Deliberately no fetch: the list is loaded when the user reaches for
+        # it, not once per result they click through.
+        self._populate_alternative_titles(default_title, (), ready=False)
+
+    @Slot()
+    def _ensure_alternative_titles(self) -> None:
+        """Load the alternatives for the current record, at most once each."""
+        identity = self._alternative_title_identity()
+        default_title = self._default_alternative_title()
+        if identity is None:
+            self._populate_alternative_titles(
+                default_title, (), ready=True, status=self._ALT_TITLE_NEEDS_ID
+            )
+            return
+        if identity == self._alt_titles_key:
+            return
+
+        cached = self._alt_title_cache.get(identity)
+        if cached is not None:
+            self._alt_titles_key = identity
+            self._populate_alternative_titles(
+                default_title, cached, ready=True, status=self._ALT_TITLE_NONE
+            )
+            return
+
+        # A pasted TMDB URL or `tmdb:` reference resolved the complete record,
+        # and `fetch_complete_tmdb_data_for_selection` already appends
+        # `alternative_titles` to it -- so that path needs no request at all.
+        item_data = self._get_current_item_data() or {}
+        raw_data = item_data.get("raw_data")
+        if isinstance(raw_data, dict) and raw_data.get("alternative_titles"):
+            entries = self.backend.parse_alternative_titles(raw_data, default_title)
+            self._alt_title_cache[identity] = entries
+            self._alt_titles_key = identity
+            self._populate_alternative_titles(
+                default_title, entries, ready=True, status=self._ALT_TITLE_NONE
+            )
+            return
+
+        if self._alt_title_request == identity:
+            return
+        # `backend.session` is one niquests session shared with the search, so
+        # let the search finish before adding a request to it.
+        if self.search_worker is not None and self.search_worker.isRunning():
+            return
+
+        self._alt_title_request = identity
+        generation = self._search_generation
+        worker = GeneralWorker(
+            self.backend.fetch_alternative_titles,
+            self,
+            identity[0],
+            identity[1],
+            default_title,
+        )
+        self._alt_title_worker = worker
+        worker.job_finished.connect(
+            lambda result, generation=generation, identity=identity: (
+                self._handle_alternative_titles(generation, identity, result)
+            )
+        )
+        worker.job_failed.connect(
+            lambda error, generation=generation, identity=identity: (
+                self._handle_alternative_titles_failed(generation, identity, error)
+            )
+        )
+        QTimer.singleShot(
+            self._ALT_TITLE_POPUP_GRACE_MS, self.alt_title_combo.cancel_pending_popup
+        )
+        self._alt_title_status = self._ALT_TITLE_LOADING
+        self._refresh_alternative_title_details()
+        worker.start()
+
+    def _alternative_titles_are_current(
+        self, generation: int, identity: tuple[str, MediaType]
+    ) -> bool:
+        """Whether a finished request still describes what the page shows."""
+        return (
+            generation == self._search_generation
+            and identity == self._alt_title_request
+        )
+
+    def _handle_alternative_titles(
+        self, generation: int, identity: tuple[str, MediaType], result: object
+    ) -> None:
+        if not self._alternative_titles_are_current(generation, identity):
+            return
+        self._alt_title_request = None
+        entries = (
+            tuple(entry for entry in result if isinstance(entry, TmdbAlternativeTitle))
+            if isinstance(result, tuple | list)
+            else ()
+        )
+        self._alt_title_cache[identity] = entries
+        if identity != self._alternative_title_identity():
+            return
+        self._alt_titles_key = identity
+        self._populate_alternative_titles(
+            self._default_alternative_title(),
+            entries,
+            ready=True,
+            status=self._ALT_TITLE_NONE,
+        )
+
+    def _handle_alternative_titles_failed(
+        self, generation: int, identity: tuple[str, MediaType], error_str: object
+    ) -> None:
+        """Report a failed load in the picker and nowhere else.
+
+        Never routes to `_failed_search`: that clears the payload and the whole
+        result list, and an optional title list failing to load is no reason to
+        throw away a selection the user has already made. The identity is left
+        uncached and unclaimed so the next hover retries.
+        """
+        if not self._alternative_titles_are_current(generation, identity):
+            return
+        self._alt_title_request = None
+        LOG.warning(
+            LOG.LOG_SOURCE.FE,
+            f"Failed to load TMDB alternative titles for {identity[0]}: {error_str}",
+        )
+        if identity != self._alternative_title_identity():
+            return
+        self._populate_alternative_titles(
+            self._default_alternative_title(),
+            (),
+            ready=True,
+            status=self._ALT_TITLE_ERROR,
+        )
+
+    @Slot(int)
+    def _alternative_title_selected(self, _index: int) -> None:
+        """Show the pick in the heading.
+
+        The payload is written only by `_update_payload_data`, which reads the
+        combo at commit time. This page is a commit page, so there is no route
+        back to it once the metadata lookup has run, and a second writer here
+        would only split authority over the same field.
+        """
+        item_data = self._get_current_item_data() or {}
+        title = self._selected_alternative_title() or self._default_alternative_title()
+        year = item_data.get("year")
+        self.selected_title_label.setText(f"{title} ({year})" if year else title)
+        self.selected_title_label.setToolTip(self.selected_title_label._text)
+
+    def _selected_alternative_title(self) -> str | None:
+        """The user's chosen title, or None to keep TMDB's own.
+
+        Refuses to answer unless the combo still holds the record the ID entry
+        names, so a pick can never be committed against a record it was not
+        made for.
+        """
+        if (
+            self._alt_titles_key is None
+            or self._alt_titles_key != self._alternative_title_identity()
+        ):
+            return None
+        data = self.alt_title_combo.currentData()
+        if isinstance(data, str) and data.strip():
+            return data.strip()
+        return None
 
     @staticmethod
     def _tmdb_poster_url(poster_path: object) -> str | None:
@@ -1533,6 +2038,7 @@ class MediaSearch(BaseWizardPage):
         self.selected_title_label.setText("Select a result to view its details")
         self.poster_img = None
         self._clear_poster(clear_cache=True)
+        self._reset_alternative_titles()
 
         if self.search_worker is not None and not self.search_worker.isRunning():
             self.search_worker = None
@@ -1545,6 +2051,9 @@ class MediaSearch(BaseWizardPage):
 
         if all_widgets:
             self.search_entry.clear()
+            # `reset_page(all_widgets=False)` runs on every search, so the
+            # per-session alternative-title cache only clears on a full reset.
+            self._alt_title_cache.clear()
 
         if worker_was_running:
             GSigs().main_window_set_disabled.emit(False)

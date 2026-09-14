@@ -1,6 +1,7 @@
 import asyncio
 import base64
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 import re
 from typing import Any, cast
 import zlib
@@ -25,6 +26,28 @@ from src.utils.super_sub import normalize_super_sub
 # Shared by MatchAnilistTitle, which is instantiated fresh per search and so
 # has no long-lived session of its own to attach this to.
 _ANILIST_SESSION = new_http_session()
+
+
+def _fold_title(value: object) -> str:
+    """Collapse a title to the form two spellings have to share to be one title."""
+    if not isinstance(value, str):
+        return ""
+    return " ".join(value.split()).casefold()
+
+
+@dataclass(frozen=True, slots=True)
+class TmdbAlternativeTitle:
+    """One title TMDB publishes for a record besides the one it goes by.
+
+    `countries` is every region that offered this exact string and `type` is
+    TMDB's free-text note on it ("working title", "Netflix", often empty).
+    Neither reaches the release name -- they are there so the user can tell two
+    candidate titles apart.
+    """
+
+    title: str
+    countries: tuple[str, ...] = ()
+    type: str = ""
 
 
 class MediaSearchBackEnd:
@@ -129,9 +152,11 @@ class MediaSearchBackEnd:
             row = self._build_media_row(
                 media_type=media_type,
                 tmdb_id=str(result.get("id", "")),
-                # use TMDB title directly since we don't have alternative titles
-                # at this stage; proper title selection happens later with
-                # complete TMDB data
+                # TMDB's own title for the record. The search page offers the
+                # alternatives alongside it (`fetch_alternative_titles`), but
+                # only for the row the user settles on -- fetching them for
+                # every result would be a request per row for a list almost
+                # nobody opens.
                 title=title,
                 original_title=original_title,
                 release_date_raw=str(release_date_raw),
@@ -385,11 +410,20 @@ class MediaSearchBackEnd:
             original_language=data.get("original_language", ""),
         )
 
-    def _fetch_tmdb_results(
+    def _fetch_tmdb_json(
         self,
         url: str,
         params: Mapping[str, Any] | None = None,
-    ) -> list[dict[str, Any]]:
+        subject: str = "search",
+    ) -> dict[str, Any]:
+        """GET a TMDB endpoint and return its JSON object.
+
+        `subject` names the request in the three user-facing messages, so a
+        failed alternative-title lookup does not report itself as a failed
+        search. `fetch_complete_tmdb_data_for_selection` keeps its own copy of
+        this handling: its wording differs ("metadata lookup failed" rather
+        than "metadata failed") and its messages are asserted directly.
+        """
         try:
             with self.session.get(
                 url,
@@ -399,14 +433,10 @@ class MediaSearchBackEnd:
                 response.raise_for_status()
                 response_json = response.json()
                 if not isinstance(response_json, dict):
-                    raise MediaSearchError("TMDB returned an invalid search response.")
-                response_data = cast(dict[str, Any], response_json)
-                results = response_data.get("results", [])
-                return (
-                    cast(list[dict[str, Any]], results)
-                    if isinstance(results, list)
-                    else []
-                )
+                    raise MediaSearchError(
+                        f"TMDB returned an invalid {subject} response."
+                    )
+                return cast(dict[str, Any], response_json)
         except (
             niquests.exceptions.ConnectionError,
             niquests.exceptions.Timeout,
@@ -414,16 +444,25 @@ class MediaSearchBackEnd:
             niquests.exceptions.SSLError,
         ) as error:
             raise MediaSearchUnavailableError(
-                "TMDB search is unavailable. Check your internet connection and try again."
+                f"TMDB {subject} is unavailable. Check your internet connection "
+                "and try again."
             ) from error
         except niquests.exceptions.RequestException as error:
             raise MediaSearchError(
-                f"TMDB search failed: {scrub_secrets(str(error))}"
+                f"TMDB {subject} failed: {scrub_secrets(str(error))}"
             ) from error
         except (TypeError, ValueError) as error:
             raise MediaSearchError(
-                "TMDB returned an invalid search response."
+                f"TMDB returned an invalid {subject} response."
             ) from error
+
+    def _fetch_tmdb_results(
+        self,
+        url: str,
+        params: Mapping[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        results = self._fetch_tmdb_json(url, params).get("results", [])
+        return cast(list[dict[str, Any]], results) if isinstance(results, list) else []
 
     def fetch_complete_tmdb_data_for_selection(
         self, media_id: str | int, media_type: MediaType
@@ -472,19 +511,7 @@ class MediaSearchBackEnd:
                     raise MediaSearchError(
                         "TMDB returned no metadata for the selection."
                     )
-                returned_id = response_data.get("id")
-                try:
-                    returned_numeric_id = (
-                        int(str(returned_id))
-                        if isinstance(returned_id, str | int)
-                        and not isinstance(returned_id, bool)
-                        else None
-                    )
-                except ValueError:
-                    returned_numeric_id = None
-                if returned_numeric_id is None or returned_numeric_id != int(
-                    validated_media_id
-                ):
+                if not self._returned_id_matches(response_data, validated_media_id):
                     raise MediaSearchError(
                         "TMDB returned metadata for a different ID than requested."
                     )
@@ -506,6 +533,114 @@ class MediaSearchBackEnd:
             raise MediaSearchError(
                 "TMDB returned an invalid metadata response."
             ) from error
+
+    @staticmethod
+    def _returned_id_matches(response: Mapping[str, Any], expected_id: str) -> bool:
+        """Whether a TMDB record answers for the ID that was asked for."""
+        returned_id = response.get("id")
+        try:
+            returned_numeric_id = (
+                int(str(returned_id))
+                if isinstance(returned_id, str | int)
+                and not isinstance(returned_id, bool)
+                else None
+            )
+        except ValueError:
+            return False
+        return returned_numeric_id is not None and returned_numeric_id == int(
+            expected_id
+        )
+
+    @staticmethod
+    def parse_alternative_titles(
+        payload: Mapping[str, Any] | None,
+        default_title: str = "",
+    ) -> tuple[TmdbAlternativeTitle, ...]:
+        """Normalize TMDB's alternative-title block into display-ready entries.
+
+        Accepts either the block itself or a whole record carrying one under
+        `alternative_titles`, so the same parser serves the dedicated endpoint
+        and the `append_to_response` copy already sitting in `tmdb_data`.
+
+        TMDB keys the list `titles` on a movie and `results` on a series -- the
+        only shape difference between the two -- so both are read here rather
+        than branching on media type at every call site.
+
+        Entries are grouped by title: TMDB lists the same string under many
+        countries, and only the string survives into the release name, so
+        separate rows for them would be noise. `default_title` is dropped for
+        the same reason -- picking it would change nothing.
+        """
+        if not payload:
+            return ()
+
+        nested = payload.get("alternative_titles")
+        if isinstance(nested, Mapping):
+            payload = cast(Mapping[str, Any], nested)
+
+        raw_entries = payload.get("titles")
+        if not isinstance(raw_entries, list):
+            raw_entries = payload.get("results")
+        if not isinstance(raw_entries, list):
+            return ()
+
+        excluded = _fold_title(default_title)
+        grouped: dict[str, tuple[str, list[str], str]] = {}
+        for entry in cast(list[Any], raw_entries):
+            if not isinstance(entry, Mapping):
+                continue
+            entry_map = cast(Mapping[str, Any], entry)
+            title = normalize_super_sub(str(entry_map.get("title") or "")).strip()
+            if not title:
+                continue
+            folded = _fold_title(title)
+            if not folded or (excluded and folded == excluded):
+                continue
+
+            country = str(entry_map.get("iso_3166_1") or "").strip().upper()
+            title_type = str(entry_map.get("type") or "").strip()
+
+            existing = grouped.get(folded)
+            if existing is None:
+                grouped[folded] = (title, [country] if country else [], title_type)
+                continue
+            _, countries, existing_type = existing
+            if country and country not in countries:
+                countries.append(country)
+            if not existing_type and title_type:
+                grouped[folded] = (existing[0], countries, title_type)
+
+        return tuple(
+            TmdbAlternativeTitle(
+                title=title, countries=tuple(countries), type=title_type
+            )
+            for title, countries, title_type in grouped.values()
+        )
+
+    def fetch_alternative_titles(
+        self,
+        media_id: str | int,
+        media_type: MediaType,
+        default_title: str = "",
+    ) -> tuple[TmdbAlternativeTitle, ...]:
+        """Fetch every title TMDB publishes for a record besides its own.
+
+        The dedicated endpoint rather than the `append_to_response` copy on the
+        detail record: this runs while the user is still choosing a search
+        result, long before anything commits to fetching that record.
+        """
+        endpoint = "movie" if media_type is MediaType.MOVIE else "tv"
+        validated_media_id = self._validate_tmdb_id(media_id)
+        url = (
+            f"https://api.themoviedb.org/3/{endpoint}/"
+            f"{validated_media_id}/alternative_titles"
+        )
+        response = self._fetch_tmdb_json(url, subject="alternative title lookup")
+        if not self._returned_id_matches(response, validated_media_id):
+            raise MediaSearchError(
+                "TMDB returned alternative titles for a different ID than requested."
+            )
+        return self.parse_alternative_titles(response, default_title)
 
     @staticmethod
     def _guessit(input_string: str) -> tuple[str, str]:

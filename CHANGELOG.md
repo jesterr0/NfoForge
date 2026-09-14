@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- **The title on the search page can now be any of the alternative titles TMDB publishes for a record**, not only the one TMDB itself goes by. A picker under the selected title opens on TMDB's own title and lists the alternatives beneath it -- so `Star Trek` can go up as `Star Trek: The Animated Series` without editing anything by hand afterwards. Each row holds the title and nothing else; the region it is listed for and TMDB's note on it sit under the picker, where they cannot be mistaken for part of the name. The choice is what `{title}`, `{title_clean}` and `{title_exact}` render as, which covers the tracker release name, the renamed file and the NFO; `{original_title}` still carries TMDB's original-language title. Nothing changes for a release where the default title is already right, and the list is only fetched when the picker is opened, so searching costs no extra requests. A metadata transformer plugin no longer overrides a title picked this way.
+
 ## [1.1.15] - 2026-09-12
 
 ### Changed

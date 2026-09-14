@@ -82,6 +82,7 @@ def _populate(context: ProcessingContext, media: Path) -> None:
     media_search.tmdb_id = "603"
     media_search.tmdb_data = {"title": "Example", "genres": [{"name": "Action"}]}
     media_search.title = "Example"
+    media_search.title_override = "Example"
     media_search.year = 2024
     media_search.genres.append(TMDBGenreIDsMovies.ACTION)
     media_search.genre_names = ("Action", "Drama")
@@ -146,6 +147,7 @@ def test_context_round_trip_preserves_payloads(sample_media: Path) -> None:
     assert media_search.tmdb_id == "603"
     assert media_search.tmdb_data == source.media_search.tmdb_data
     assert media_search.title == "Example"
+    assert media_search.title_override == "Example"
     assert media_search.year == 2024
     assert media_search.genres == [TMDBGenreIDsMovies.ACTION]
     assert media_search.genre_names == ("Action", "Drama")

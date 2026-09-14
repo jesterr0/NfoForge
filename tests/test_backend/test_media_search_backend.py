@@ -1,11 +1,12 @@
 import asyncio
+from collections.abc import Callable
 import hashlib
 from typing import Any
 
 import niquests
 import pytest
 
-from src.backend.media_search import MediaSearchBackEnd
+from src.backend.media_search import MediaSearchBackEnd, TmdbAlternativeTitle
 from src.backend.utils.tvdb_client import AsyncTVDBClient, TVDBClient
 from src.enums.media_search_mode import MediaSearchMode
 from src.enums.media_type import MediaType
@@ -735,3 +736,197 @@ def test_resolve_tmdb_reference_rejects_a_record_with_no_release_date() -> None:
 
     with pytest.raises(MediaSearchError, match="release date"):
         backend.resolve_tmdb_reference("603", MediaType.MOVIE, MediaSearchMode.BOTH)
+
+
+# ---------------------------------------------------------------------------
+# alternative titles
+# ---------------------------------------------------------------------------
+def _alt_title_get(request: dict[str, Any], payload: Any) -> Callable[..., _Response]:
+    """A session stub that records the request and answers with `payload`."""
+
+    def get(url: str, **kwargs: object) -> _Response:
+        request["url"] = url
+        request.update(kwargs)
+        return _Response(payload)
+
+    return get
+
+
+@pytest.mark.parametrize(
+    ("media_type", "endpoint", "payload"),
+    [
+        (
+            MediaType.MOVIE,
+            "movie",
+            {
+                "id": 603,
+                # TMDB keys a movie's list `titles` ...
+                "titles": [{"iso_3166_1": "GB", "title": "Matrix", "type": ""}],
+            },
+        ),
+        (
+            MediaType.SERIES,
+            "tv",
+            {
+                "id": 603,
+                # ... and a series' list `results`.
+                "results": [{"iso_3166_1": "GB", "title": "Matrix", "type": ""}],
+            },
+        ),
+    ],
+)
+def test_alternative_titles_read_both_tmdb_list_shapes(
+    media_type: MediaType,
+    endpoint: str,
+    payload: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    backend = MediaSearchBackEnd()
+    request: dict[str, Any] = {}
+    monkeypatch.setattr(backend.session, "get", _alt_title_get(request, payload))
+
+    entries = backend.fetch_alternative_titles("603", media_type)
+
+    assert request["url"] == (
+        f"https://api.themoviedb.org/3/{endpoint}/603/alternative_titles"
+    )
+    assert request["params"] == backend.params
+    assert entries == (TmdbAlternativeTitle(title="Matrix", countries=("GB",)),)
+
+
+def test_alternative_titles_group_one_title_across_its_countries() -> None:
+    payload = {
+        "id": 1,
+        "titles": [
+            {"iso_3166_1": "GB", "title": "Matrix", "type": ""},
+            {"iso_3166_1": "CA", "title": " Matrix ", "type": "working title"},
+            {"iso_3166_1": "CA", "title": "Matrix", "type": ""},
+            {"iso_3166_1": "AU", "title": "", "type": ""},
+            {"iso_3166_1": "NZ", "title": "Another", "type": ""},
+            "not a mapping",
+        ],
+    }
+
+    entries = MediaSearchBackEnd.parse_alternative_titles(payload)
+
+    assert entries == (
+        TmdbAlternativeTitle(
+            title="Matrix", countries=("GB", "CA"), type="working title"
+        ),
+        TmdbAlternativeTitle(title="Another", countries=("NZ",)),
+    )
+
+
+def test_alternative_titles_drop_the_title_already_on_offer() -> None:
+    """Picking a row that changes nothing is not a choice worth showing."""
+    payload = {
+        "id": 1,
+        "titles": [
+            {"iso_3166_1": "US", "title": "The  Matrix", "type": ""},
+            {"iso_3166_1": "GB", "title": "Matrix", "type": ""},
+        ],
+    }
+
+    entries = MediaSearchBackEnd.parse_alternative_titles(payload, "The Matrix")
+
+    assert entries == (TmdbAlternativeTitle(title="Matrix", countries=("GB",)),)
+
+
+def test_alternative_titles_normalize_superscript_digits() -> None:
+    payload = {"id": 1, "titles": [{"iso_3166_1": "US", "title": "Test\u00b2"}]}
+
+    entries = MediaSearchBackEnd.parse_alternative_titles(payload)
+
+    assert entries == (TmdbAlternativeTitle(title="Test 2", countries=("US",)),)
+
+
+def test_alternative_titles_read_an_appended_record_without_a_request() -> None:
+    """The `tmdb:`/pasted-URL path already holds this list, so reuse it."""
+    record = {
+        "id": 1992,
+        "name": "Star Trek",
+        "alternative_titles": {
+            "results": [
+                {
+                    "iso_3166_1": "US",
+                    "title": "Star Trek: The Animated Series",
+                    "type": "",
+                }
+            ]
+        },
+    }
+
+    entries = MediaSearchBackEnd.parse_alternative_titles(record, "Star Trek")
+
+    assert entries == (
+        TmdbAlternativeTitle(title="Star Trek: The Animated Series", countries=("US",)),
+    )
+
+
+@pytest.mark.parametrize("payload", [None, {}, {"id": 1}, {"id": 1, "titles": "nope"}])
+def test_alternative_titles_tolerate_a_shapeless_response(payload: Any) -> None:
+    assert MediaSearchBackEnd.parse_alternative_titles(payload) == ()
+
+
+@pytest.mark.parametrize("media_id", ["../../person/1234", "123&api_key=x", "\u00b2"])
+def test_alternative_titles_reject_non_decimal_ids(
+    media_id: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    backend = MediaSearchBackEnd()
+    monkeypatch.setattr(
+        backend.session,
+        "get",
+        lambda *_args, **_kwargs: pytest.fail("invalid IDs must not reach TMDB"),
+    )
+
+    with pytest.raises(MediaSearchError, match="decimal"):
+        backend.fetch_alternative_titles(media_id, MediaType.MOVIE)
+
+
+def test_alternative_titles_reject_a_record_for_another_id(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    backend = MediaSearchBackEnd()
+    monkeypatch.setattr(
+        backend.session,
+        "get",
+        _alt_title_get({}, {"id": 604, "titles": []}),
+    )
+
+    with pytest.raises(MediaSearchError, match="different ID"):
+        backend.fetch_alternative_titles("603", MediaType.MOVIE)
+
+
+def test_alternative_titles_report_an_outage_as_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    backend = MediaSearchBackEnd()
+
+    def get(*_args: object, **_kwargs: object) -> _Response:
+        raise niquests.exceptions.ConnectionError("boom")
+
+    monkeypatch.setattr(backend.session, "get", get)
+
+    with pytest.raises(
+        MediaSearchUnavailableError, match="alternative title lookup is unavailable"
+    ):
+        backend.fetch_alternative_titles("603", MediaType.MOVIE)
+
+
+def test_alternative_titles_failure_scrubs_the_api_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    backend = MediaSearchBackEnd(api_key="super-secret-key")
+
+    def get(*_args: object, **_kwargs: object) -> _Response:
+        raise niquests.exceptions.RequestException(
+            "GET https://api.themoviedb.org/3/movie/603/alternative_titles"
+            "?api_key=super-secret-key failed"
+        )
+
+    monkeypatch.setattr(backend.session, "get", get)
+
+    with pytest.raises(MediaSearchError) as error:
+        backend.fetch_alternative_titles("603", MediaType.MOVIE)
+
+    assert "super-secret-key" not in str(error.value)
