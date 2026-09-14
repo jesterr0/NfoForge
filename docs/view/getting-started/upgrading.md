@@ -94,6 +94,10 @@ Nothing is ever overwritten or merged. If a folder or file already exists where 
 
 This is normal when you import into a data folder you have already been using. Move anything you want out of `migration-conflicts` yourself, and delete the rest when you are happy.
 
+A whole folder is set aside if anything in it clashes, rather than the individual files that clash. So importing into a data folder that already holds, say, one template will set aside every incoming template, not just the one with a matching name. Nothing is lost either way, but you may have more to move back by hand than you expected.
+
+This does not arise when you upgrade, because the folders being imported did not exist in your data folder before. It only applies to importing from **Settings** into a folder already in use.
+
 !!! warning "Settings in set-aside profiles are not corrected"
     The two corrections described above are applied to the profiles in use. A profile that was set aside keeps its original paths, so check its tool locations before putting it into use.
 
