@@ -397,6 +397,21 @@ def plan_migration(
             if repoint not in actions:
                 actions.append(repoint)
             continue
+        if legacy is not None and _is_inside(working_dir, legacy.root):
+            # Nothing imports a working directory -- it is not part of the layout
+            # being copied -- so the setting survives still naming a folder the
+            # summary goes on to invite the user to delete, with their saved jobs
+            # in it. Reported instead of its run folders: one finding about the
+            # folder beats two, and "you can reclaim space here" reads oddly
+            # against "this is about to stop existing".
+            findings.append(
+                Finding(
+                    kind=FindingKind.PATH_INSIDE_LEGACY_INSTALL,
+                    path=working_dir,
+                    detail="working directory",
+                )
+            )
+            continue
         for entry in _children(working_dir):
             if entry.is_dir() and _RUN_FOLDER_STAMP.search(entry.name):
                 findings.append(

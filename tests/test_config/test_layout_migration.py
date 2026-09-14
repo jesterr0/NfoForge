@@ -399,6 +399,62 @@ def test_a_configured_path_outside_the_legacy_install_is_not_reported(
     assert plan.findings == ()
 
 
+def test_a_working_directory_inside_the_legacy_install_is_reported(
+    tmp_path: Path,
+) -> None:
+    """The summary invites deleting the old installation. Jobs may be in it.
+
+    A working directory the user pointed inside their installation holds their
+    saved jobs, and nothing imports it: it is not part of the layout being
+    copied. Unreported, the setting survives the migration still naming a folder
+    the user is being told they can now remove.
+
+    Reported rather than rewritten, like any other path into the old
+    installation. Where the user wants their jobs kept is not derivable, and
+    moving them somewhere chosen here would be the migration deciding that.
+    """
+    state_root = tmp_path / "user_data"
+    state_root.mkdir()
+    legacy = _frozen_install(tmp_path)
+    working_dir = legacy.root / "work"
+    working_dir.mkdir(parents=True)
+
+    plan = plan_migration(state_root, legacy=legacy, working_dirs=[working_dir])
+
+    assert (
+        Finding(
+            kind=FindingKind.PATH_INSIDE_LEGACY_INSTALL,
+            path=working_dir,
+            detail="working directory",
+        )
+        in plan.findings
+    )
+
+
+def test_a_working_directory_in_the_legacy_install_is_not_reported_twice(
+    tmp_path: Path,
+) -> None:
+    """Its run folders are not also offered up as space to reclaim.
+
+    Both statements are true and they pull against each other: one says there is
+    space to be had here, the other says this folder is about to stop existing.
+    The second is the one that matters, so it is the only one made.
+    """
+    state_root = tmp_path / "user_data"
+    state_root.mkdir()
+    legacy = _frozen_install(tmp_path)
+    working_dir = legacy.root / "work"
+    run_folder = working_dir / "Example.Release.Name.2024_09.11.2026_10.09.39"
+    run_folder.mkdir(parents=True)
+    (run_folder / "screenshot.png").write_bytes(b"y" * 4)
+
+    plan = plan_migration(state_root, legacy=legacy, working_dirs=[working_dir])
+
+    assert [finding.kind for finding in plan.findings] == [
+        FindingKind.PATH_INSIDE_LEGACY_INSTALL
+    ]
+
+
 def test_run_folders_in_a_configured_working_directory_are_reported(
     tmp_path: Path,
 ) -> None:
