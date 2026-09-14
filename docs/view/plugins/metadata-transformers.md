@@ -49,6 +49,12 @@ After installing the plugin, enable external plugins and select it under **Setti
 
 The deterministic example at `plugins/metadata_plugin_example/plugin_metadata` uses an in-memory dictionary and includes records for `tt1254207`, `tt0111161`, and `tt0944947`.
 
+## User-selected titles
+
+The search page lets the user choose one of TMDB's alternative titles instead of the title TMDB goes by, and records that choice in `title_override`. It is UI-owned: NfoForge re-applies it after your transformer returns, so a title the user picked by hand wins over one your transformer derived. Every other field the transformer sets is accepted as normal.
+
+Set `payload.title` to change the title. Setting `title_override` from a plugin has no effect on its own, because nothing re-derives `title` after the transform.
+
 ## Original title tokens
 
 `{original_title}` uses the transformed original title and then TMDB's original title. `{original_title_fallback_title}` and `{original_title_fallback_title_clean}` additionally fall back to the selected title.

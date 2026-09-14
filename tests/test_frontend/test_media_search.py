@@ -8,7 +8,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QGroupBox, QLabel, QMessageBox, QSizePolicy
 import pytest
 
-from src.backend.media_search import MediaSearchBackEnd
+from src.backend.media_search import MediaSearchBackEnd, TmdbAlternativeTitle
 from src.backend.utils.tmdb_reference import TmdbReference
 from src.config.config import ConfigManager
 from src.config.paths import ConfigPaths
@@ -18,9 +18,11 @@ from src.enums.media_type import MediaType
 from src.enums.tmdb_genres import TMDBGenreIDsMovies, TMDBGenreIDsSeries
 from src.exceptions import MediaSearchError, MediaSearchUnavailableError
 from src.frontend.custom_widgets.custom_splitter import CustomSplitter
+from src.frontend.utils.general_worker import GeneralWorker
 from src.frontend.wizards.media_search import (
     MediaSearch,
     MediaSearchJobResult,
+    _alternative_title_regions,
     _run_media_search_job,
     _run_tmdb_id_lookup_job,
 )
@@ -1114,3 +1116,385 @@ def test_reset_page_restores_tmdb_placeholder(tmp_path: Path) -> None:
     page.reset_page()
 
     assert page.tmdb_id_entry.placeholderText() == "Automatic"
+
+
+# ---------------------------------------------------------------------------
+# alternative title picker
+# ---------------------------------------------------------------------------
+_ALT_TITLES = (
+    TmdbAlternativeTitle(
+        title="Star Trek: The Animated Series", countries=("US", "CA"), type="original"
+    ),
+    TmdbAlternativeTitle(title="Star Trek TAS", countries=("GB",)),
+)
+
+
+def _page_with_title_row(
+    tmp_path: Path,
+    *,
+    tmdb_id: str = "1992",
+    raw_data: dict[str, Any] | None = None,
+) -> MediaSearch:
+    page = _make_page(tmp_path)
+    item_name = "1) Star Trek (1973)"
+    page.backend.media_data = {
+        item_name: {
+            "media_type": "Series",
+            "title": "Star Trek",
+            "year": "1973",
+            "original_title": "Star Trek",
+            "tmdb_id": tmdb_id,
+            "genre_ids": [],
+            "raw_data": raw_data if raw_data is not None else {"id": int(tmdb_id)},
+        }
+    }
+    page.listbox.clear()
+    page.listbox.addItem(item_name)
+    page.listbox.setCurrentRow(0)
+    page.tmdb_id_entry.setText(tmdb_id)
+    page._reset_alternative_titles()
+    return page
+
+
+def _stub_alternative_titles(
+    page: MediaSearch,
+    monkeypatch: pytest.MonkeyPatch,
+    entries: tuple[TmdbAlternativeTitle, ...] = _ALT_TITLES,
+) -> list[tuple[str, MediaType]]:
+    """Run the picker's worker inline and count the backend calls it makes."""
+    calls: list[tuple[str, MediaType]] = []
+
+    def fetch(
+        media_id: str, media_type: MediaType, _default: str = ""
+    ) -> tuple[TmdbAlternativeTitle, ...]:
+        calls.append((media_id, media_type))
+        return entries
+
+    monkeypatch.setattr(page.backend, "fetch_alternative_titles", fetch)
+    monkeypatch.setattr(GeneralWorker, "start", GeneralWorker.run, raising=False)
+    return calls
+
+
+def _combo_titles(page: MediaSearch) -> list[str]:
+    combo = page.alt_title_combo
+    return [combo.itemText(index) for index in range(combo.count())]
+
+
+def test_alternative_title_picker_lives_in_the_title_panel(tmp_path: Path) -> None:
+    """Inside the existing TITLE panel, directly under the heading it names.
+
+    Also guards the panel structure the split-panel test asserts: the picker
+    must not arrive as a group box of its own.
+    """
+    page = _make_page(tmp_path)
+
+    layout = page.info_box.layout()
+    assert layout is not None
+    assert layout.indexOf(page.selected_title_label) == 0
+    picker_row = layout.itemAt(1).layout()
+    assert picker_row is not None
+    assert picker_row.indexOf(page.alt_title_combo) == 0
+    assert [group.title() for group in page.findChildren(QGroupBox)].count("TITLE") == 1
+
+
+def test_selecting_a_result_offers_the_tmdb_title_first(tmp_path: Path) -> None:
+    page = _page_with_title_row(tmp_path)
+
+    assert page.alt_title_combo.count() == 1
+    assert page.alt_title_combo.itemText(0) == "Star Trek"
+    assert page.alt_title_combo.currentData() is None
+    assert page._selected_alternative_title() is None
+    # The row is the title and nothing else; what it is comes from underneath.
+    assert page.alt_title_status_label.text() == MediaSearch._ALT_TITLE_DEFAULT
+    assert page.alt_title_region_label.isVisible() is False
+
+
+def test_alternative_titles_are_not_fetched_until_the_picker_is_used(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """One request per row clicked through is the cost this design avoids."""
+    page = _page_with_title_row(tmp_path)
+    calls = _stub_alternative_titles(page, monkeypatch)
+
+    page.listbox.setCurrentRow(0)
+    page._select_media()
+
+    assert calls == []
+    assert page.alt_title_combo.count() == 1
+
+
+def test_reaching_for_the_picker_loads_the_alternatives(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    page = _page_with_title_row(tmp_path)
+    calls = _stub_alternative_titles(page, monkeypatch)
+
+    page.alt_title_combo.load_requested.emit()
+
+    assert calls == [("1992", MediaType.SERIES)]
+    # Rows are titles, verbatim -- a region or a TMDB note inside one would
+    # read as part of the string being picked.
+    assert _combo_titles(page) == [
+        "Star Trek",
+        "Star Trek: The Animated Series",
+        "Star Trek TAS",
+    ]
+
+
+def test_the_info_blocks_carry_the_region_and_the_tmdb_note(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The qualifiers belong under the combo, keyed to what is selected."""
+    page = _page_with_title_row(tmp_path)
+    _stub_alternative_titles(page, monkeypatch)
+    page.alt_title_combo.load_requested.emit()
+
+    page.alt_title_combo.setCurrentIndex(1)
+    assert page.alt_title_region_label.text() == "US, CA"
+    assert page.alt_title_note_label.text() == "original"
+    # A status describes the default row only, so it steps aside for a pick.
+    assert page.alt_title_status_label.text() == ""
+
+    # An entry TMDB left a note off shows the region alone, no empty block.
+    page.alt_title_combo.setCurrentIndex(2)
+    assert page.alt_title_region_label.text() == "GB"
+    assert page.alt_title_note_label.text() == ""
+    assert page.alt_title_note_label.isVisible() is False
+
+    page.alt_title_combo.setCurrentIndex(0)
+    assert page.alt_title_region_label.text() == ""
+    assert page.alt_title_status_label.text() == MediaSearch._ALT_TITLE_DEFAULT
+
+
+def test_many_regions_are_capped_in_the_info_block() -> None:
+    entry = TmdbAlternativeTitle(
+        title="Whatever", countries=("US", "CA", "GB", "AU", "NZ")
+    )
+
+    assert _alternative_title_regions(entry) == "US, CA, GB +2"
+
+
+def test_the_picker_says_what_it_sets(tmp_path: Path) -> None:
+    page = _make_page(tmp_path)
+
+    assert page.alt_title_purpose_label.text() == (
+        "Sets the tracker release title, renamed filename, and NFO"
+    )
+
+
+def test_alternative_titles_are_fetched_once_per_record(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    page = _page_with_title_row(tmp_path)
+    calls = _stub_alternative_titles(page, monkeypatch)
+
+    page.alt_title_combo.load_requested.emit()
+    page.alt_title_combo.load_requested.emit()
+    page._reset_alternative_titles()
+    page.alt_title_combo.load_requested.emit()
+
+    assert calls == [("1992", MediaType.SERIES)]
+    assert len(_combo_titles(page)) == 3
+
+
+def test_reopening_the_picker_keeps_the_pick(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Hovering emits the same request as clicking, so it must be inert once
+    the list is loaded -- repopulating would silently reset the choice."""
+    page = _page_with_title_row(tmp_path)
+    _stub_alternative_titles(page, monkeypatch)
+    page.alt_title_combo.load_requested.emit()
+    page.alt_title_combo.setCurrentIndex(1)
+
+    page.alt_title_combo.load_requested.emit()
+
+    assert page._selected_alternative_title() == "Star Trek: The Animated Series"
+
+
+def test_a_resolved_tmdb_id_needs_no_alternative_title_request(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`resolve_tmdb_reference` already appended the list to the row."""
+    page = _page_with_title_row(
+        tmp_path,
+        raw_data={
+            "id": 1992,
+            "alternative_titles": {
+                "results": [
+                    {
+                        "iso_3166_1": "US",
+                        "title": "Star Trek: The Animated Series",
+                        "type": "",
+                    }
+                ]
+            },
+        },
+    )
+    calls = _stub_alternative_titles(page, monkeypatch)
+
+    page.alt_title_combo.load_requested.emit()
+
+    assert calls == []
+    assert _combo_titles(page) == ["Star Trek", "Star Trek: The Animated Series"]
+
+
+def test_a_picked_alternative_title_reaches_the_payload(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    page = _page_with_title_row(tmp_path)
+    _stub_alternative_titles(page, monkeypatch)
+    page.alt_title_combo.load_requested.emit()
+    page.alt_title_combo.setCurrentIndex(1)
+
+    page._update_payload_data()
+
+    payload = page.context.media_search
+    assert payload.title_override == "Star Trek: The Animated Series"
+    assert payload.title == "Star Trek: The Animated Series"
+    # Scope: the native-language title is left to TMDB.
+    assert payload.original_title == "Star Trek"
+
+
+def test_no_pick_leaves_the_tmdb_title_in_place(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    page = _page_with_title_row(tmp_path)
+    _stub_alternative_titles(page, monkeypatch)
+    page.alt_title_combo.load_requested.emit()
+
+    page._update_payload_data()
+
+    assert page.context.media_search.title_override is None
+    assert page.context.media_search.title == "Star Trek"
+
+
+def test_editing_the_tmdb_id_discards_the_pick(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A different ID is a different record; a pick made for the old one
+    must not be carried onto it."""
+    page = _page_with_title_row(tmp_path)
+    _stub_alternative_titles(page, monkeypatch)
+    page.alt_title_combo.load_requested.emit()
+    page.alt_title_combo.setCurrentIndex(1)
+
+    page.tmdb_id_entry.setText("999")
+    page.tmdb_id_entry.textEdited.emit("999")
+
+    assert page.alt_title_combo.count() == 1
+    assert page._selected_alternative_title() is None
+
+
+def test_editing_another_id_keeps_the_pick(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`_mark_metadata_dirty` fires for IMDb and TVDB too, and neither says
+    anything about which TMDB record's titles are on offer."""
+    page = _page_with_title_row(tmp_path)
+    _stub_alternative_titles(page, monkeypatch)
+    page.alt_title_combo.load_requested.emit()
+    page.alt_title_combo.setCurrentIndex(1)
+
+    page.imdb_id_entry.setText("tt0069637")
+    page.imdb_id_entry.textEdited.emit("tt0069637")
+    page.tvdb_id_entry.setText("73024")
+    page.tvdb_id_entry.textEdited.emit("73024")
+
+    assert page._selected_alternative_title() == "Star Trek: The Animated Series"
+
+
+def test_a_pick_outranks_a_metadata_transformer_title(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    page = _page_with_title_row(tmp_path)
+    _stub_alternative_titles(page, monkeypatch)
+    page.alt_title_combo.load_requested.emit()
+    page.alt_title_combo.setCurrentIndex(1)
+    complete_tmdb = {"id": 1992, "name": "Star Trek", "first_air_date": "1973-09-08"}
+    transformed = MediaSearchPayload(
+        media_type=MediaType.SERIES,
+        tmdb_id="1992",
+        tmdb_data=complete_tmdb,
+        title="Provider Localized",
+        original_title="Provider Original",
+        plot="Provider plot",
+    )
+
+    page._update_payload_data(
+        {
+            "tmdb_complete_data": {"success": True, "result": complete_tmdb},
+            "metadata_transformation": {"success": True, "result": transformed},
+        }
+    )
+
+    payload = page.context.media_search
+    assert payload.title == "Star Trek: The Animated Series"
+    assert payload.title_override == "Star Trek: The Animated Series"
+    # Everything the user did not choose by hand stays the transformer's.
+    assert payload.original_title == "Provider Original"
+    assert payload.plot == "Provider plot"
+
+
+def test_a_failed_alternative_title_load_keeps_the_selection(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An optional list failing to load is no reason to clear the page."""
+    page = _page_with_title_row(tmp_path)
+    page.loading_complete = True
+
+    def fetch(*_args: object, **_kwargs: object) -> tuple[TmdbAlternativeTitle, ...]:
+        raise MediaSearchUnavailableError("TMDB is unavailable.")
+
+    monkeypatch.setattr(page.backend, "fetch_alternative_titles", fetch)
+    monkeypatch.setattr(GeneralWorker, "start", GeneralWorker.run, raising=False)
+
+    page.alt_title_combo.load_requested.emit()
+
+    assert page.loading_complete is True
+    assert page.backend.media_data
+    # The failure is reported under the combo, never as a pickable row.
+    assert _combo_titles(page) == ["Star Trek"]
+    assert page.alt_title_status_label.text() == MediaSearch._ALT_TITLE_ERROR
+    assert page._selected_alternative_title() is None
+
+
+def test_a_record_with_no_alternatives_says_so(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    page = _page_with_title_row(tmp_path)
+    _stub_alternative_titles(page, monkeypatch, entries=())
+
+    page.alt_title_combo.load_requested.emit()
+
+    assert _combo_titles(page) == ["Star Trek"]
+    assert page.alt_title_status_label.text() == MediaSearch._ALT_TITLE_NONE
+    assert page._selected_alternative_title() is None
+
+
+def test_reset_page_clears_the_alternative_title_picker(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    page = _page_with_title_row(tmp_path)
+    _stub_alternative_titles(page, monkeypatch)
+    page.alt_title_combo.load_requested.emit()
+
+    page.reset_page()
+
+    assert page.alt_title_combo.count() == 0
+    assert page.alt_title_combo.isEnabled() is False
+    assert page._alt_title_cache == {}
+
+
+def test_a_search_keeps_the_alternative_title_cache(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`reset_page(all_widgets=False)` runs on every search; the cache is
+    meant to last the session."""
+    page = _page_with_title_row(tmp_path)
+    _stub_alternative_titles(page, monkeypatch)
+    page.alt_title_combo.load_requested.emit()
+
+    page.reset_page(all_widgets=False)
+
+    assert page._alt_title_cache

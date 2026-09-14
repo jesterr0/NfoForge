@@ -183,6 +183,46 @@ def test_the_entry_colon_beats_the_users_global() -> None:
     assert deferring == "Mission Impossible"
 
 
+COMPOSING = [
+    tracker for tracker, entry in TITLE_RULES.items() if entry.composition is not None
+]
+
+
+@pytest.mark.parametrize("tracker", COMPOSING)
+def test_a_composing_tracker_keeps_the_periods_in_the_films_own_name(
+    tracker: TrackerSelection,
+) -> None:
+    """End to end, through the renderer that decides the separator handling.
+
+    Every composing entry leads with `{title_exact}`, which is the selected
+    TMDB title verbatim, so "Tucker and Dale vs. Evil" arrives with its
+    period intact and used to lose it on the way out: normalisation ran a
+    dot stripper over a title that had never been dot separated.
+    """
+    context = _context()
+    context.media_search.title = "Tucker and Dale vs. Evil"
+
+    title = _title(tracker, context)
+
+    assert title is not None
+    assert title.startswith("Tucker and Dale vs. Evil "), title
+
+
+def test_the_users_global_template_is_still_dot_stripped() -> None:
+    """The other half, and the reason the renderer has to tell them apart.
+
+    A template is the user's to write and may be dot separated, as the
+    release-name fallback always is, so nothing about that path changed.
+    """
+    context = _context()
+    context.media_search.title = "Tucker and Dale vs. Evil"
+    backend = _backend(movie_template="{title_exact}")
+
+    title = _title(_renders_the_users_template(), context, backend)
+
+    assert title == "Tucker and Dale vs Evil"
+
+
 def test_no_title_override_field_remains_on_a_tracker() -> None:
     """The 57 override slots are gone, and cannot be smuggled back.
 

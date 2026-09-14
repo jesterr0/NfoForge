@@ -77,8 +77,14 @@ def normalise_title(
     normalisation: Normalisation,
     *,
     global_colon: ColonReplace,
+    composed: bool = False,
 ) -> str:
-    """Apply a tracker's always-on rules to a composed title.
+    """Apply a tracker's always-on rules to a rendered title.
+
+    `composed` says the title came from the entry's own layout rather than
+    from the user's global template or the release name. It defaults to
+    False, which is what the two paths that may genuinely arrive
+    dot-separated need.
 
     Four stages, in this order:
 
@@ -91,6 +97,15 @@ def normalise_title(
     2. **Separator**, so every later stage sees the form the tracker will
        actually receive -- and, for a dotted entry, so the spaces stage 1
        introduced become periods like any other.
+
+       A composed title skips the dot stripper entirely, because it was
+       never dot separated: `compose_token_string` joins rendered token
+       values with spaces, so every period in the result belongs to a value
+       -- a channel layout, a codec, a group tag, or the film's own name --
+       and there are no separators in it to strip. Stripping them anyway is
+       what sent "Tucker and Dale vs. Evil" to LST as "vs Evil". A shape
+       added to `strip_title_dots` could not have fixed that without
+       guessing, since nothing in a dotted string distinguishes the two.
     3. **Vocabulary**, plain rewrites then conditional ones. Both spellings
        of a spaced key ("H 265") need the separator to have run.
     4. **Allowlist**, last, so a rewrite cannot reintroduce a character the
@@ -103,8 +118,11 @@ def normalise_title(
     result = TokenReplacer._colon_replace(colon, title)
 
     if normalisation.separator is Separator.DOTTED:
+        # Unconditional: `dot_separate_title` is the right transform for a
+        # spaced input and is idempotent, so a composing entry that ever
+        # wants the dotted form still gets it. None is both today.
         result = dot_separate_title(result)
-    else:
+    elif not composed:
         result = strip_title_dots(result)
 
     for match, replacement in normalisation.vocabulary.items():
@@ -211,8 +229,9 @@ def render_tracker_title(
     if not entry.has_release_name_field:
         return None
 
-    if entry.composition is not None:
-        token_string = compose_token_string(entry.composition, release, custom_strings)
+    composition = entry.composition
+    if composition is not None:
+        token_string = compose_token_string(composition, release, custom_strings)
     else:
         token_string = global_template
 
@@ -220,8 +239,14 @@ def render_tracker_title(
     if not rendered:
         return None
 
+    # The same answer that chose the layout chooses the separator handling:
+    # a title this entry composed carries no dot separators to strip, and
+    # one rendered from the user's template may.
     normalised = normalise_title(
-        rendered, entry.normalisation, global_colon=global_colon
+        rendered,
+        entry.normalisation,
+        global_colon=global_colon,
+        composed=composition is not None,
     )
     return normalised or None
 

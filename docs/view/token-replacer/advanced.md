@@ -94,6 +94,7 @@ class MediaSearchPayload:
     title: str | None = None
     year: int | None = None
     original_title: str | None = None
+    title_override: str | None = None
     genres: list[TMDBGenreIDsMovies | TMDBGenreIDsSeries] = field(default_factory=list)
     plot: str | None = None
     poster_url: str | None = None
@@ -114,6 +115,7 @@ class MediaSearchPayload:
         self.title = None
         self.year = None
         self.original_title = None
+        self.title_override = None
         self.genres.clear()
         self.plot = None
         self.poster_url = None

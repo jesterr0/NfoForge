@@ -922,3 +922,65 @@ def test_only_shareisland_carries_a_language_component() -> None:
     }
 
     assert carrying == {TrackerSelection.SHARE_ISLAND}
+
+
+# ------------------------------------------------- a composed title's periods
+
+
+@pytest.mark.parametrize("tracker", COMPOSING)
+def test_a_composed_title_keeps_the_periods_in_the_films_own_name(
+    tracker: TrackerSelection,
+) -> None:
+    """Every composing entry leads with `{title_exact}`, TMDB's title verbatim.
+
+    A film whose name carries a period -- "Tucker and Dale vs. Evil",
+    "Monsters, Inc.", "E.T. the Extra-Terrestrial" -- reached all eight with
+    it flattened to a space, because the separator stage ran a dot stripper
+    over a string that had never been dot separated.
+    """
+    entry = TITLE_RULES[tracker].normalisation
+    title = "Tucker and Dale vs. Evil 2010 1080p BluRay DD 5.1 x264-GRP"
+
+    result = normalise_title(
+        title, entry, global_colon=ColonReplace.KEEP, composed=True
+    )
+
+    assert "vs. Evil" in result, result
+
+
+def test_the_flag_is_what_keeps_them_rather_than_a_change_to_the_stripper() -> None:
+    """`strip_title_dots` is untouched, and has to stay that way.
+
+    It converts a dot separated release name, where nothing in the string
+    distinguishes a title's period from a separator -- so a shape added
+    there could only have guessed. Knowing the title was composed is the
+    whole fix, and the same string normalised the other way still loses the
+    period, which is right for the user's global template and for the
+    release-name fallback.
+    """
+    entry = TITLE_RULES[TrackerSelection.LST].normalisation
+    title = "Tucker and Dale vs. Evil 2010 1080p BluRay DD 5.1 x264-GRP"
+
+    assert "vs Evil" in normalise_title(title, entry, global_colon=ColonReplace.KEEP)
+
+
+@pytest.mark.parametrize("tracker", COMPOSING)
+def test_a_composed_title_still_keeps_a_layout_and_a_codec_period(
+    tracker: TrackerSelection,
+) -> None:
+    """Skipping the stripper skips its two protections along with it.
+
+    A channel layout and a video codec used to survive by being sentinelled
+    before the periods were replaced; on this path they survive by never
+    being touched. Same outcome, different reason, so it is pinned here --
+    everything asserting it before ran the stripped path.
+    """
+    entry = TITLE_RULES[tracker].normalisation
+    title = "Movie Name 2026 2160p WEB-DL TrueHD 7.1.4 Atmos H.265-GRP"
+
+    result = normalise_title(
+        title, entry, global_colon=ColonReplace.KEEP, composed=True
+    )
+
+    assert "7.1.4" in result, result
+    assert "H.265-GRP" in result, result

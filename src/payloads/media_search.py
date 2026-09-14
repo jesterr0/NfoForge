@@ -22,6 +22,11 @@ class MediaSearchPayload:
     title: str | None = None
     year: int | None = None
     original_title: str | None = None
+    # A title the user picked by hand on the search page, out of TMDB's
+    # `alternative_titles`. It outranks whatever TMDB calls the record, so it
+    # has to survive `populate_from_tmdb` rebuilding `title` from `tmdb_data`.
+    # UI-owned: a plugin that wants to change the title sets `title` itself.
+    title_override: str | None = None
     genres: list[TMDBGenreIDsMovies | TMDBGenreIDsSeries] = field(default_factory=list)
     plot: str | None = None
     poster_url: str | None = None
@@ -30,13 +35,22 @@ class MediaSearchPayload:
     plugin_data: dict[str, Any] = field(default_factory=dict)
 
     def populate_from_tmdb(self) -> None:
-        """Populate canonical metadata before an optional plugin transformation."""
+        """Populate canonical metadata before an optional plugin transformation.
+
+        `title_override` leads the title chain because this method rebuilds
+        `title` out of `tmdb_data` every time it runs. Without it in front, the
+        raw API string wins and a title the user chose by hand on the search
+        page is silently discarded on the way to the filename and the NFO.
+        """
 
         tmdb_data = self.tmdb_data or {}
 
         self.title = self._normalized_title(
             self._first_string(
-                tmdb_data.get("title"), tmdb_data.get("name"), self.title
+                self.title_override,
+                tmdb_data.get("title"),
+                tmdb_data.get("name"),
+                self.title,
             )
         )
         self.original_title = self._normalized_title(
@@ -75,6 +89,7 @@ class MediaSearchPayload:
             "mal_id",
             "title",
             "original_title",
+            "title_override",
             "plot",
             "poster_url",
         )
@@ -219,6 +234,7 @@ class MediaSearchPayload:
         self.title = None
         self.year = None
         self.original_title = None
+        self.title_override = None
         self.genres.clear()
         self.plot = None
         self.poster_url = None

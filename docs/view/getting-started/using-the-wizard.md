@@ -23,6 +23,8 @@ Once you've opened the path, you can simply select **Next**.
 
 The page will immediately parse the file (or attempt to, if the name is somewhat structured) and return some results. If you find no results, refine the search below and try again. Once you have found the appropriate title, simply select it in the top window and press **Select Title** to continue to the next page.
 
+Under the selected title is a **title picker**. It opens on the title TMDB goes by, and lists every alternative title TMDB publishes for that record. Each row is the title by itself; the region TMDB lists it for and TMDB's own note on it (`retronym`, `working title`, and so on) are shown underneath the picker rather than inside the row, so there is no doubt about where the title ends. Choosing one is what `{title}` renders as from then on: the tracker release name, the renamed file, and the NFO. The original-language title is unaffected. The list is only fetched when you open the picker, so it costs nothing on the results you click past.
+
 NfoForge uses TMDB as its primary metadata source, then enriches series and anime results with TVDB and AniList where applicable. If an optional metadata transformer plugin is selected in **Settings -> Plugins**, its returned payload updates the corresponding TMDB values; a transformer failure only produces a warning and processing continues with TMDB.
 
 NfoForge ships with a bundled TMDB API key, so search works out of the box with no setup required. If you'd rather use your own account, add a personal key at **Settings -> General -> TMDB API Key**; leave it blank to keep using the bundled key. You can generate a free key from your [TMDB account settings](https://www.themoviedb.org/settings/api).
