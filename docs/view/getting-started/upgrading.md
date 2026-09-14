@@ -32,6 +32,27 @@ On the **first launch of 1.2.0 or later**. Every earlier version kept this data 
 
 It runs **once per machine**. NfoForge records that your data folder is up to date and never asks again, however many times you upgrade afterward.
 
+## How to upgrade
+
+Do this in the order below, and in particular **do not rename or move your old folder before the upgrade has run**.
+
+<!--prettier-ignore-start -->
+
+1. Extract the new release to a **new, temporary folder** beside your existing one. Leave the old folder exactly where it is, under the name it already has.
+
+2. Run NfoForge from the temporary folder. Choose **Choose a folder...** and pick your old NfoForge folder.
+
+3. Read the summary, then use NfoForge for a while to satisfy yourself that everything came across.
+
+4. Only now, delete the old folder and move the new one into its place -- or leave it where it is. Either is fine: nothing points inside the application folder any more.
+
+<!--prettier-ignore-end -->
+
+!!! warning "Why the order matters"
+    Settings that name a tool record its **full path**, including the name of the folder it was in. NfoForge repoints those by comparing them against the folder you pick, so if you rename the old folder first, a recorded path no longer matches it and cannot be recognised as belonging to it.
+
+    Such a setting is reported rather than silently left -- see **Settings naming something that is not there** below -- but you would then have to fix it by hand, and the whole point of the order above is that you do not have to.
+
 ## What you will be asked
 
 NfoForge looks in the folder the application is running from for a previous installation, then shows one window:
@@ -62,6 +83,7 @@ A summary appears once, listing everything that happened. It can include:
 - **Files of your own** that were sitting in the data folder and are not part of the layout. They are left where they are.
 - **Run output you can delete**, with its size, in a working directory you chose. Nothing is removed for you.
 - **Settings pointing into the previous installation** — usually a tool or a working directory you set yourself. These keep working until you delete that folder, and then stop. NfoForge names them rather than guessing where you would like them to go.
+- **Settings naming something that is not there** — a tool recorded at a path that no longer exists, most often because the folder it was in has been renamed or moved. Set it again under **Settings -> Dependencies**. A tool you keep elsewhere on purpose is not reported, as long as it is still where the setting says.
 - **The profile that was in use**, if it did not arrive. NfoForge starts on defaults under that name until you pick another profile or bring the missing one across.
 
 The window is shown once and nothing on it is checked again, so a copy is saved in `logs/migration.log` inside your data folder. Read it whenever you like; it is not removed when old logs are tidied up, and importing again from Settings adds to it rather than replacing it.
