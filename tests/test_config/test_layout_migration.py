@@ -1020,3 +1020,65 @@ def test_an_unreadable_program_configuration_reports_nothing(tmp_path: Path) -> 
     paths.program.write_text('current_config = "unterminated', encoding="utf-8")
 
     assert missing_active_profile(paths) == ""
+
+
+def test_a_dependency_naming_something_that_is_not_there_is_reported(
+    tmp_path: Path,
+) -> None:
+    """The one case the folder-relative checks cannot see.
+
+    Both existing checks ask where a path sits relative to the installation
+    being imported from. A setting naming a *different* installation -- one
+    renamed before upgrading, or moved, or simply never picked -- is inside
+    neither, so it is repointed by nothing and reported by nothing, and survives
+    the migration still naming a file that is not there.
+
+    Renaming the old folder before extracting the new release is enough to reach
+    it, which is a reasonable thing for someone to do unprompted.
+    """
+    state_root = tmp_path / "user_data"
+    state_root.mkdir()
+    legacy = _frozen_install(tmp_path)
+    legacy.root.mkdir(parents=True)
+    stale = tmp_path / "renamed_install" / "bundle" / "runtime" / "apps" / "tool.exe"
+
+    plan = plan_migration(
+        state_root,
+        legacy=legacy,
+        configured_paths=[("main", "dependency example_tool", stale)],
+    )
+
+    assert (
+        Finding(
+            kind=FindingKind.MISSING_CONFIGURED_PATH,
+            path=stale,
+            detail="main: dependency example_tool",
+        )
+        in plan.findings
+    )
+
+
+def test_a_dependency_that_resolves_outside_the_installation_stays_quiet(
+    tmp_path: Path,
+) -> None:
+    """A tool kept elsewhere on purpose is not a problem to report.
+
+    The check is whether the path names something, not where it names it.
+    Reporting every path outside the installation would bury the one that is
+    actually broken under the ones that are fine.
+    """
+    state_root = tmp_path / "user_data"
+    state_root.mkdir()
+    legacy = _frozen_install(tmp_path)
+    legacy.root.mkdir(parents=True)
+    elsewhere = tmp_path / "tools" / "tool.exe"
+    elsewhere.parent.mkdir(parents=True)
+    elsewhere.write_bytes(b"t")
+
+    plan = plan_migration(
+        state_root,
+        legacy=legacy,
+        configured_paths=[("main", "dependency example_tool", elsewhere)],
+    )
+
+    assert plan.findings == ()

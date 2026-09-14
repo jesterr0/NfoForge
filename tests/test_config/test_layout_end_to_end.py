@@ -34,6 +34,13 @@ def _install(tmp_path: Path) -> LegacyInstall:
     tool.parent.mkdir(parents=True)
     tool.write_bytes(b"tool")
 
+    # A tool the user keeps outside the installation, and which is really there.
+    # Deliberately present: a path that resolves is not a problem to report, and
+    # this is what keeps that distinction under test.
+    elsewhere = tmp_path / "their tools" / "ffmpeg.exe"
+    elsewhere.parent.mkdir(parents=True)
+    elsewhere.write_bytes(b"ffmpeg")
+
     profiles = state / "config" / "user"
     profiles.mkdir(parents=True)
     # Names the data directory, which is the pre-migration default and becomes
@@ -45,7 +52,7 @@ def _install(tmp_path: Path) -> LegacyInstall:
         "\n"
         "[dependencies]\n"
         f'frame_forge = "{tool.as_posix()}"\n'
-        'ffmpeg = "D:/elsewhere/ffmpeg.exe"\n'
+        f'ffmpeg = "{elsewhere.as_posix()}"\n'
         "enable_mkbrr = true\n",
         encoding="utf-8",
     )
@@ -214,7 +221,7 @@ def test_the_user_document_keeps_its_comments_and_untouched_settings(
     body = (paths.user_configs / "alpha.toml").read_text(encoding="utf-8")
     assert "# a comment the user wrote" in body
     document = tomllib.loads(body)
-    assert document["dependencies"]["ffmpeg"] == "D:/elsewhere/ffmpeg.exe"
+    assert document["dependencies"]["ffmpeg"].endswith("their tools/ffmpeg.exe")
     assert document["dependencies"]["enable_mkbrr"] is True
 
 
@@ -309,3 +316,38 @@ def test_a_summary_that_cannot_be_written_does_not_fail_the_migration(
     assert run.outcome.rewritten, "the migration itself still completed"
     assert (paths.user_configs / "alpha.toml").is_file()
     assert not (paths.logs / "migration.log").exists()
+
+
+def test_a_tool_left_in_a_renamed_installation_is_reported(tmp_path: Path) -> None:
+    """The shape of upgrading by renaming the old folder first.
+
+    Rename the installation, extract the new release into its old name, and a
+    dependency recorded before the rename names a path inside neither the folder
+    being imported from nor anything that exists. Both folder-relative checks
+    miss it, so without this the setting survives the migration still naming a
+    tool that is not there, and nothing says so.
+    """
+    legacy = _install(tmp_path)
+    (legacy.state / "config" / "user" / "gamma.toml").write_text(
+        "[general]\n"
+        f'working_dir = "{(tmp_path / "user_data").as_posix()}"\n'
+        "[dependencies]\n"
+        f'frame_forge = "{(tmp_path / "renamed" / "apps" / "FrameForge.exe").as_posix()}"\n',
+        encoding="utf-8",
+    )
+    paths = _paths(tmp_path)
+
+    run = import_legacy(paths, legacy)
+
+    assert [
+        finding.detail
+        for finding in run.plan.findings
+        if finding.kind is FindingKind.MISSING_CONFIGURED_PATH
+    ] == ["gamma: dependency frame_forge"]
+
+    document = tomllib.loads(
+        (paths.user_configs / "gamma.toml").read_text(encoding="utf-8")
+    )
+    assert "renamed" in document["dependencies"]["frame_forge"], (
+        "reported, not guessed at"
+    )

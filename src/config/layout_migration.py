@@ -279,6 +279,15 @@ class FindingKind(Enum):
     RUN_FOLDER_IN_WORKING_DIR = "run-folder-in-working-dir"
     """Reclaimable run output in a directory the user chose. Never swept."""
 
+    MISSING_CONFIGURED_PATH = "missing-configured-path"
+    """A setting names something that is not on disk, wherever it points.
+
+    The one case the other two cannot see. Both of those ask where a path sits
+    relative to the installation being imported from, so a setting naming a
+    different installation -- renamed, moved, or never picked -- is inside
+    neither and would otherwise be repointed by nothing and reported by nothing.
+    """
+
 
 @dataclass(frozen=True, slots=True)
 class Finding:
@@ -482,6 +491,18 @@ def plan_migration(
                 )
                 if repoint not in actions:
                     actions.append(repoint)
+            elif not configured.exists():
+                # Checked before the legacy-install case, because "emptying that
+                # folder will break this" is the wrong thing to say about a
+                # setting that is already broken. Nothing here is guessed at: a
+                # replacement would be this code inventing one.
+                findings.append(
+                    Finding(
+                        kind=FindingKind.MISSING_CONFIGURED_PATH,
+                        path=configured,
+                        detail=f"{profile}: {setting}",
+                    )
+                )
             elif _is_inside(configured, legacy.root):
                 # A finding is the opposite case: it is about one profile's
                 # setting, which nothing is going to change, so the profile is
@@ -523,6 +544,7 @@ _FINDING_HEADINGS = {
     FindingKind.PATH_INSIDE_LEGACY_INSTALL: (
         "Settings pointing into the previous installation"
     ),
+    FindingKind.MISSING_CONFIGURED_PATH: "Settings naming something that is not there",
 }
 """A heading per kind, because the three ask different things.
 
