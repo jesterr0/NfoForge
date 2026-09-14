@@ -358,7 +358,10 @@ class NfoForge:
         """Show what happened, then continue the launch that was interrupted."""
         if run is not None:
             summary = MigrationSummaryDialog(
-                run.plan, run.outcome, parent=self.splash_screen
+                run.plan,
+                run.outcome,
+                missing_profile=run.missing_profile,
+                parent=self.splash_screen,
             )
             summary.exec()
             summary.deleteLater()

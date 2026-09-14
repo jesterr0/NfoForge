@@ -16,6 +16,7 @@ from src.config.layout_migration import (
     FindingKind,
     LegacyInstall,
     PlannedAction,
+    missing_active_profile,
     plan_migration,
     read_legacy_settings,
     recognise_legacy_install,
@@ -793,3 +794,61 @@ def test_an_unreadable_profile_does_not_stop_the_others(tmp_path: Path) -> None:
     settings = read_legacy_settings(legacy)
 
     assert settings.working_dirs == (Path("C:/fine"),)
+
+
+def _program_config(paths: AppPaths, active: str) -> None:
+    paths.program.parent.mkdir(parents=True, exist_ok=True)
+    paths.program.write_text(f'current_config = "{active}"\n', encoding="utf-8")
+
+
+def _profile(paths: AppPaths, name: str) -> None:
+    paths.user_configs.mkdir(parents=True, exist_ok=True)
+    (paths.user_configs / f"{name}.toml").write_text("", encoding="utf-8")
+
+
+def test_an_active_profile_that_did_not_arrive_is_named(tmp_path: Path) -> None:
+    """Otherwise the application starts on a profile it invented, saying nothing.
+
+    A program configuration names the profile that was in use. If that profile is
+    not among the ones imported, NfoForge generates a fresh one under the same
+    name and starts with default settings -- plugins off, trackers unconfigured.
+    The migration reports complete success throughout, so the user sees settings
+    that look wrong with nothing anywhere explaining why.
+
+    Reachable without anyone doing something unusual: import into a data folder
+    that already holds profiles, and the incoming ones divert to the conflicts
+    folder while the program configuration naming them lands.
+    """
+    paths = AppPaths(state_root=tmp_path / "state", asset_root=tmp_path / "assets")
+    _program_config(paths, "the one they were using")
+    _profile(paths, "a different one")
+
+    assert missing_active_profile(paths) == "the one they were using"
+
+
+def test_nothing_is_reported_when_the_active_profile_is_there(tmp_path: Path) -> None:
+    paths = AppPaths(state_root=tmp_path / "state", asset_root=tmp_path / "assets")
+    _program_config(paths, "theirs")
+    _profile(paths, "theirs")
+
+    assert missing_active_profile(paths) == ""
+
+
+def test_nothing_is_reported_without_a_program_configuration(tmp_path: Path) -> None:
+    """A fresh start has no program configuration and no profile to miss."""
+    paths = AppPaths(state_root=tmp_path / "state", asset_root=tmp_path / "assets")
+
+    assert missing_active_profile(paths) == ""
+
+
+def test_an_unreadable_program_configuration_reports_nothing(tmp_path: Path) -> None:
+    """It is already its own error, handled elsewhere with its own recovery.
+
+    Reporting a second, vaguer complaint about it here would send the user
+    looking for a missing profile when the actual problem is the file naming it.
+    """
+    paths = AppPaths(state_root=tmp_path / "state", asset_root=tmp_path / "assets")
+    paths.program.parent.mkdir(parents=True, exist_ok=True)
+    paths.program.write_text('current_config = "unterminated', encoding="utf-8")
+
+    assert missing_active_profile(paths) == ""

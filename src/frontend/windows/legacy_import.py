@@ -124,7 +124,10 @@ class LegacyImportRunner(QObject):
 
     def _on_completed(self, run: MigrationRun) -> None:
         summary = MigrationSummaryDialog(
-            run.plan, run.outcome, parent=self._parent_widget
+            run.plan,
+            run.outcome,
+            missing_profile=run.missing_profile,
+            parent=self._parent_widget,
         )
         summary.exec()
         summary.deleteLater()

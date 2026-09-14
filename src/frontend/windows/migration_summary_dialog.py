@@ -27,11 +27,13 @@ class MigrationSummaryDialog(QDialog):
         self,
         plan: MigrationPlan,
         outcome: MigrationOutcome,
+        missing_profile: str = "",
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self._plan = plan
         self._outcome = outcome
+        self._missing_profile = missing_profile
 
         self.setWindowTitle("Migration complete")
         self.setMinimumWidth(620)
@@ -102,6 +104,15 @@ class MigrationSummaryDialog(QDialog):
                 lines.append(f"  {diversion.planned}")
                 lines.append(f"    kept instead at {diversion.actual}")
             sections.append("\n".join(lines))
+
+        if self._missing_profile:
+            sections.append(
+                f'The profile "{self._missing_profile}" was in use before, and is '
+                "not among the ones now here. NfoForge will start with default "
+                "settings under that name until you pick another profile, or "
+                "bring that one across. Nothing has been lost from wherever it "
+                "was; it simply did not arrive here."
+            )
 
         sections.append(self._legacy_note())
         sections.append(

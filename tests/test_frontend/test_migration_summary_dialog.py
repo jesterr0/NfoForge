@@ -200,3 +200,30 @@ def test_opening_the_data_folder_opens_where_the_data_is(
     dialog.open_button.click()
 
     assert opened == [state_root]
+
+
+def test_a_profile_that_did_not_arrive_is_called_out(plan: MigrationPlan) -> None:
+    """The alternative is settings that look wrong with nothing explaining why.
+
+    NfoForge generates a fresh profile under the missing name and starts on
+    defaults -- plugins off, trackers unconfigured -- while the summary reports
+    complete success. Naming it here is the difference between a puzzle and a
+    sentence.
+    """
+    widget = MigrationSummaryDialog(
+        plan, MigrationOutcome(), missing_profile="the one they were using", parent=None
+    )
+    try:
+        body = widget.summary_text()
+    finally:
+        widget.deleteLater()
+
+    assert "the one they were using" in body
+    assert "default settings" in body.lower()
+
+
+def test_nothing_is_said_when_the_active_profile_arrived(
+    dialog: MigrationSummaryDialog,
+) -> None:
+    """The ordinary case, where mentioning profiles at all would only worry."""
+    assert "default settings" not in dialog.summary_text().lower()

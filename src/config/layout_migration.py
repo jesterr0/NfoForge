@@ -29,6 +29,7 @@ from src.backend.utils.working_dir import (
     WORKSPACE_DIR_NAME,
     normalise_path,
 )
+from src.config.paths import AppPaths
 from src.plugins.loader import LOCAL_MANIFEST
 
 PLUGINS_DIR_NAME = "plugins"
@@ -153,6 +154,39 @@ def _install_at(candidate: Path) -> LegacyInstall | None:
 def _holds_configuration(state: Path) -> bool:
     config = state / "config"
     return (config / "user").is_dir() or (config / "program" / "conf.toml").is_file()
+
+
+def missing_active_profile(paths: AppPaths) -> str:
+    """The profile the program configuration names, if it is not there.
+
+    A program configuration names the profile that was in use. If that profile is
+    not among the ones present, NfoForge generates a fresh one under the same name
+    and starts with default settings -- plugins off, trackers unconfigured. The
+    migration reports complete success throughout, so the user sees settings that
+    look wrong with nothing anywhere explaining why.
+
+    Reachable without anyone doing anything unusual: import into a data folder
+    that already holds profiles, and the incoming ones divert to the conflicts
+    folder while the program configuration naming them lands beside them.
+
+    An unreadable program configuration reports nothing. That is already its own
+    error with its own recovery, and a second vaguer complaint here would send the
+    user looking for a missing profile when the problem is the file naming it.
+    """
+    if not paths.program.is_file():
+        return ""
+    try:
+        document = tomllib.loads(paths.program.read_text(encoding="utf-8"))
+    except (OSError, tomllib.TOMLDecodeError, UnicodeDecodeError):
+        return ""
+
+    active = document.get("current_config")
+    if not isinstance(active, str) or not active.strip():
+        return ""
+    active = active.strip()
+    if (paths.user_configs / f"{active}.toml").is_file():
+        return ""
+    return active
 
 
 @dataclass(frozen=True, slots=True)

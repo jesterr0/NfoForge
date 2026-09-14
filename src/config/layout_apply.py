@@ -33,6 +33,7 @@ from src.config.layout_migration import (
     LegacySettings,
     MigrationPlan,
     PlannedAction,
+    missing_active_profile,
     plan_migration,
     read_legacy_settings,
     recognise_legacy_install,
@@ -83,6 +84,13 @@ class MigrationRun:
 
     plan: MigrationPlan
     outcome: MigrationOutcome
+    missing_profile: str = ""
+    """The profile the program configuration names, if it did not arrive.
+
+    Checked after the copies rather than planned, because it is a property of
+    what ended up in the folder: an import whose profiles diverted leaves a
+    program configuration naming one that is sitting somewhere else.
+    """
 
 
 @dataclass(frozen=True, slots=True)
@@ -128,7 +136,9 @@ def startup_migration(
         write_layout_version(
             paths.state_root, CURRENT_LAYOUT_VERSION, record={"import_declined": True}
         )
-    return MigrationRun(plan=plan, outcome=outcome)
+    return MigrationRun(
+        plan=plan, outcome=outcome, missing_profile=missing_active_profile(paths)
+    )
 
 
 def import_legacy(
@@ -151,7 +161,9 @@ def import_legacy(
     plan = _plan_for(paths, legacy)
     outcome = apply_plan(plan, progress=progress)
     record_import(paths.state_root, _record(plan, outcome))
-    return MigrationRun(plan=plan, outcome=outcome)
+    return MigrationRun(
+        plan=plan, outcome=outcome, missing_profile=missing_active_profile(paths)
+    )
 
 
 def _plan_for(paths: AppPaths, legacy: LegacyInstall | None) -> MigrationPlan:

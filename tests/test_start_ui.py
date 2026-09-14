@@ -627,7 +627,7 @@ def test_the_summary_is_shown_then_the_launch_continues(
             return None
 
     monkeypatch.setattr(start_ui, "MigrationSummaryDialog", _StubSummary)
-    run = SimpleNamespace(plan=object(), outcome=object())
+    run = SimpleNamespace(plan=object(), outcome=object(), missing_profile="")
 
     app._on_migration_finished(run)  # type: ignore[arg-type]
 
