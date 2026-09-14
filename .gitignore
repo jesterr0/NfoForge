@@ -28,6 +28,8 @@ plugins/**/__pycache__/*
 !src/plugins/
 *.spec
 docs/_build
+# mkdocs output, built by `mkdocs build` and by the docs workflow
+site/
 Makefile
 make.bat
 node_modules
