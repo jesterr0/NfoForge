@@ -7,6 +7,8 @@ exists, also catches an asset added to the tree without anyone deciding to ship
 it.
 """
 
+from pathlib import Path
+
 from tests.repo_paths import ASSET_DIR
 
 EXPECTED_FONTS = {
@@ -60,8 +62,27 @@ def test_no_user_state_is_shipped_with_the_assets() -> None:
     machine happened to hold if that pass ever missed something. The asset tree
     is now only ever populated deliberately, and this is the assertion that
     keeps it that way.
-    """
-    forbidden = {"user", "program", "plugins", "cookies", "logs", "templates", "apps"}
-    present = {path.name for path in ASSET_DIR.rglob("*") if path.is_dir()}
 
-    assert not (forbidden & present)
+    Checked as locations rather than as names appearing anywhere. A name alone
+    cannot tell plugin credentials from a documentation page about plugins, and
+    the build generates documentation into this tree -- so the name-matching
+    version failed only after a local build, on `docs/view/plugins`.
+    """
+    forbidden = (
+        Path("config") / "user",
+        Path("config") / "program",
+        Path("config") / "plugins",
+        Path("cookies"),
+        Path("logs"),
+        Path("templates"),
+        Path("apps"),
+        Path("plugins"),
+    )
+    present = [
+        str(relative) for relative in forbidden if (ASSET_DIR / relative).exists()
+    ]
+
+    assert not present, (
+        f"{present} under the asset root holds files the user owns, which a "
+        "release must not ship"
+    )
