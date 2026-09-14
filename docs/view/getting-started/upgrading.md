@@ -71,7 +71,7 @@ Your profiles, program preferences, plugin settings, tracker cookies, NFO templa
 - A **working directory** that was NfoForge's own data folder becomes the `workspace` folder inside it, so your saved jobs are still found.
 - A **dependency** stored in the old `apps` folder is repointed at its new home in `tools`.
 
-Anything already inside your data folder from an earlier version — saved jobs, run output, the FrameForge index cache — is moved into `workspace` at the same time. That happens whether or not you import anything.
+Anything already inside your data folder from an earlier version (saved jobs, run output, the FrameForge index cache) is moved into `workspace` at the same time. That happens whether or not you import anything.
 
 !!! info "Your old folder is never changed"
     Everything is copied, never moved, and nothing in the previous installation is deleted or modified. If the result is not what you wanted, the old folder is still exactly as it was.
@@ -107,4 +107,4 @@ Nothing was read from your old installation and it is untouched. You can import 
 
 ## Running from source
 
-A source checkout uses a separate folder — `nfoforge-dev` instead of `nfoforge` in the same location — so running from source and running a release never share profiles, credentials or saved jobs.
+A source checkout uses a separate folder, `nfoforge-dev` instead of `nfoforge` in the same location, so running from source and running a release never share profiles, credentials or saved jobs.
