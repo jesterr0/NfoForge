@@ -419,13 +419,17 @@ def test_a_working_directory_inside_the_legacy_install_is_reported(
     working_dir = legacy.root / "work"
     working_dir.mkdir(parents=True)
 
-    plan = plan_migration(state_root, legacy=legacy, working_dirs=[working_dir])
+    plan = plan_migration(
+        state_root,
+        legacy=legacy,
+        working_dirs=[("portable: working directory", working_dir)],
+    )
 
     assert (
         Finding(
             kind=FindingKind.PATH_INSIDE_LEGACY_INSTALL,
             path=working_dir,
-            detail="working directory",
+            detail="portable: working directory",
         )
         in plan.findings
     )
@@ -448,7 +452,11 @@ def test_a_working_directory_in_the_legacy_install_is_not_reported_twice(
     run_folder.mkdir(parents=True)
     (run_folder / "screenshot.png").write_bytes(b"y" * 4)
 
-    plan = plan_migration(state_root, legacy=legacy, working_dirs=[working_dir])
+    plan = plan_migration(
+        state_root,
+        legacy=legacy,
+        working_dirs=[("portable: working directory", working_dir)],
+    )
 
     assert [finding.kind for finding in plan.findings] == [
         FindingKind.PATH_INSIDE_LEGACY_INSTALL
@@ -472,7 +480,9 @@ def test_run_folders_in_a_configured_working_directory_are_reported(
     run_folder.mkdir(parents=True)
     (run_folder / "screenshot.png").write_bytes(b"y" * 4)
 
-    plan = plan_migration(state_root, working_dirs=[working_dir])
+    plan = plan_migration(
+        state_root, working_dirs=[("main: working directory", working_dir)]
+    )
 
     assert plan.actions == ()
     assert (
@@ -495,7 +505,9 @@ def test_a_working_directory_that_is_the_data_directory_is_not_reported_twice(
     run_folder = state_root / "Example.Release.Name.2024_09.11.2026_10.09.39"
     run_folder.mkdir(parents=True)
 
-    plan = plan_migration(state_root, working_dirs=[state_root])
+    plan = plan_migration(
+        state_root, working_dirs=[("main: working directory", state_root)]
+    )
 
     moved = [action.source for action in plan.actions if action.kind is ActionKind.MOVE]
     assert moved == [run_folder]
@@ -581,7 +593,7 @@ def test_findings_are_grouped_by_what_they_ask_of_the_user(tmp_path: Path) -> No
         plan_migration(
             state_root,
             legacy=legacy,
-            working_dirs=[working_dir],
+            working_dirs=[("main: working directory", working_dir)],
             configured_paths=[("example setting", script)],
         )
     )
@@ -725,7 +737,9 @@ def test_a_working_directory_that_is_the_data_directory_is_repointed(
     state_root = tmp_path / "user_data"
     state_root.mkdir()
 
-    plan = plan_migration(state_root, working_dirs=[state_root])
+    plan = plan_migration(
+        state_root, working_dirs=[("main: working directory", state_root)]
+    )
 
     assert (
         PlannedAction(
@@ -753,7 +767,9 @@ def test_a_working_directory_elsewhere_is_left_pointing_where_it_is(
     elsewhere = tmp_path / "media work"
     elsewhere.mkdir()
 
-    plan = plan_migration(state_root, working_dirs=[elsewhere])
+    plan = plan_migration(
+        state_root, working_dirs=[("main: working directory", elsewhere)]
+    )
 
     assert [a for a in plan.actions if a.kind is ActionKind.REWRITE] == []
 
@@ -765,7 +781,13 @@ def test_profiles_sharing_a_working_directory_yield_one_rewrite(
     state_root = tmp_path / "user_data"
     state_root.mkdir()
 
-    plan = plan_migration(state_root, working_dirs=[state_root, state_root])
+    plan = plan_migration(
+        state_root,
+        working_dirs=[
+            ("alpha: working directory", state_root),
+            ("beta: working directory", state_root),
+        ],
+    )
 
     assert len([a for a in plan.actions if a.kind is ActionKind.REWRITE]) == 1
 
@@ -843,7 +865,7 @@ def test_configured_paths_are_read_from_a_previous_installation(
 
     settings = read_legacy_settings(legacy)
 
-    assert settings.working_dirs == (Path("C:/user data"),)
+    assert settings.working_dirs == (("main: working directory", Path("C:/user data")),)
     assert settings.configured_paths == (
         ("main: dependency ffmpeg", Path("C:/tools/ffmpeg.exe")),
     )
@@ -866,7 +888,9 @@ def test_settings_are_read_from_every_profile(tmp_path: Path) -> None:
 
     settings = read_legacy_settings(legacy)
 
-    assert settings.working_dirs == (Path("C:/shared"),)
+    assert settings.working_dirs == (
+        ("alpha, beta: working directory", Path("C:/shared")),
+    )
     assert sorted(label for label, _ in settings.configured_paths) == [
         "alpha: dependency mkbrr",
         "beta: dependency mkbrr",
@@ -885,7 +909,7 @@ def test_an_unreadable_profile_does_not_stop_the_others(tmp_path: Path) -> None:
 
     settings = read_legacy_settings(legacy)
 
-    assert settings.working_dirs == (Path("C:/fine"),)
+    assert settings.working_dirs == (("fine: working directory", Path("C:/fine")),)
 
 
 def _program_config(paths: AppPaths, active: str) -> None:

@@ -193,7 +193,15 @@ def missing_active_profile(paths: AppPaths) -> str:
 class LegacySettings:
     """Path-valued settings read from a previous installation's profiles."""
 
-    working_dirs: tuple[Path, ...]
+    working_dirs: tuple[tuple[str, Path], ...]
+    """Each labelled with the profiles naming it, deduplicated by path.
+
+    Labelled because a user told which setting is wrong but not which profile
+    holds it has been given the harder half of the problem. Deduplicated because
+    profiles commonly share a working directory and the plan needs the set of
+    directories, not one entry per profile.
+    """
+
     configured_paths: tuple[tuple[str, Path], ...]
 
 
@@ -211,7 +219,7 @@ def read_legacy_settings(legacy: LegacyInstall) -> LegacySettings:
 
     One damaged document does not cost the user every other profile's plan.
     """
-    working_dirs: list[Path] = []
+    working_dirs: dict[Path, list[str]] = {}
     configured: list[tuple[str, Path]] = []
 
     for document_path in sorted((legacy.state / "config" / "user").glob("*.toml")):
@@ -223,9 +231,13 @@ def read_legacy_settings(legacy: LegacyInstall) -> LegacySettings:
 
         working_dir = document.get("general", {}).get("working_dir")
         if isinstance(working_dir, str) and working_dir.strip():
-            candidate = Path(working_dir)
-            if candidate not in working_dirs:
-                working_dirs.append(candidate)
+            # Keyed on the normalised path so that two profiles naming the same
+            # directory with different casing or separators are recognised as
+            # sharing it, rather than reported as two directories that happen to
+            # look alike.
+            working_dirs.setdefault(normalise_path(Path(working_dir)), []).append(
+                profile
+            )
 
         for name, value in document.get("dependencies", {}).items():
             if isinstance(value, bool) or not isinstance(value, str):
@@ -235,7 +247,11 @@ def read_legacy_settings(legacy: LegacyInstall) -> LegacySettings:
             configured.append((f"{profile}: dependency {name}", Path(value)))
 
     return LegacySettings(
-        working_dirs=tuple(working_dirs), configured_paths=tuple(configured)
+        working_dirs=tuple(
+            (f"{', '.join(profiles)}: working directory", working_dir)
+            for working_dir, profiles in working_dirs.items()
+        ),
+        configured_paths=tuple(configured),
     )
 
 
@@ -325,7 +341,7 @@ def plan_migration(
     state_root: Path,
     legacy: LegacyInstall | None = None,
     configured_paths: Iterable[tuple[str, Path]] = (),
-    working_dirs: Iterable[Path] = (),
+    working_dirs: Iterable[tuple[str, Path]] = (),
     shipped_plugins: Path | None = None,
 ) -> MigrationPlan:
     """Everything the move to the new layout would do.
@@ -385,7 +401,7 @@ def plan_migration(
             )
 
     workspace = state_root / WORKSPACE_DIR_NAME
-    for working_dir in working_dirs:
+    for label, working_dir in working_dirs:
         if normalise_path(working_dir) == normalise_path(state_root):
             repoint = PlannedAction(
                 kind=ActionKind.REWRITE,
@@ -408,7 +424,7 @@ def plan_migration(
                 Finding(
                     kind=FindingKind.PATH_INSIDE_LEGACY_INSTALL,
                     path=working_dir,
-                    detail="working directory",
+                    detail=label,
                 )
             )
             continue
