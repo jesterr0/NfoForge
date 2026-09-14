@@ -6,6 +6,10 @@
 
 - **The title on the search page can now be any of the alternative titles TMDB publishes for a record**, not only the one TMDB itself goes by. A picker under the selected title opens on TMDB's own title and lists the alternatives beneath it -- so `Star Trek` can go up as `Star Trek: The Animated Series` without editing anything by hand afterwards. Each row holds the title and nothing else; the region it is listed for and TMDB's note on it sit under the picker, where they cannot be mistaken for part of the name. The choice is what `{title}`, `{title_clean}` and `{title_exact}` render as, which covers the tracker release name, the renamed file and the NFO; `{original_title}` still carries TMDB's original-language title. Nothing changes for a release where the default title is already right, and the list is only fetched when the picker is opened, so searching costs no extra requests. A metadata transformer plugin no longer overrides a title picked this way.
 
+### Fixed
+
+- **A film whose title carries a period keeps it** in the release name on the eight trackers that build their own: Aither, LST, ReelFliX, BeyondHD, DarkPeers, ShareIsland, UploadCX and OnlyEncodes. `Tucker and Dale vs. Evil` was going up as `Tucker and Dale vs Evil`, and `Monsters, Inc.`, `E.T. the Extra-Terrestrial` and `S.W.A.T.` lost theirs the same way. Those eight name a release from TMDB's title exactly, and the step that turns a dot-separated release name into a spaced one was being run over a title that had never been dot-separated -- so it replaced the film's own periods along with separators that were not there to find. Audio channel layouts and `H.264`/`H.265` are unaffected, as they already were. Filenames are unchanged, and so is SeedPool, which names uploads after the release itself and still writes `Tucker.and.Dale.vs.Evil.2010...`. On the trackers that render your own global title template the title still comes out however that template and your title cleaning rules say: `{title_clean}` flattens punctuation by design, where `{title_exact}` does not.
+
 ## [1.1.15] - 2026-09-12
 
 ### Changed
