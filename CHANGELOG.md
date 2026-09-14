@@ -18,6 +18,7 @@
 
 ### Fixed
 
+- **macOS builds can find the files shipped with them again.** NfoForge looked for its own bundled configuration, fonts, images and documentation in a folder beside the executable -- a path that does not exist inside a `.app`, where macOS keeps them in `Contents/Resources` and links them from `Contents/Frameworks`. Everything in the release was therefore unreachable, including the default configuration that is read while settings are loading. The location now comes from PyInstaller itself rather than being derived from the executable, which is correct on all three platforms; Windows and Linux resolve to the same folder they always did.
 - **Clean Up** in **Settings -> General** now empties only the `processing` folder rather than everything in the working directory except saved jobs. Anything else you kept in a working directory of your own -- and, when the working directory was left at its default, everything NfoForge itself stored there -- was previously fair game.
 - A saved job's screenshots are found again after the job folder has moved. The paths recorded inside a job are now resolved against the folder the job is actually in, so a job survives the upgrade rather than reading as though its images had been lost.
 - The FrameForge index cache moves into the workspace with everything else, where the code that reads it looks. Left beside it, the cache would have been kept but never read again, which costs a re-index for no benefit.
