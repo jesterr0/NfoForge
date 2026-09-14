@@ -177,6 +177,30 @@ def test_the_profile_that_was_in_use_is_reported_when_it_did_not_arrive(
     assert run.missing_profile == "gamma"
 
 
+def test_importing_over_an_existing_directory_reports_no_missing_profile(
+    tmp_path: Path,
+) -> None:
+    """A collision leaves the occupant's configuration consistent with itself.
+
+    Pins a claim that turned out to be wrong. The guard's reasoning once said
+    this was its everyday case: incoming profiles set aside while the program
+    configuration naming them lands beside them. It cannot happen, because the
+    program configuration collides too and is set aside with them, so what stays
+    behind is the pair that was already there.
+    """
+    legacy = _install(tmp_path)
+    paths = _paths(tmp_path)
+    import_legacy(paths, legacy)
+
+    second = import_legacy(paths, legacy)
+
+    assert {diversion.planned for diversion in second.outcome.diverted} >= {
+        paths.user_configs,
+        paths.program,
+    }
+    assert second.missing_profile == ""
+
+
 def test_the_user_document_keeps_its_comments_and_untouched_settings(
     tmp_path: Path,
 ) -> None:

@@ -165,9 +165,14 @@ def missing_active_profile(paths: AppPaths) -> str:
     migration reports complete success throughout, so the user sees settings that
     look wrong with nothing anywhere explaining why.
 
-    Reachable without anyone doing anything unusual: import into a data folder
-    that already holds profiles, and the incoming ones divert to the conflicts
-    folder while the program configuration naming them lands beside them.
+    Reachable whenever the installation being imported from names a profile it
+    does not hold -- one deleted or renamed without the program configuration
+    following, which nothing keeps in step.
+
+    Not, as this once claimed, by importing into a directory that already holds
+    profiles. The program configuration collides and is set aside alongside them,
+    so the occupant keeps a consistent pair of its own and there is nothing to
+    report.
 
     An unreadable program configuration reports nothing. That is already its own
     error with its own recovery, and a second vaguer complaint here would send the
