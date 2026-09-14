@@ -466,12 +466,20 @@ _ACTION_HEADINGS = {
     ActionKind.REWRITE: "Repoint these settings",
 }
 
-_FINDING_HEADING = "Review these yourself"
-"""One heading for every finding, because they all want the same thing.
+_FINDING_HEADINGS = {
+    FindingKind.UNRECOGNISED_ENTRY: "Left in place, not part of the layout",
+    FindingKind.RUN_FOLDER_IN_WORKING_DIR: "Run output you can delete",
+    FindingKind.PATH_INSIDE_LEGACY_INSTALL: (
+        "Settings pointing into the previous installation"
+    ),
+}
+"""A heading per kind, because the three ask different things.
 
-Splitting them by kind would imply the user should treat a leftover folder
-differently from a setting pointing at one, when the ask is identical: look, and
-decide. The lines carry the difference.
+A leftover entry asks to be looked at and run output asks whether the space is
+wanted back, but a setting pointing into the old installation is a warning about
+deleting that folder -- a consequence rather than an observation. Under one
+heading it reads like the other two, which is exactly the line that must not be
+skimmed.
 """
 
 
@@ -497,9 +505,13 @@ def render_plan(plan: MigrationPlan) -> str:
             lines.append(f"  {prefix}{action.source} -> {action.destination}{suffix}")
         sections.append("\n".join(lines))
 
-    if plan.findings:
-        lines = [f"{_FINDING_HEADING}:"]
-        for finding in plan.findings:
+    for kind, heading in _FINDING_HEADINGS.items():
+        matching = [finding for finding in plan.findings if finding.kind is kind]
+        if not matching:
+            continue
+        total = sum(finding.size for finding in matching)
+        lines = [f"{heading} ({file_bytes_to_str(total)}):" if total else f"{heading}:"]
+        for finding in matching:
             suffix = f" ({file_bytes_to_str(finding.size)})" if finding.size else ""
             detail = f" -- {finding.detail}" if finding.detail else ""
             lines.append(f"  {finding.path}{suffix}{detail}")

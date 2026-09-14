@@ -491,8 +491,6 @@ def test_a_plan_renders_as_text_grouped_by_what_it_does(tmp_path: Path) -> None:
     state_root = tmp_path / "user_data"
     (state_root / "jobs").mkdir(parents=True)
     (state_root / "jobs" / "saved").write_bytes(b"j" * 2048)
-    theirs = state_root / "notes"
-    theirs.mkdir()
 
     rendered = render_plan(plan_migration(state_root))
 
@@ -500,8 +498,46 @@ def test_a_plan_renders_as_text_grouped_by_what_it_does(tmp_path: Path) -> None:
     assert str(state_root / "jobs") in rendered
     assert str(state_root / "workspace" / "jobs") in rendered
     assert "2.00 KB" in rendered
-    assert "Review these yourself" in rendered
+
+
+def test_findings_are_grouped_by_what_they_ask_of_the_user(tmp_path: Path) -> None:
+    """One heading per kind, because the three kinds want different things.
+
+    A leftover folder asks to be looked at, run output asks whether the space is
+    wanted back, and a setting pointing into the old installation is a warning
+    about deleting it. Under a single heading the reader has to work out which
+    line is which, and the one that carries a consequence reads like the other
+    two.
+    """
+    state_root = tmp_path / "user_data"
+    theirs = state_root / "notes"
+    theirs.mkdir(parents=True)
+    legacy = _frozen_install(tmp_path)
+    script = legacy.root / "extras" / "custom.py"
+    script.parent.mkdir(parents=True)
+    script.write_bytes(b"s")
+    working_dir = tmp_path / "media work"
+    run_folder = working_dir / "Example.Release.Name.2024_09.11.2026_10.09.39"
+    run_folder.mkdir(parents=True)
+    (run_folder / "screenshot.png").write_bytes(b"y" * 4)
+
+    rendered = render_plan(
+        plan_migration(
+            state_root,
+            legacy=legacy,
+            working_dirs=[working_dir],
+            configured_paths=[("example setting", script)],
+        )
+    )
+
+    headings = [line for line in rendered.splitlines() if not line.startswith(" ")]
+
+    assert "Left in place, not part of the layout:" in headings
+    assert "Run output you can delete (4.00 B):" in headings
+    assert "Settings pointing into the previous installation:" in headings
     assert str(theirs) in rendered
+    assert str(run_folder) in rendered
+    assert str(script) in rendered
 
 
 def test_rendering_a_plan_with_nothing_to_do_says_so(tmp_path: Path) -> None:
