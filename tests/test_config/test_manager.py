@@ -1369,3 +1369,42 @@ def test_duplicate_checker_is_written_on_save(
     saved = tomlkit.parse(profile.read_text(encoding="utf-8"))
     plugin_settings = cast(MutableMapping[str, Any], saved["plugins"])
     assert plugin_settings["duplicate_checker"] == "example.dupechecker"
+
+
+def test_dvd_tokens_fall_back_to_the_standard_pair_for_an_older_profile(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """DVD gained its own token set after release.
+
+    A profile written before it has no such keys, and DVD ordering was named
+    with the standard tokens until now -- so that is what an absent value has
+    to mean. Loading such a profile must not fail, and must not change how
+    anything is named until the user edits the new fields.
+    """
+    monkeypatch.setattr(
+        "src.config.config.FindDependencies.update_dependencies",
+        lambda self, dependencies: None,
+    )
+    paths = _paths(tmp_path)
+    ConfigManager("test", paths)
+    profile = paths.user_configs / "test.toml"
+    document = tomlkit.parse(profile.read_text(encoding="utf-8"))
+    series = cast(MutableMapping[str, Any], document["series_management"])
+    standard_episode = str(series["tvr_standard_episode_token"])
+    standard_title = str(series["tvr_standard_title_token"])
+    del series["tvr_dvd_episode_token"]
+    del series["tvr_dvd_title_token"]
+    profile.write_text(tomlkit.dumps(document), encoding="utf-8")
+
+    manager = ConfigManager("test", paths)
+
+    assert manager.settings.series.dvd_episode_token == standard_episode
+    assert manager.settings.series.dvd_title_token == standard_title
+
+    manager.settings.series.dvd_episode_token = "{title_clean} DVD"  # noqa: S105 - a naming template, not a credential
+    manager.save()
+    reloaded = ConfigManager("test", paths)
+    assert reloaded.settings.series.dvd_episode_token == (
+        "{title_clean} DVD"  # noqa: S105 - a naming template, not a credential
+    )
+    assert reloaded.settings.series.standard_episode_token == standard_episode

@@ -1,3 +1,4 @@
+from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 from PySide6.QtWidgets import QMessageBox, QVBoxLayout
@@ -15,13 +16,28 @@ if TYPE_CHECKING:
     from src.frontend.windows.main_window import MainWindow
 
 
-def _incomplete_mapping_message(series_mapper: SeriesEpisodeMapper) -> str:
-    """Choose the warning text for an incomplete series episode mapping.
+_MAX_LISTED_FILES = 8
 
-    Distinguishes the "TVDB has no episode data for this series" case (the
-    user needs to enter season/episode numbers manually) from the plain
-    "some files still aren't mapped" case (the user just needs to finish
-    mapping the remaining files).
+
+def _bullet_list(names: Sequence[str]) -> str:
+    """Render at most ``_MAX_LISTED_FILES`` names, counting any remainder."""
+    shown = [f"  • {name}" for name in names[:_MAX_LISTED_FILES]]
+    remaining = len(names) - _MAX_LISTED_FILES
+    if remaining > 0:
+        shown.append(f"  • ...and {remaining} more")
+    return "\n".join(shown)
+
+
+def _incomplete_mapping_message(series_mapper: SeriesEpisodeMapper) -> str:
+    """Explain why a series episode mapping was refused, naming the files.
+
+    Three different situations reach this: TVDB returned no episode data at
+    all, some files carry no season/episode, and two files claim the same
+    episode. They used to share one sentence -- "Please ensure all files are
+    properly mapped to episodes before continuing" -- which named nothing. On
+    an overlap that sentence is actively misleading, because every row on
+    screen is filled in and looks mapped; the user is told to finish work
+    that is already done, with no way to tell which rows collide.
     """
     if series_mapper.has_unmapped_files() and not series_mapper.has_tvdb_episode_data():
         return (
@@ -29,7 +45,40 @@ def _incomplete_mapping_message(series_mapper: SeriesEpisodeMapper) -> str:
             "be auto-matched. Enter a season and episode number for each file "
             "manually before continuing."
         )
-    return "Please ensure all files are properly mapped to episodes before continuing."
+
+    problems: list[str] = []
+
+    unmapped = series_mapper.unmapped_files()
+    if unmapped:
+        problems.append(
+            f"{len(unmapped)} file(s) have no season and episode number:\n"
+            + _bullet_list([path.name for path in unmapped])
+        )
+
+    overlaps = series_mapper.overlapping_claims()
+    if overlaps:
+        lines: list[str] = []
+        for (season, episode), files in overlaps:
+            where = (
+                f"S{season:02d}E{episode:02d}"
+                if isinstance(season, int) and isinstance(episode, int)
+                else f"season {season}, episode {episode}"
+            )
+            lines.append(f"  • {where} is claimed by:")
+            lines.extend(f"      - {path.name}" for path in files)
+        problems.append(
+            "The same episode is claimed by more than one file:\n"
+            + "\n".join(lines)
+            + "\n\nA file covering several episodes should claim all of them; "
+            "give every other file its own episode."
+        )
+
+    if not problems:
+        return (
+            "Please ensure all files are properly mapped to episodes before continuing."
+        )
+
+    return "\n\n".join(problems)
 
 
 class SeriesMatch(BaseWizardPage):
@@ -60,6 +109,7 @@ class SeriesMatch(BaseWizardPage):
         """Validate the page and ensure mappings are complete"""
         # check if series mapper has valid mappings
         if not self.series_mapper.is_valid():
+            self.series_mapper.focus_first_problem()
             QMessageBox.warning(
                 self,
                 "Incomplete Mapping",

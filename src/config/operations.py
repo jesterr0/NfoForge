@@ -914,6 +914,9 @@ class TypedTomlOperations:
             series_management["tvr_anime_episode_token"] = (
                 self.settings.series.anime_episode_token
             )
+            series_management["tvr_dvd_episode_token"] = (
+                self.settings.series.dvd_episode_token
+            )
             series_management["tvr_season_folder_token"] = (
                 self.settings.series.season_folder_token
             )
@@ -931,6 +934,9 @@ class TypedTomlOperations:
             )
             series_management["tvr_anime_title_token"] = (
                 self.settings.series.anime_title_token
+            )
+            series_management["tvr_dvd_title_token"] = (
+                self.settings.series.dvd_title_token
             )
             series_management.pop("tvr_title_token", None)
 
@@ -1683,7 +1689,16 @@ class TypedTomlOperations:
             # series management
             series_management = self._toml_mapping(toml_data, "series_management")
 
-            def load_series_token(key: str) -> str:
+            def load_series_token(key: str, fallback: str | None = None) -> str:
+                """Read one series token, optionally falling back to another.
+
+                ``fallback`` names the key to read when this one is absent,
+                for a token added after release: a profile written before it
+                is still valid, and the fallback is the token that format was
+                being named with until now.
+                """
+                if key not in series_management and fallback is not None:
+                    key = fallback
                 value = str(series_management[key])
                 if not value.strip():
                     raise ConfigError(
@@ -1820,6 +1835,14 @@ class TypedTomlOperations:
                     ),
                     daily_episode_token=load_series_token("tvr_daily_episode_token"),
                     anime_episode_token=load_series_token("tvr_anime_episode_token"),
+                    # `.get`-style fallbacks: these keys were added after
+                    # release. A profile written before them is still valid,
+                    # and DVD ordering has always been named with the standard
+                    # token set, so that is what an absent value means.
+                    dvd_episode_token=load_series_token(
+                        "tvr_dvd_episode_token",
+                        fallback="tvr_standard_episode_token",
+                    ),
                     season_folder_token=str(
                         series_management["tvr_season_folder_token"]
                     ),
@@ -1836,6 +1859,9 @@ class TypedTomlOperations:
                     standard_title_token=load_series_token("tvr_standard_title_token"),
                     daily_title_token=load_series_token("tvr_daily_title_token"),
                     anime_title_token=load_series_token("tvr_anime_title_token"),
+                    dvd_title_token=load_series_token(
+                        "tvr_dvd_title_token", fallback="tvr_standard_title_token"
+                    ),
                 ),
                 global_management=GlobalManagementSettings(
                     title_clean_rules=[
