@@ -13,7 +13,7 @@ from src.frontend.custom_widgets.series_episode_mapper import SeriesEpisodeMappe
 from src.frontend.wizards.series_match import SeriesMatch, _incomplete_mapping_message
 from src.payloads.media_inputs import MediaInputPayload
 from src.payloads.media_search import MediaSearchPayload
-from tests.repo_paths import DEFAULT_CONFIG_DIR
+from tests.repo_paths import build_app_paths
 
 
 def _make_mapper_with_files(file_list: list[Path]) -> SeriesEpisodeMapper:
@@ -322,26 +322,7 @@ def test_every_coloured_cell_also_sets_a_foreground(qapp: QCoreApplication) -> N
 
 
 def _paths(tmp_path: Path) -> ConfigPaths:
-    defaults = tmp_path / "defaults"
-    defaults.mkdir()
-    source_defaults = DEFAULT_CONFIG_DIR
-    default_config = defaults / "default_config.toml"
-    default_program = defaults / "default_program_conf.toml"
-    default_config.write_text(
-        (source_defaults / "default_config.toml").read_text(encoding="utf-8"),
-        encoding="utf-8",
-    )
-    default_program.write_text(
-        (source_defaults / "default_program_conf.toml").read_text(encoding="utf-8"),
-        encoding="utf-8",
-    )
-    return ConfigPaths(
-        default_config=default_config,
-        default_program=default_program,
-        program=tmp_path / "program/conf.toml",
-        user_configs=tmp_path / "user",
-        tracker_cookies=tmp_path / "cookies",
-    )
+    return build_app_paths(tmp_path)
 
 
 def _make_series_match_page(

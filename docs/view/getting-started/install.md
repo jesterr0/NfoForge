@@ -8,6 +8,9 @@ Run from [Release](#run-from-release) or [Run From Source](#run-from-source).
 2. Extract the contents of the release.
 3. Execute **NfoForge**.
 
+!!! info "Already using an older version?"
+    From 1.2.0 onward your settings and data live outside the application folder, so replacing a release leaves them alone. The first launch offers to bring your existing settings across. See [Upgrading](upgrading.md).
+
 ## Run From Source
 
 1. Install [uv](https://docs.astral.sh/uv/getting-started/installation/).
@@ -36,3 +39,15 @@ Run from [Release](#run-from-release) or [Run From Source](#run-from-source).
     ```
     
 <!--prettier-ignore-end -->
+
+## Where Your Settings Are Kept
+
+NfoForge keeps your profiles, templates, cookies, plugins, tools and saved jobs in a folder of your own, separate from the application:
+
+| System  | Location                                 |
+| ------- | ---------------------------------------- |
+| Windows | `%LOCALAPPDATA%\nfoforge`                |
+| macOS   | `~/Library/Application Support/nfoforge` |
+| Linux   | `~/.local/share/nfoforge`                |
+
+A source checkout uses `nfoforge-dev` in the same place, so running from source never shares data with an installed release.

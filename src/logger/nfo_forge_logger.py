@@ -11,7 +11,7 @@ from typing import Any, TextIO
 
 import shortuuid
 
-from src.backend.utils.working_dir import RUNTIME_DIR
+from src.config.paths import default_paths
 from src.enums.logging_settings import DebugDataType, LogLevel, LogSource
 from src.exceptions import DebugDumpError
 from src.utils.secret_redaction import scrub_secrets
@@ -42,26 +42,55 @@ class Logger:
         self.console_handler: StreamHandler[TextIO] | None = None
         self.to_console = to_console
         self.dumps = log_file.parent / "dumps"
+        self._announced = False
+        self.file_logging = self._prepare_directories()
 
-        log_file.parent.mkdir(parents=True, exist_ok=True)
-        self.dumps.mkdir(parents=True, exist_ok=True)
+    def _prepare_directories(self) -> bool:
+        """Make room for the log and its dumps, reporting whether it worked.
+
+        Failure is survivable on purpose. This runs while the logging module is
+        imported, before any handler, dialog or exception hook exists to report a
+        problem, so an exception here does not produce a logging error -- it
+        produces an application that will not start, and the one thing that could
+        have explained why is the thing that failed. Losing the log is bad;
+        losing the application because of the log is worse.
+        """
+        try:
+            self.log_file.parent.mkdir(parents=True, exist_ok=True)
+            self.dumps.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            return False
+        return True
 
     def _initialize_file_handler(self) -> None:
-        # if none we can assume we're initiating this for the first time
-        log_program_info = True if not self.file_handler else False
+        # Tracked outright rather than inferred from the file handler existing.
+        # Inferring it meant that a logger which never gets a file handler --
+        # because the directory or the file could not be opened -- announced the
+        # program on every call, and since announcing goes through `info()` and
+        # back into here, that recursed until the stack ran out.
+        announce = not self._announced
+        self._announced = True
 
         # file handler
-        if self.file_handler is None:
-            self.file_handler = RotatingFileHandler(
-                self.log_file,
-                maxBytes=10 * 1024 * 1024,
-                backupCount=5,
-                encoding="utf-8",
-            )
-            self.file_handler.setFormatter(
-                logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
-            )
-            self.logger.addHandler(self.file_handler)
+        if self.file_handler is None and self.file_logging:
+            # Opening the file can fail even though its directory was created:
+            # the name may be taken by a directory, held open elsewhere, or
+            # refused by a quota. Built on first use rather than in __init__, so
+            # this fails later than the directory does and needs its own guard.
+            try:
+                self.file_handler = RotatingFileHandler(
+                    self.log_file,
+                    maxBytes=10 * 1024 * 1024,
+                    backupCount=5,
+                    encoding="utf-8",
+                )
+            except OSError:
+                self.file_logging = False
+            else:
+                self.file_handler.setFormatter(
+                    logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+                )
+                self.logger.addHandler(self.file_handler)
 
         # console handler (print to console)
         if self.console_handler is None and self.to_console:
@@ -84,7 +113,7 @@ class Logger:
             self.logger.addHandler(self.console_handler)
 
         # log initial program info
-        if log_program_info:
+        if announce:
             self.info(self.LOG_SOURCE.FE, f"{program_name} v{__version__}")
 
     def _log(self, level: int, source: LogSource, message: object) -> None:
@@ -214,9 +243,21 @@ class Logger:
 
 _date_time_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 _short_uuid = shortuuid.uuid()[:7]
-_log_path = RUNTIME_DIR / "logs" / f"nfoforge_{_date_time_str}_{_short_uuid}.log"
+
+
+def default_log_file() -> Path:
+    """Where this run's log goes: the log directory of the per-user data tree.
+
+    Logs are user state, so they belong with the rest of it. They used to live
+    inside the installation, which meant replacing a release discarded the logs
+    describing whatever went wrong with the one before it -- exactly when someone
+    wants them.
+    """
+    return default_paths().logs / f"nfoforge_{_date_time_str}_{_short_uuid}.log"
+
+
 debug_env = str(os.environ.get("LOG_LEVEL", "")).lower()
 LOG = Logger(
-    _log_path,
+    default_log_file(),
     to_console="debug" in sys.executable.lower() or debug_env == "debug",
 )

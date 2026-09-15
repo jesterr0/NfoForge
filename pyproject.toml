@@ -1,6 +1,6 @@
 [project]
 name = "NfoForge"
-version = "1.1.16"
+version = "1.2.0"
 description = "NFO generator and upload assistant"
 license = "GPL-3.0-or-later"
 readme = "README.md"
@@ -74,6 +74,7 @@ include = [
     "pyproject.toml",
     "src/**/*.py",
     "plugins/**/*.py",
+    "assets/plugin_examples/**/*.py",
     "scripts/**/*.py",
     "tests/**/*.py",
     "typings/**/*.py",
@@ -129,8 +130,8 @@ include = [
     "src",
     "start_ui.py",
     "build.py",
-    "plugins/jinja2_plugin_example",
-    "plugins/metadata_plugin_example",
+    "assets/plugin_examples/jinja2_plugin_example",
+    "assets/plugin_examples/metadata_plugin_example",
 ]
 typeCheckingMode = "standard"
 

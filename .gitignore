@@ -13,23 +13,23 @@ dev_scripts/
 *.csv
 runtime/apps/
 runtime/cookies/
+runtime/config/
 runtime/docs/
-runtime/config/*
-!runtime/config/audio_conventions/
-!runtime/config/defaults/
 runtime/logs/
 runtime/templates/
 runtime/user_packages/
+# generated at build time from docs/, not tracked
+assets/docs/
+assets/images/*.iconset/
+assets/images/*.icns
 beyondhd-parser/
 plugins/*
-!plugins/jinja2_plugin_example/
-!plugins/jinja2_plugin_example/**
-!plugins/metadata_plugin_example/
-!plugins/metadata_plugin_example/**
 plugins/**/__pycache__/*
 !src/plugins/
 *.spec
 docs/_build
+# mkdocs output, built by `mkdocs build` and by the docs workflow
+site/
 Makefile
 make.bat
 node_modules

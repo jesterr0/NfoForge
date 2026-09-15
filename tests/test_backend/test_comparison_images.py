@@ -12,7 +12,7 @@ from src.backend.images import (
     _build_drawtext_filter,
 )
 from src.backend.utils import subprocess_flags
-from src.backend.utils.working_dir import RUNTIME_DIR
+from src.config.paths import default_paths
 from src.enums.cropping import Cropping
 
 
@@ -49,7 +49,7 @@ def test_drawtext_filter_escapes_filter_values(
 
 
 def test_drawtext_filter_parses_with_bundled_ffmpeg() -> None:
-    ffmpeg = RUNTIME_DIR / "apps" / "ffmpeg" / "ffmpeg.exe"
+    ffmpeg = default_paths().tools / "ffmpeg" / "ffmpeg.exe"
     if not ffmpeg.is_file():
         pytest.skip("Bundled FFmpeg is not available")
 

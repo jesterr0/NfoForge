@@ -1,5 +1,30 @@
 # Changelog
 
+## [1.2.0] - 2026-09-14
+
+### Changed
+
+- **Your settings and data now live in a folder of your own, outside the application.** Profiles, program preferences, plugin settings, tracker cookies, NFO templates, plugins, bundled tools, logs and saved jobs move to `%LOCALAPPDATA%\nfoforge` on Windows, `~/Library/Application Support/nfoforge` on macOS and `~/.local/share/nfoforge` on Linux. Every earlier version kept all of it inside the application folder, under `bundle/runtime`, which meant extracting a new release over an old one put your own files in the path of the ones being replaced. Upgrading is now a matter of replacing the release folder and nothing else. Running from source uses a separate folder, `nfoforge-dev`, so a source checkout and an installed release no longer share profiles, credentials or saved jobs. See [Upgrading](https://jesterr0.github.io/NfoForge/view/getting-started/upgrading.html).
+- Saved jobs and run output move into a `workspace` folder inside the data folder, keeping deliberately saved work and disposable output apart at the top level rather than side by side.
+
+### Added
+
+- **A one-time upgrade on first launch brings your existing settings across.** NfoForge looks in the folder it is running from for a previous installation and offers to import it, to let you point at a different folder, or to start fresh. Everything is copied and nothing in the old installation is deleted or modified, so declining or getting it wrong costs nothing. You are asked once per machine and never again.
+- A summary afterwards lists every folder that was copied or moved, with sizes, and everything that still wants a decision: files of your own that were sitting in the data folder, run output you could reclaim, settings that point inside the old installation and will stop working when you delete it, and settings naming a tool that is not on disk at all -- usually because the folder holding it was renamed or moved at some point. The window is shown once, so a copy is kept in `logs/migration.log` inside your data folder -- safe from log tidying, and added to rather than replaced if you import again later.
+- Two settings are corrected automatically as they arrive: a working directory that was NfoForge's own data folder becomes the `workspace` folder inside it, and a dependency stored in the old `apps` folder is repointed at its new home in `tools`. Both are reported rather than applied silently.
+- If the profile that was in use does not arrive with the rest, NfoForge says so. Without that it would generate a fresh profile under the same name and start on defaults -- plugins off, trackers unconfigured -- with nothing explaining why the settings looked wrong.
+- **Settings -> General** gained an import button beside the data folder, so declining the upgrade at first launch is not a decision you are stuck with. It runs the same import at any time.
+- Nothing is ever overwritten or merged during an import. Anything that would land on an existing file or folder is put in `migration-conflicts` inside your data folder instead, keeping the shape it would have had, and what was already there is left untouched.
+
+### Fixed
+
+- **macOS builds can find the files shipped with them again.** NfoForge looked for its own bundled configuration, fonts, images and documentation in a folder beside the executable -- a path that does not exist inside a `.app`, where macOS keeps them in `Contents/Resources` and links them from `Contents/Frameworks`. Everything in the release was therefore unreachable, including the default configuration that is read while settings are loading. The location now comes from PyInstaller itself rather than being derived from the executable, which is correct on all three platforms; Windows and Linux resolve to the same folder they always did.
+- **Clean Up** in **Settings -> General** now empties only the `processing` folder rather than everything in the working directory except saved jobs. Anything else you kept in a working directory of your own -- and, when the working directory was left at its default, everything NfoForge itself stored there -- was previously fair game.
+- A saved job's screenshots are found again after the job folder has moved. The paths recorded inside a job are now resolved against the folder the job is actually in, so a job survives the upgrade rather than reading as though its images had been lost.
+- The FrameForge index cache moves into the workspace with everything else, where the code that reads it looks. Left beside it, the cache would have been kept but never read again, which costs a re-index for no benefit.
+- Run folders written directly into the working directory by older versions are collected into `processing`, where Clean Up can reach them. They were reclaimable before the upgrade and would have been stranded after it.
+- The example plugins shipped with NfoForge are no longer imported from a previous installation, where they would collide by ID with the ones in the release and fail to load.
+
 ## [1.1.16] - 2026-09-14
 
 ### Added

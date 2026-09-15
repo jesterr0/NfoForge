@@ -4,7 +4,7 @@ NfoForge plugins are trusted Python code loaded into the application process. In
 
 ## Local plugins
 
-Place each plugin repository directly inside NfoForge's `plugins` directory and add `nfoforge-plugin.toml` at the repository root:
+Place each plugin repository directly inside the `plugins` folder of [your NfoForge data folder](../getting-started/upgrading.md#where-your-data-lives-now) and add `nfoforge-plugin.toml` at the repository root:
 
 ```toml
 schema_version = 1

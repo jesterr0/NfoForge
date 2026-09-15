@@ -49,7 +49,7 @@ from qtawesome import IconWidget
 from src.backend.media_search import MediaSearchBackEnd, TmdbAlternativeTitle
 from src.backend.utils.title_inference import MediaTitleInferer
 from src.backend.utils.tmdb_reference import TmdbReference, parse_tmdb_reference
-from src.backend.utils.working_dir import RUNTIME_DIR
+from src.backend.utils.working_dir import asset_root
 from src.config.config import ConfigManager
 from src.context.processing_context import ProcessingContext
 from src.enums.media_search_mode import MediaSearchMode
@@ -466,7 +466,7 @@ class MediaSearch(BaseWizardPage):
         self._alt_title_request: tuple[str, MediaType] | None = None
         self._alt_title_worker: GeneralWorker | None = None
 
-        imdb_image = QPixmap(str(Path(RUNTIME_DIR / "images" / "imdb.png").resolve()))
+        imdb_image = QPixmap(str(Path(asset_root() / "images" / "imdb.png").resolve()))
         imdb_image = imdb_image.scaled(
             28,
             28,
@@ -482,7 +482,7 @@ class MediaSearch(BaseWizardPage):
         self.imdb_id_entry.setToolTip("IMDb ID")
         self.imdb_id_entry.textEdited.connect(self._mark_metadata_dirty)
 
-        tmdb_image = QPixmap(str(Path(RUNTIME_DIR / "images" / "tmdb.png").resolve()))
+        tmdb_image = QPixmap(str(Path(asset_root() / "images" / "tmdb.png").resolve()))
         tmdb_image = tmdb_image.scaled(
             28,
             28,
@@ -500,7 +500,7 @@ class MediaSearch(BaseWizardPage):
         # says nothing about which TMDB record's titles are on offer.
         self.tmdb_id_entry.textEdited.connect(self._reset_alternative_titles)
 
-        tvdb_image = QPixmap(str(Path(RUNTIME_DIR / "images" / "tvdb.png").resolve()))
+        tvdb_image = QPixmap(str(Path(asset_root() / "images" / "tvdb.png").resolve()))
         tvdb_image = tvdb_image.scaled(
             28,
             30,
@@ -515,7 +515,7 @@ class MediaSearch(BaseWizardPage):
         self.tvdb_id_entry.setToolTip("TVDB ID")
         self.tvdb_id_entry.textEdited.connect(self._mark_metadata_dirty)
 
-        mal_image = QPixmap(str(Path(RUNTIME_DIR / "images" / "mal.png").resolve()))
+        mal_image = QPixmap(str(Path(asset_root() / "images" / "mal.png").resolve()))
         mal_image = mal_image.scaled(
             28,
             30,

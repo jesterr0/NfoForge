@@ -1,11 +1,10 @@
 """Coverage for read-only discovery of config profiles' working directories."""
 
-from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
-from src.config.paths import ConfigPaths
+from src.config.paths import AppPaths, ConfigPaths
 from src.config.profiles import (
     profile_working_dir,
     profile_working_dirs,
@@ -13,11 +12,21 @@ from src.config.profiles import (
 )
 
 
+def _paths(tmp_path: Path) -> ConfigPaths:
+    """Paths rooted entirely in `tmp_path`.
+
+    Built from the state root rather than by overriding one field, because the
+    individual paths are derived now: `user_configs` follows from the root, so
+    there is nothing to replace.
+    """
+    return AppPaths(state_root=tmp_path / "state", asset_root=tmp_path / "assets")
+
+
 @pytest.fixture
 def paths(tmp_path: Path) -> ConfigPaths:
-    user_configs = tmp_path / "user"
-    user_configs.mkdir(parents=True)
-    return replace(ConfigPaths(), user_configs=user_configs)
+    built = _paths(tmp_path)
+    built.user_configs.mkdir(parents=True)
+    return built
 
 
 def _write_profile(paths: ConfigPaths, name: str, working_dir: str | None) -> Path:
@@ -86,6 +95,5 @@ def test_shared_working_directories_are_deduplicated(paths: ConfigPaths) -> None
 
 
 def test_a_missing_config_directory_yields_nothing(tmp_path: Path) -> None:
-    paths = replace(ConfigPaths(), user_configs=tmp_path / "never-created")
-
-    assert profile_working_dirs(paths) == {}
+    """The profile directory is never created here, so discovery finds nothing."""
+    assert profile_working_dirs(_paths(tmp_path)) == {}
