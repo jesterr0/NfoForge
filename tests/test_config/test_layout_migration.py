@@ -1082,3 +1082,32 @@ def test_a_dependency_that_resolves_outside_the_installation_stays_quiet(
     )
 
     assert plan.findings == ()
+
+
+def test_a_working_directory_is_returned_as_the_document_wrote_it(
+    tmp_path: Path,
+) -> None:
+    """Read back, not resolved. The value is shown to the user.
+
+    Resolving anchors anything that is not already absolute to wherever the
+    process happened to start, so a relative setting would be reported as a path
+    that is neither in the user's file nor on their disk. It also makes the
+    result depend on the platform: a Windows path carries no drive letter
+    meaning on Linux, so `C:/somewhere` resolves to the working directory with
+    `C:/somewhere` stuck on the end.
+
+    Comparison still normalises both sides, so nothing about matching depends on
+    the stored form.
+    """
+    legacy = _frozen_install(tmp_path)
+    profiles = legacy.state / "config" / "user"
+    profiles.mkdir(parents=True)
+    (profiles / "main.toml").write_text(
+        '[general]\nworking_dir = "somewhere/relative"\n', encoding="utf-8"
+    )
+
+    settings = read_legacy_settings(legacy)
+
+    assert settings.working_dirs == (
+        ("main: working directory", Path("somewhere/relative")),
+    )

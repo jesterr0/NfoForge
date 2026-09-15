@@ -231,7 +231,7 @@ def read_legacy_settings(legacy: LegacyInstall) -> LegacySettings:
 
     One damaged document does not cost the user every other profile's plan.
     """
-    working_dirs: dict[Path, list[str]] = {}
+    working_dirs: dict[Path, tuple[Path, list[str]]] = {}
     configured: list[tuple[str, str, Path]] = []
 
     for document_path in sorted((legacy.state / "config" / "user").glob("*.toml")):
@@ -246,10 +246,15 @@ def read_legacy_settings(legacy: LegacyInstall) -> LegacySettings:
             # Keyed on the normalised path so that two profiles naming the same
             # directory with different casing or separators are recognised as
             # sharing it, rather than reported as two directories that happen to
-            # look alike.
-            working_dirs.setdefault(normalise_path(Path(working_dir)), []).append(
-                profile
+            # look alike. The value keeps the path as the document wrote it: it
+            # is what the user is shown, and resolving anchors anything not
+            # already absolute to wherever the process started. Comparison
+            # normalises both sides anyway, so matching does not depend on this.
+            candidate = Path(working_dir)
+            _, profiles = working_dirs.setdefault(
+                normalise_path(candidate), (candidate, [])
             )
+            profiles.append(profile)
 
         for name, value in document.get("dependencies", {}).items():
             if isinstance(value, bool) or not isinstance(value, str):
@@ -261,7 +266,7 @@ def read_legacy_settings(legacy: LegacyInstall) -> LegacySettings:
     return LegacySettings(
         working_dirs=tuple(
             (f"{', '.join(profiles)}: working directory", working_dir)
-            for working_dir, profiles in working_dirs.items()
+            for working_dir, profiles in working_dirs.values()
         ),
         configured_paths=tuple(configured),
     )
