@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [1.1.17] - 2026-09-16
 
 ### Added
 
@@ -11,6 +11,8 @@
 - **The Episode(s) column takes a span**: `1-2` for a file covering both parts of a two-part episode, `1,5` for two episodes that are not adjacent. A span could previously only come from the filename, and retyping the episode silently dropped it -- there was no way to say a file covered two episodes, or to narrow one that did not.
 - **A Title Override column**, replacing the episode title for one file. The existing override on the rename page applies to every file in the pack, so it could not name a single episode; a value typed here wins over it.
 - **A DVD release format**, with its own filename and title tokens in Settings → Series. `EpisodeFormat.DVD` existed but was not among the supported formats, so choosing DVD order left naming on the Standard token set with no indication. It ships as a copy of the Standard pair, so nothing is named differently until you edit it, and a profile saved before these fields existed reads the Standard tokens for them. No schema bump.
+- Image can now be retried again from the UI upon failure.
+- Added support for backup image hosts on failures (be sure you have them enabled in settings first).
 
 ### Changed
 
