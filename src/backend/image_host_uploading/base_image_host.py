@@ -3,6 +3,7 @@ from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+from src.backend.upload_retry import IMAGE_UPLOAD_ATTEMPTS
 from src.packages.custom_types import ImageUploadData
 
 ImageUploadProgressCallback = Callable[[int], Awaitable[None]]
@@ -21,6 +22,16 @@ class ImageUploadRequest:
     square_thumbs: bool = False
     adult: bool = False
     comments_enabled: bool = False
+    timeout: int | None = None
+    """Per-request connect/read budget in seconds; None keeps the library default.
+
+    Both this and `attempts` carry defaults so that a plugin-supplied uploader
+    written before they existed still receives a valid request, and one that
+    ignores them behaves exactly as it did.
+    """
+
+    attempts: int = IMAGE_UPLOAD_ATTEMPTS
+    """Automatic attempts per image before the failure is reported upward."""
 
 
 class BaseImageHostUploader(ABC):

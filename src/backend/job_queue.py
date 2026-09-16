@@ -423,6 +423,7 @@ class JobQueueRunner:
                 token_prompt_cb=None,
                 overview_cb=None,
                 upload_retry_cb=None,
+                image_retry_cb=None,
                 run_outcome_cb=record,
             )
         except Exception as error:

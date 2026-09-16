@@ -9,7 +9,13 @@ from src.backend.image_host_uploading.base_image_host import (
     BaseImageHostUploader,
     ImageUploadRequest,
 )
-from src.logger.nfo_forge_logger import LOG
+from src.backend.image_host_uploading.retry import (
+    RETRYABLE_STATUS,
+    RetryableStatus,
+    image_client_timeout,
+    retry_image_upload,
+)
+from src.backend.upload_retry import IMAGE_UPLOAD_ATTEMPTS
 from src.packages.custom_types import ImageUploadData
 
 URL = "https://api.pixhost.to/images"
@@ -26,54 +32,56 @@ async def _upload_image(
     filepath: Path,
     cb: Callable[[int], Awaitable[None]] | None,
     idx: int,
-    retries: int = 3,
+    timeout: int | None = None,
+    attempts: int = IMAGE_UPLOAD_ATTEMPTS,
 ) -> ImageUploadData:
-    """Uploads a single image with retries and proper error handling. Pixhost
-    requires no authentication -- there is no API key to attach."""
-    for attempt in range(retries):
-        try:
-            async with aiohttp.ClientSession() as session:
-                with open(filepath, "rb") as image_file:
-                    form_data = aiohttp.FormData()
-                    form_data.add_field("img", image_file, filename=filepath.name)
-                    form_data.add_field("content_type", "0")
-                    form_data.add_field("max_th_size", "350")
+    """Uploads a single image, retrying transient failures. Pixhost requires no
+    authentication -- there is no API key to attach."""
 
-                    async with session.post(URL, data=form_data) as response:
-                        if response.status == 200:
-                            response_data = cast(dict[str, Any], await response.json())
-                        elif response.status in {429, 500, 502, 503, 504}:
-                            await asyncio.sleep(2**attempt)
-                            continue
-                        else:
-                            return ImageUploadData(None, None)
+    async def upload_once() -> ImageUploadData:
+        # The session is opened per attempt: a retry is most often answering a
+        # connection that went bad, and reusing its pool would hand the next
+        # attempt the same broken one.
+        async with aiohttp.ClientSession(
+            timeout=image_client_timeout(timeout)
+        ) as session:
+            with open(filepath, "rb") as image_file:
+                form_data = aiohttp.FormData()
+                form_data.add_field("img", image_file, filename=filepath.name)
+                form_data.add_field("content_type", "0")
+                form_data.add_field("max_th_size", "350")
 
-                    thumbnail_url = response_data.get("th_url", "")
-                    if not thumbnail_url:
+                async with session.post(URL, data=form_data) as response:
+                    if response.status in RETRYABLE_STATUS:
+                        raise RetryableStatus(response.status, response.reason)
+                    if response.status != 200:
                         return ImageUploadData(None, None)
-                    if cb:
-                        await cb(idx)
-                    return ImageUploadData(_full_size_url(thumbnail_url), thumbnail_url)
+                    response_data = cast(dict[str, Any], await response.json())
 
-        except (aiohttp.ClientError, asyncio.TimeoutError) as e:
-            if attempt < retries - 1:
-                await asyncio.sleep(2**attempt)
-            else:
-                LOG.warning(
-                    LOG.LOG_SOURCE.BE,
-                    f"Pixhost: upload failed after {retries} attempts: {e}",
-                )
+                thumbnail_url = response_data.get("th_url", "")
+                if not thumbnail_url:
+                    return ImageUploadData(None, None)
+                if cb:
+                    await cb(idx)
+                return ImageUploadData(_full_size_url(thumbnail_url), thumbnail_url)
 
-    return ImageUploadData(None, None)
+    result = await retry_image_upload(
+        upload_once, host_name="Pixhost", attempts=attempts
+    )
+    return result if result is not None else ImageUploadData(None, None)
 
 
 async def _upload_batch(
     filepaths: Sequence[Path],
     start_index: int,
     cb: Callable[[int], Awaitable[None]] | None,
+    timeout: int | None = None,
+    attempts: int = IMAGE_UPLOAD_ATTEMPTS,
 ) -> dict[int, ImageUploadData]:
     tasks = [
-        asyncio.create_task(_upload_image(filepath, cb, start_index + i + 1))
+        asyncio.create_task(
+            _upload_image(filepath, cb, start_index + i + 1, timeout, attempts)
+        )
         for i, filepath in enumerate(filepaths)
     ]
     results = await asyncio.gather(*tasks)
@@ -84,6 +92,8 @@ async def pixhost_upload(
     filepaths: Sequence[Path],
     batch_size: int = 4,
     progress_callback: Callable[[int], Awaitable[None]] | None = None,
+    timeout: int | None = None,
+    attempts: int = IMAGE_UPLOAD_ATTEMPTS,
 ) -> dict[int, ImageUploadData] | None:
     if not filepaths:
         return {}
@@ -93,7 +103,9 @@ async def pixhost_upload(
     tasks: list[asyncio.Task[dict[int, ImageUploadData]]] = []
     for i in range(0, len(filepaths), batch_size):
         batch = filepaths[i : i + batch_size]
-        task = asyncio.create_task(_upload_batch(batch, i, progress_callback))
+        task = asyncio.create_task(
+            _upload_batch(batch, i, progress_callback, timeout, attempts)
+        )
         tasks.append(task)
 
     batch_results_list = await asyncio.gather(*tasks)
@@ -115,6 +127,8 @@ class PixhostUploader(BaseImageHostUploader):
                 filepaths=request.filepaths,
                 batch_size=request.batch_size,
                 progress_callback=request.progress_callback,
+                timeout=request.timeout,
+                attempts=request.attempts,
             )
             or {}
         )

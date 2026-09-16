@@ -2,12 +2,15 @@ import asyncio
 from collections.abc import Awaitable, Callable, Sequence
 from pathlib import Path
 
+from aiohttp import ClientError
 from pyimgbox import Gallery as ImgBoxGallery, Submission
 
 from src.backend.image_host_uploading.base_image_host import (
     BaseImageHostUploader,
     ImageUploadRequest,
 )
+from src.backend.image_host_uploading.retry import retry_image_upload
+from src.backend.upload_retry import IMAGE_UPLOAD_ATTEMPTS
 from src.packages.custom_types import ImageUploadData
 
 
@@ -16,6 +19,8 @@ async def _img_box_upload_batch(
     filepaths: Sequence[Path],
     start_index: int,
     cb: Callable[[int], Awaitable[None]] | None = None,
+    timeout: int | None = None,
+    attempts: int = IMAGE_UPLOAD_ATTEMPTS,
 ) -> dict[int, ImageUploadData]:
     """
     Uploads a batch of images to ImgBox.
@@ -42,33 +47,45 @@ async def _img_box_upload_batch(
         cb: Callable[[int], Awaitable[None]] | None,
         filepath: Path,
         index: int,
-        retries: int = 3,
+        timeout: int | None = None,
+        attempts: int = IMAGE_UPLOAD_ATTEMPTS,
     ) -> tuple[int, ImageUploadData]:
-        """Uploads a single image with retries and exponential backoff."""
-        for attempt in range(retries):
-            try:
-                submission: Submission = await gallery.upload(filepath)
-                if not submission or not submission.get("image_url"):
-                    raise ValueError(f"Upload failed for {filepath}")
+        """Uploads a single image, retrying transient failures."""
 
-                image_data = ImageUploadData(
-                    submission.get("image_url", ""), submission.get("thumbnail_url", "")
-                )
+        async def upload_once() -> ImageUploadData:
+            # pyimgbox owns its session and takes no timeout of its own, so
+            # this is the only place a stalled ImgBox upload can be bounded.
+            upload = gallery.upload(filepath)
+            submission: Submission = (
+                await asyncio.wait_for(upload, timeout) if timeout else await upload
+            )
+            if not submission or not submission.get("image_url"):
+                # Raised, not returned: pyimgbox reports a refused upload in
+                # the submission body rather than by raising, and a retry is
+                # worth spending on it -- which is the behaviour this had
+                # before the shared helper, via `except Exception`.
+                raise ClientError(f"Upload failed for {filepath}")
+            return ImageUploadData(
+                submission.get("image_url", ""), submission.get("thumbnail_url", "")
+            )
 
-                if cb:
-                    await cb(index + 1)
+        image_data = await retry_image_upload(
+            upload_once, host_name="ImgBox", attempts=attempts
+        )
+        if image_data is None:
+            return index, ImageUploadData(None, None)
 
-                return index, image_data
+        if cb:
+            await cb(index + 1)
 
-            except Exception:
-                if attempt < retries - 1:
-                    wait_time = 2**attempt
-                    await asyncio.sleep(wait_time)
-
-        return index, ImageUploadData(None, None)
+        return index, image_data
 
     tasks = [
-        asyncio.create_task(upload_single_image(gallery, cb, filepath, start_index + i))
+        asyncio.create_task(
+            upload_single_image(
+                gallery, cb, filepath, start_index + i, timeout, attempts
+            )
+        )
         for i, filepath in enumerate(filepaths)
     ]
 
@@ -85,6 +102,8 @@ async def image_box_upload(
     comments_enabled: bool = False,
     batch_size: int = 4,
     progress_callback: Callable[[int], Awaitable[None]] | None = None,
+    timeout: int | None = None,
+    attempts: int = IMAGE_UPLOAD_ATTEMPTS,
 ) -> dict[int, ImageUploadData] | None:
     """
     Uploads images to a gallery in batches and returns the upload results.
@@ -119,7 +138,7 @@ async def image_box_upload(
         for i in range(0, len(filepaths), batch_size):
             batch = filepaths[i : i + batch_size]
             batch_results = await _img_box_upload_batch(
-                gallery, batch, start_index, progress_callback
+                gallery, batch, start_index, progress_callback, timeout, attempts
             )
             image_data.update(batch_results)
             start_index += len(batch)
@@ -144,6 +163,8 @@ class ImageBoxUploader(BaseImageHostUploader):
                 comments_enabled=request.comments_enabled,
                 batch_size=request.batch_size,
                 progress_callback=request.progress_callback,
+                timeout=request.timeout,
+                attempts=request.attempts,
             )
             or {}
         )

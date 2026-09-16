@@ -6,6 +6,7 @@ from src.backend.image_host_uploading.base_image_host import (
     BaseImageHostUploader,
     ImageUploadRequest,
 )
+from src.backend.upload_retry import IMAGE_UPLOAD_ATTEMPTS
 from src.packages.custom_types import ImageUploadData
 
 URL = "https://onlyimage.org/api/1/upload"
@@ -16,6 +17,8 @@ async def onlyimage_upload(
     filepaths: Sequence[Path],
     batch_size: int = 4,
     progress_callback: Callable[[int], Awaitable[None]] | None = None,
+    timeout: int | None = None,
+    attempts: int = IMAGE_UPLOAD_ATTEMPTS,
 ) -> dict[int, ImageUploadData] | None:
     return await api_key_image_upload(
         url=URL,
@@ -25,6 +28,8 @@ async def onlyimage_upload(
         filepaths=filepaths,
         batch_size=batch_size,
         progress_callback=progress_callback,
+        timeout=timeout,
+        attempts=attempts,
     )
 
 
@@ -44,6 +49,8 @@ class OnlyImageUploader(BaseImageHostUploader):
                 filepaths=request.filepaths,
                 batch_size=request.batch_size,
                 progress_callback=request.progress_callback,
+                timeout=request.timeout,
+                attempts=request.attempts,
             )
             or {}
         )

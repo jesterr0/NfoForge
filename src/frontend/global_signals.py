@@ -54,6 +54,8 @@ class GlobalSignals(QObject):
     overview_prompt_response = Signal(object)
     upload_retry_response = Signal(object)
     upload_retry_ack = Signal()  # GUI has received a retry prompt request
+    image_retry_response = Signal(object)  # ImageRetryDecision
+    image_retry_ack = Signal()  # GUI has received an image retry prompt request
     ########### SIGNALS ###########
 
     def __new__(cls) -> Self:

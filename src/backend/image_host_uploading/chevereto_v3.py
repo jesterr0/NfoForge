@@ -11,8 +11,14 @@ from src.backend.image_host_uploading.base_image_host import (
     BaseImageHostUploader,
     ImageUploadRequest,
 )
+from src.backend.image_host_uploading.retry import (
+    RETRYABLE_STATUS,
+    RetryableStatus,
+    image_client_timeout,
+    retry_image_upload,
+)
+from src.backend.upload_retry import IMAGE_UPLOAD_ATTEMPTS
 from src.exceptions import ImageUploadError
-from src.logger.nfo_forge_logger import LOG
 from src.packages.custom_types import ImageUploadData
 
 
@@ -120,48 +126,43 @@ async def _upload_image(
     img: Path,
     cb: Callable[[int], Awaitable[None]] | None,
     idx: int,
-    retries: int = 3,
+    attempts: int = IMAGE_UPLOAD_ATTEMPTS,
 ) -> ImageUploadData:
-    """Uploads an image with retries and proper error handling."""
-    for attempt in range(retries):
-        try:
-            form_data = aiohttp.FormData()
-            with open(img, "rb") as image_file:
-                form_data.add_field("source", image_file, filename=img.name)
-                form_data.add_field("type", "file")
-                form_data.add_field("action", "upload")
-                form_data.add_field("auth_token", auth_code)
-                form_data.add_field("album_id", album_id)
-                form_data.add_field("nsfw", "0")
+    """Uploads an image, retrying transient failures.
 
-                async with session.post(
-                    f"{base_url}/json", data=form_data
-                ) as img_upload:
-                    if img_upload.status == 200:
-                        response_data = await img_upload.json()
-                    elif img_upload.status in {429, 500, 502, 503, 504}:
-                        await asyncio.sleep(2**attempt)
-                        continue
-                    else:
-                        return ImageUploadData(None, None)
+    Unlike the other hosts this shares one session across every image: the
+    login and the album it uploads into belong to that session, so a fresh one
+    per attempt would have neither.
+    """
 
-                    image_data = response_data.get("image", {})
-                    full_url = image_data.get("url", "")
-                    medium_url = image_data.get("medium", {}).get("url", "")
-                    if cb:
-                        await cb(idx)
-                    return ImageUploadData(full_url, medium_url)
+    async def upload_once() -> ImageUploadData:
+        form_data = aiohttp.FormData()
+        with open(img, "rb") as image_file:
+            form_data.add_field("source", image_file, filename=img.name)
+            form_data.add_field("type", "file")
+            form_data.add_field("action", "upload")
+            form_data.add_field("auth_token", auth_code)
+            form_data.add_field("album_id", album_id)
+            form_data.add_field("nsfw", "0")
 
-        except (aiohttp.ClientError, asyncio.TimeoutError) as e:
-            if attempt < retries - 1:
-                await asyncio.sleep(2**attempt)
-            else:
-                LOG.warning(
-                    LOG.LOG_SOURCE.BE,
-                    f"Chevereto V3: upload failed after {retries} attempts: {e}",
-                )
+            async with session.post(f"{base_url}/json", data=form_data) as img_upload:
+                if img_upload.status in RETRYABLE_STATUS:
+                    raise RetryableStatus(img_upload.status, img_upload.reason)
+                if img_upload.status != 200:
+                    return ImageUploadData(None, None)
+                response_data = await img_upload.json()
 
-    return ImageUploadData(None, None)
+                image_data = response_data.get("image", {})
+                full_url = image_data.get("url", "")
+                medium_url = image_data.get("medium", {}).get("url", "")
+                if cb:
+                    await cb(idx)
+                return ImageUploadData(full_url, medium_url)
+
+    result = await retry_image_upload(
+        upload_once, host_name="Chevereto V3", attempts=attempts
+    )
+    return result if result is not None else ImageUploadData(None, None)
 
 
 async def _upload_images(
@@ -172,11 +173,12 @@ async def _upload_images(
     filepaths: Sequence[PathLike[str] | Path | str],
     batch_size: int,
     cb: Callable[[int], Awaitable[None]] | None,
+    attempts: int = IMAGE_UPLOAD_ATTEMPTS,
 ) -> dict[int, ImageUploadData]:
     tasks = [
         asyncio.create_task(
             _upload_image(
-                session, base_url, auth_code, album_id, Path(img), cb, idx + 1
+                session, base_url, auth_code, album_id, Path(img), cb, idx + 1, attempts
             )
         )
         for idx, img in enumerate(filepaths)
@@ -196,11 +198,13 @@ async def chevereto_v3_upload(
     batch_size: int = 4,
     album_name: str | None = None,
     progress_callback: Callable[[int], Awaitable[None]] | None = None,
+    timeout: int | None = None,
+    attempts: int = IMAGE_UPLOAD_ATTEMPTS,
 ) -> dict[int, ImageUploadData]:
     base_url = _clean_url(base_url)
     filepaths = sorted(filepaths)
 
-    async with aiohttp.ClientSession() as session:
+    async with aiohttp.ClientSession(timeout=image_client_timeout(timeout)) as session:
         auth_code = await _login_to_chevereto_v3(session, base_url, user, password)
         if not auth_code:
             raise ImageUploadError("Failed to log in to Chevereto v3")
@@ -222,6 +226,7 @@ async def chevereto_v3_upload(
             filepaths,
             batch_size,
             progress_callback,
+            attempts,
         )
         return uploaded_images
 
@@ -247,6 +252,8 @@ class CheveretoV3Uploader(BaseImageHostUploader):
                 batch_size=request.batch_size,
                 album_name=request.album_name,
                 progress_callback=request.progress_callback,
+                timeout=request.timeout,
+                attempts=request.attempts,
             )
             or {}
         )
