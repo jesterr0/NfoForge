@@ -5,6 +5,7 @@ from pathlib import Path
 import niquests
 
 from src.enums.tracker_selection import TrackerSelection
+from src.packages.custom_types import ImageHostRef
 
 RETRY_ATTEMPTS = 3
 """Default number of attempts for automatic retries of a tracker operation."""
@@ -116,3 +117,61 @@ def classify_upload_post_error(error: BaseException) -> tuple[bool | None, bool]
         # server_accepted=True above), so this is not provably pre-body.
         return None, True
     return None, True
+
+
+IMAGE_UPLOAD_ATTEMPTS = 3
+"""Default number of automatic attempts per image before the user is asked."""
+
+
+class ImageRetryAction(Enum):
+    """The action selected after images failed to reach an image host."""
+
+    RETRY = auto()
+    """Send the failed positions to the same host again."""
+
+    SWITCH_HOST = auto()
+    """Send every image to a different host instead."""
+
+    CANCEL = auto()
+    """Abandon the run."""
+
+
+@dataclass(frozen=True, slots=True)
+class ImageUploadFailure:
+    """User-facing details for images that did not reach one image host.
+
+    Keyed by host rather than by tracker: one host serves every tracker
+    pointed at it, so a tracker field could only ever name one of them. The
+    trackers waiting on it are carried alongside instead, because which
+    uploads are blocked is what makes the choice -- not which host failed.
+
+    `failed_positions` indexes the run's sorted screenshot list, which is the
+    same index the uploaded URLs are keyed by, so a retry can send exactly
+    those files back and merge the answers into place.
+    """
+
+    host: ImageHostRef
+    trackers: tuple[TrackerSelection, ...]
+    failed_positions: tuple[int, ...]
+    total: int
+    attempt: int
+    automatic_attempts: int
+    timeout: int
+    message: str
+
+
+@dataclass(frozen=True, slots=True)
+class ImageRetryDecision:
+    """What the user chose in response to an `ImageUploadFailure`.
+
+    A decision rather than a bare action because both of the ways forward
+    carry data: retrying is worth offering only if the timeout can be raised
+    with it, and switching hosts needs to say which host.
+    """
+
+    action: ImageRetryAction
+    host: ImageHostRef | None = None
+    """The destination for `SWITCH_HOST`; ignored otherwise."""
+
+    timeout: int | None = None
+    """Timeout to use for this attempt, or None to keep the configured one."""

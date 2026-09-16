@@ -187,6 +187,7 @@ def _fake_page(context: ProcessingContext, *, last_used: dict | None = None) -> 
     page._image_host_label = ProcessPage._image_host_label
     page._find_destination_index = ProcessPage._find_destination_index
     page._plugin_image_host_available = lambda: False
+    page._available_image_hosts = lambda: ProcessPage._available_image_hosts(page)  # pyright: ignore[reportArgumentType]
     page.image_host_banner = QLabel()
     page._apply_remembered_image_host = lambda combo, tracker, upload_type, restored: (
         ProcessPage._apply_remembered_image_host(  # pyright: ignore[reportArgumentType]

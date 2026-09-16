@@ -6,6 +6,7 @@ from src.backend.image_host_uploading.base_image_host import (
     BaseImageHostUploader,
     ImageUploadRequest,
 )
+from src.backend.upload_retry import IMAGE_UPLOAD_ATTEMPTS
 from src.packages.custom_types import ImageUploadData
 
 
@@ -26,6 +27,8 @@ async def chevereto_v4_upload(
     filepaths: Sequence[Path],
     batch_size: int = 4,
     progress_callback: Callable[[int], Awaitable[None]] | None = None,
+    timeout: int | None = None,
+    attempts: int = IMAGE_UPLOAD_ATTEMPTS,
     host_name: str = "Chevereto v4",
 ) -> dict[int, ImageUploadData] | None:
     """Upload images to a Chevereto V4 site.
@@ -43,6 +46,8 @@ async def chevereto_v4_upload(
         filepaths=filepaths,
         batch_size=batch_size,
         progress_callback=progress_callback,
+        timeout=timeout,
+        attempts=attempts,
     )
 
 
@@ -65,6 +70,8 @@ class CheveretoV4Uploader(BaseImageHostUploader):
                 filepaths=request.filepaths,
                 batch_size=request.batch_size,
                 progress_callback=request.progress_callback,
+                timeout=request.timeout,
+                attempts=request.attempts,
                 host_name=self.host_name,
             )
             or {}

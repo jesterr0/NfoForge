@@ -572,6 +572,8 @@ def _span_replacer(
     episodes: list[dict[str, object]] | None = None,
     start_payload: dict[str, object] | None = None,
     episode_end: int = 3,
+    mapping: dict[str, object] | None = None,
+    override_tokens: dict[str, str] | None = None,
 ) -> TokenReplacer:
     """A file covering S01E01-E03, mapped to episode 1 with a real title.
 
@@ -587,7 +589,9 @@ def _span_replacer(
             media_type=MediaType.SERIES,
             file_list=[file_path],
             series_episode_map={
-                file_path: {
+                file_path: mapping
+                if mapping is not None
+                else {
                     "season": 1,
                     "episode": 1,
                     "episode_end": episode_end,
@@ -616,6 +620,7 @@ def _span_replacer(
         unfilled_token_mode=UnfilledTokenRemoval.TOKEN_ONLY,
         season_number=1,
         episode_number=1,
+        override_tokens=override_tokens,
     )
 
 
@@ -626,6 +631,8 @@ def _span_replacer(
 def test_episode_title_tokens_blank_for_a_multi_episode_span(token: str) -> None:
     # A file covering S01E01-E03 has no single episode title. Naming it
     # after episode 1 asserts that one episode's title describes all three.
+    # Here episodes 2 and 3 are absent from the TVDB list entirely, so
+    # there is no shared title to fall back on either.
     assert _span_replacer(token).get_output() == ""
 
 
@@ -1658,3 +1665,132 @@ def test_audio_codec_tokens_when_there_is_no_atmos() -> None:
     assert replacer._audio_codec(_td()) == "TrueHD"
     assert replacer._audio_codec_no_atmos(_td()) == "TrueHD"
     assert replacer._atmos(_td()) == ""
+
+
+_TWO_PART_START = {
+    "seasonNumber": 1,
+    "number": 1,
+    "absoluteNumber": 1,
+    "name": "Lost & Found (1)",
+    "aired": "2021-10-28",
+}
+_TWO_PART_END = {
+    "seasonNumber": 1,
+    "number": 2,
+    "absoluteNumber": 2,
+    "name": "Lost & Found (2)",
+    "aired": "2021-10-28",
+}
+
+
+def _two_part_replacer(
+    token: str,
+    *,
+    file_name_mode: bool = True,
+    end_payload: dict[str, object] | None = None,
+    override: str | None = None,
+    override_tokens: dict[str, str] | None = None,
+) -> TokenReplacer:
+    """A file covering S01E01-E02, the two halves of one story.
+
+    The real shape from ``issues.md``: TVDB lists the premiere as two
+    episodes, the release ships it as one file.
+    """
+    mapping: dict[str, object] = {
+        "season": 1,
+        "episode": 1,
+        "episode_end": 2,
+        "episode_list": [1, 2],
+        "episode_name": "Lost & Found (1)",
+        "episode_data": dict(_TWO_PART_START),
+    }
+    if override is not None:
+        mapping["episode_title_override"] = override
+
+    return _span_replacer(
+        token,
+        file_name_mode=file_name_mode,
+        episodes=[dict(_TWO_PART_START), dict(end_payload or _TWO_PART_END)],
+        start_payload=dict(_TWO_PART_START),
+        episode_end=2,
+        mapping=mapping,
+        override_tokens=override_tokens,
+    )
+
+
+#: A whole template rather than a bare token: in file_name_mode a name that
+#: resolves to nothing is rejected and get_output() returns None, so a bare
+#: assertion would pass without proving the rest of the name survived.
+_TWO_PART_TEMPLATE = "Show S{season_number|zfill(2)}E{episode_number|zfill(2)} {episode_title_exact} 1080p"
+
+
+def test_a_two_part_episode_is_named_by_the_title_its_parts_share() -> None:
+    """The file holds one story, and that story has a name.
+
+    Blanking the title left the premiere renaming to a bare
+    "Show.S01E01-02.1080p", throwing away the only name the file had --
+    while every other file in the pack kept theirs.
+    """
+    output = _two_part_replacer(_TWO_PART_TEMPLATE).get_output()
+
+    assert output == "Show.S01E01-02.Lost.&.Found.1080p.mkv"
+
+
+def test_a_span_of_unrelated_episodes_is_still_left_unnamed() -> None:
+    """Naming it after the first would describe only part of the file."""
+    unrelated = {"seasonNumber": 1, "number": 2, "name": "Starstruck"}
+
+    output = _two_part_replacer(_TWO_PART_TEMPLATE, end_payload=unrelated).get_output()
+
+    assert output == "Show.S01E01-02.1080p.mkv"
+
+
+def test_a_span_with_an_unresolvable_episode_is_left_unnamed() -> None:
+    """A title covering only half the file is worse than no title."""
+    unknown = {"seasonNumber": 1, "number": 99, "name": "Elsewhere"}
+
+    output = _two_part_replacer(_TWO_PART_TEMPLATE, end_payload=unknown).get_output()
+
+    assert output == "Show.S01E01-02.1080p.mkv"
+
+
+def test_a_span_carries_no_title_into_a_tracker_release_name() -> None:
+    """Tracker rules name the episode only where there is one to name.
+
+    The filename convention is the opposite, so the two modes differ.
+    """
+    output = _two_part_replacer(_TWO_PART_TEMPLATE, file_name_mode=False).get_output()
+
+    assert output == "Show S01E01-02 1080p"
+
+
+def test_a_row_title_override_names_a_span_however_the_user_wants() -> None:
+    output = _two_part_replacer(
+        _TWO_PART_TEMPLATE, override="Lost and Found"
+    ).get_output()
+
+    assert output == "Show.S01E01-02.Lost.and.Found.1080p.mkv"
+
+
+def test_a_row_title_override_beats_a_pack_wide_override() -> None:
+    """Both are the user's, but one names this file and the other names all.
+
+    A pack-wide value is applied before the token is ever resolved, so
+    without this the per-row column could never take effect.
+    """
+    output = _two_part_replacer(
+        _TWO_PART_TEMPLATE,
+        override="Lost and Found",
+        override_tokens={"episode_title_exact": "Pack Wide"},
+    ).get_output()
+
+    assert output == "Show.S01E01-02.Lost.and.Found.1080p.mkv"
+
+
+def test_a_pack_wide_override_still_applies_where_no_row_overrides_it() -> None:
+    output = _two_part_replacer(
+        _TWO_PART_TEMPLATE,
+        override_tokens={"episode_title_exact": "Pack Wide"},
+    ).get_output()
+
+    assert output == "Show.S01E01-02.Pack.Wide.1080p.mkv"

@@ -52,6 +52,9 @@ from src.backend.process import ProcessBackEnd
 from src.backend.torrents import BASE_TORRENT_SUFFIX
 from src.backend.tracker_run_data import build_tracker_data, image_host_label
 from src.backend.upload_retry import (
+    ImageRetryAction,
+    ImageRetryDecision,
+    ImageUploadFailure,
     TrackerRunOutcome,
     UploadFailure,
     UploadFailurePhase,
@@ -65,6 +68,7 @@ from src.enums.tracker_selection import TrackerSelection
 from src.enums.upload_process import RunPhase, UploadProcessMode
 from src.exceptions import ProcessCancelled, ProcessError
 from src.frontend.custom_widgets.combo_qtree import ComboBoxTreeWidget
+from src.frontend.custom_widgets.image_retry_dialog import ImageRetryDialog
 from src.frontend.custom_widgets.overview_dialog import OverviewDialog
 from src.frontend.custom_widgets.prompt_token_editor_dialog import (
     PromptTokenEditorDialog,
@@ -229,12 +233,33 @@ class _UploadRetryWaiter(QObject):
         self._loop.quit()
 
 
+class _ImageRetryWaiter(QObject):
+    """Bound-method receiver for ``image_retry_ack`` / ``image_retry_response``.
+    See ``_TokenPromptWaiter`` for why a closure slot is not used here."""
+
+    def __init__(self, watchdog: QTimer, loop: QEventLoop) -> None:
+        super().__init__()
+        self._watchdog = watchdog
+        self._loop = loop
+        self.response: ImageRetryDecision | None = None
+
+    @Slot()
+    def on_ack(self) -> None:
+        self._watchdog.stop()
+
+    @Slot(object)
+    def on_response(self, decision: ImageRetryDecision) -> None:
+        self.response = decision
+        self._loop.quit()
+
+
 class ProcessWorker(BaseWorker):
     queued_status_update = Signal(str, str)
     progress_signal = Signal(float)
     prompt_tokens_signal = Signal(list)
     overview_signal = Signal(object)
     upload_retry_signal = Signal(object)
+    image_retry_signal = Signal(object)
     run_outcome_signal = Signal(object, object)  # TrackerSelection, TrackerRunOutcome
     job_cancelled = Signal()
 
@@ -272,6 +297,7 @@ class ProcessWorker(BaseWorker):
                 token_prompt_cb=self.token_prompt_and_wait_cb,
                 overview_cb=self.overview_prompt_and_wait_cb,
                 upload_retry_cb=self.upload_retry_and_wait_cb,
+                image_retry_cb=self.image_retry_and_wait_cb,
                 run_outcome_cb=self._run_outcome_cb,
                 phase=self.phase,
             )
@@ -369,6 +395,39 @@ class ProcessWorker(BaseWorker):
             GSigs().upload_retry_ack.disconnect(waiter.on_ack)
 
         return waiter.response or UploadRetryAction.CANCEL
+
+    def image_retry_and_wait_cb(
+        self, failure: ImageUploadFailure
+    ) -> ImageRetryDecision:
+        """Ask the frontend what to do about images that did not reach a host.
+
+        The same two-stage wait as `upload_retry_and_wait_cb`: bounded until
+        the GUI says it has the prompt, then unbounded, because the answer is
+        a decision rather than a reflex.
+        """
+        loop = QEventLoop()
+
+        watchdog = QTimer()
+        watchdog.setSingleShot(True)
+        watchdog.timeout.connect(loop.quit)
+
+        waiter = _ImageRetryWaiter(watchdog, loop)
+
+        # Connect before emitting so the response can never arrive first, and
+        # always disconnect so a raise inside the loop cannot leak a connection
+        # onto the global signal singleton.
+        GSigs().image_retry_ack.connect(waiter.on_ack)
+        GSigs().image_retry_response.connect(waiter.on_response)
+        try:
+            watchdog.start(self.RETRY_PROMPT_ACK_TIMEOUT_MS)
+            self.image_retry_signal.emit(failure)
+            loop.exec_()
+        finally:
+            watchdog.stop()
+            GSigs().image_retry_response.disconnect(waiter.on_response)
+            GSigs().image_retry_ack.disconnect(waiter.on_ack)
+
+        return waiter.response or ImageRetryDecision(action=ImageRetryAction.CANCEL)
 
 
 class ProcessPage(BaseWizardPage):
@@ -873,6 +932,7 @@ class ProcessPage(BaseWizardPage):
         self.process_worker.prompt_tokens_signal.connect(self._on_prompt_tokens_signal)
         self.process_worker.overview_signal.connect(self._on_overview_signal)
         self.process_worker.upload_retry_signal.connect(self._on_upload_retry_signal)
+        self.process_worker.image_retry_signal.connect(self._on_image_retry_signal)
         self.process_worker.run_outcome_signal.connect(self._on_run_outcome)
         self.process_worker.start()
 
@@ -1300,6 +1360,35 @@ class ProcessPage(BaseWizardPage):
             # finally keeps a dialog failure from hanging the whole run.
             GSigs().upload_retry_response.emit(action)
 
+    @Slot(object)
+    def _on_image_retry_signal(self, failure: ImageUploadFailure) -> None:
+        """Present retry/switch-host/cancel while the worker waits.
+
+        Shaped after `_on_upload_retry_signal`, for the same reasons: the ack
+        goes out before anything that can fail, and the response goes out from
+        a `finally`, so a dialog that cannot be built ends the run rather than
+        hanging the worker on a prompt nobody can see.
+        """
+        decision = ImageRetryDecision(action=ImageRetryAction.CANCEL)
+        # Tell the worker its request was received, so it stops the ack
+        # watchdog and waits indefinitely for the user's actual answer.
+        GSigs().image_retry_ack.emit()
+        try:
+            dialog = ImageRetryDialog(
+                failure=failure,
+                hosts=sorted(self._available_image_hosts(), key=str),
+                parent=self,
+            )
+            dialog.exec()
+            decision = dialog.results
+        except Exception as e:
+            LOG.error(
+                LOG.LOG_SOURCE.FE,
+                f"Failed to present image retry prompt: {e}\n{traceback.format_exc()}",
+            )
+        finally:
+            GSigs().image_retry_response.emit(decision)
+
     def _job_ended(self) -> None:
         self.dupe_worker = None
         # if we just finished processing uploads we can show the open temp button
@@ -1509,18 +1598,13 @@ class ProcessPage(BaseWizardPage):
                 self.context.shared_data.loaded_images
                 or self.context.shared_data.url_data
             ):
+                # a plugin-provided host has no payload of its own to carry,
+                # so it stands in as True the way it always has
+                configured = self.config.settings.image_hosts.by_selection()
                 enabled_img_hosts = enabled_img_hosts | {
-                    key: value
-                    for key, value in self.config.settings.image_hosts.by_selection().items()
-                    if value.enabled and value.is_configured()
+                    host: configured.get(host, True)
+                    for host in self._available_image_hosts()
                 }
-                # a plugin-provided image host has no `ImagePayloadBase` entry in
-                # `by_selection()` (it manages its own config); its availability
-                # here comes entirely from the Settings > Plugins selection instead
-                if self._plugin_image_host_available():
-                    enabled_img_hosts = enabled_img_hosts | {
-                        ImageHostRef(ImageHost.PLUGIN): True
-                    }
 
             # A host this job already uploaded to can be served from the stored
             # URLs alone -- no local screenshots, and no credentials, since
@@ -1674,6 +1758,25 @@ class ProcessPage(BaseWizardPage):
             "above, if this is not what you want."
         )
         self.image_host_banner.show()
+
+    def _available_image_hosts(self) -> set[ImageHostRef]:
+        """Every image host this profile could upload to right now.
+
+        Shared with the mid-run retry prompt rather than inlined at the combo
+        box: a host the wizard would have offered and the prompt would not is
+        a host the user cannot reach at the one moment they need it.
+        """
+        hosts = {
+            key
+            for key, value in self.config.settings.image_hosts.by_selection().items()
+            if value.enabled and value.is_configured()
+        }
+        # a plugin-provided image host has no `ImagePayloadBase` entry in
+        # `by_selection()` (it manages its own config); its availability
+        # here comes entirely from the Settings > Plugins selection instead
+        if self._plugin_image_host_available():
+            hosts.add(ImageHostRef(ImageHost.PLUGIN))
+        return hosts
 
     def _plugin_image_host_available(self) -> bool:
         """Whether a loaded plugin currently provides image host uploads.

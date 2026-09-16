@@ -427,11 +427,34 @@ def test_auto_match_keeps_a_non_contiguous_episode_list() -> None:
     assert mapping["episode_list"] == [1, 5]
 
 
-def test_manual_episode_edit_rebuilds_a_stale_episode_list() -> None:
-    # Retyping the episode moves the file's start, so the list detected from
-    # the old start no longer describes it. Carrying it forward would leave
-    # the row naming episodes the file does not claim.
+def test_the_episode_cell_says_exactly_which_episodes_a_file_covers() -> None:
+    # The cell used to take a single number and carry any detected span
+    # forward underneath it, so a span could never be narrowed: typing "2"
+    # over "S01E01E02E03" left the row still claiming 2 and 3. It now means
+    # what it says, and a span is written out in full.
     file_path = Path("Show.S01E01E02E03.mkv")
+    mapper = _make_mapper_with_files([file_path])
+    mapper._populate_files_table()
+    mapper.available_episodes = {
+        1: {number: {"name": f"Episode {number}"} for number in range(1, 6)}
+    }
+    mapper._auto_match_files()
+    assert mapper.files_table.item(0, 2).text() == "1-3"  # type: ignore[OptionalMemberAccess]
+
+    episode_item = mapper.files_table.item(0, 2)
+    assert episode_item is not None
+    episode_item.setText("2")
+
+    mapping = mapper.file_episode_mappings[file_path]
+    assert mapping["episode"] == 2
+    assert mapping["episode_list"] == [2]
+    assert mapping["episode_end"] is None
+
+
+def test_a_span_can_be_typed_into_the_episode_cell() -> None:
+    # The whole point of the spec cell: a file GuessIt read as one episode
+    # can be told it covers two. Nothing in the old UI could express this.
+    file_path = Path("Show.S01E01.mkv")
     mapper = _make_mapper_with_files([file_path])
     mapper._populate_files_table()
     mapper.available_episodes = {
@@ -441,12 +464,29 @@ def test_manual_episode_edit_rebuilds_a_stale_episode_list() -> None:
 
     episode_item = mapper.files_table.item(0, 2)
     assert episode_item is not None
-    episode_item.setText("2")
-    mapper._on_table_item_changed(episode_item)
+    episode_item.setText("1-2")
 
     mapping = mapper.file_episode_mappings[file_path]
-    assert mapping["episode"] == 2
-    assert mapping["episode_list"] == [2, 3]
+    assert mapping["episode"] == 1
+    assert mapping["episode_end"] == 2
+    assert mapping["episode_list"] == [1, 2]
+
+
+def test_an_unreadable_episode_cell_leaves_the_mapping_alone() -> None:
+    # A half-typed "1-" is not yet wrong, and must not drop the row.
+    file_path = Path("Show.S01E01.mkv")
+    mapper = _make_mapper_with_files([file_path])
+    mapper._populate_files_table()
+    mapper.available_episodes = {
+        1: {number: {"name": f"Episode {number}"} for number in range(1, 6)}
+    }
+    mapper._auto_match_files()
+
+    episode_item = mapper.files_table.item(0, 2)
+    assert episode_item is not None
+    episode_item.setText("1-")
+
+    assert mapper.file_episode_mappings[file_path]["episode"] == 1
 
 
 def test_manual_season_edit_keeps_a_non_contiguous_episode_list() -> None:
@@ -596,7 +636,9 @@ def test_fuzzy_match_falls_back_to_filename_without_episode_title() -> None:
         parsed_data={"season": 1},
     )
 
-    assert result == (1, 1, 1.0)
+    # Every episode the file covers, not just the first: a title can name a
+    # whole multi-part story, so the answer is always a tuple.
+    assert result == (1, (1,), 1.0)
 
 
 def test_auto_match_fuzzy_respects_parsed_season_for_duplicate_episode_names() -> None:

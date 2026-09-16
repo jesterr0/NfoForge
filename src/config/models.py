@@ -226,6 +226,7 @@ class SeriesSettings:
     standard_episode_token: str
     daily_episode_token: str
     anime_episode_token: str
+    dvd_episode_token: str
     season_folder_token: str
     # Blank means "use season_folder_token": in a single-season pack the
     # opened folder IS the season folder, so one token covers both. This
@@ -236,6 +237,7 @@ class SeriesSettings:
     standard_title_token: str
     daily_title_token: str
     anime_title_token: str
+    dvd_title_token: str
 
 
 @dataclass(slots=True)
