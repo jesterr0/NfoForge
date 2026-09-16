@@ -18,6 +18,7 @@
 
 - **A file covering several episodes is named after the title its episodes share.** `S01E01-E02` holding "Lost & Found (1)" and "Lost & Found (2)" now renames to `Show.S01E01-02.Lost.and.Found...` rather than dropping the title entirely -- it was the only name the file had, while every other file in the pack kept theirs. Part markers (`(1)`, `, Part 2`, `Pt. 2`) are stripped before comparing, and where the episodes have genuinely different titles none is used, since one episode's title would not describe the file. **Tracker release names are unchanged**: those trackers' own rules name the episode only where there is one episode to name, so a span still goes up unnamed there. A title typed in the new Title Override column applies in both.
 - **Changing the episode ordering no longer clears every assignment.** The numbers on a row are your answer; only which episode each one names changes with the ordering, so rows are re-read in place and auto-matching fills in whatever is still unmapped.
+- Updated platformdirs.
 
 ### Fixed
 
