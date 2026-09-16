@@ -5,6 +5,7 @@ from typing import Any
 
 from guessit import guessit
 
+from src.backend.utils.episode_matching import expand_mapping_episodes
 from src.enums.media_type import MediaType
 from src.enums.series import EpisodeFormat
 from src.payloads.media_inputs import MediaInputPayload
@@ -159,7 +160,11 @@ def build_series_release_info(media_input: MediaInputPayload) -> SeriesReleaseIn
             episode_starts.append(episode)
             upper = episode_end if episode_end is not None else episode
             episode_ends.append(upper)
-            episode_numbers.update(range(episode, upper + 1))
+            # Expand through the shared helper rather than as a raw range:
+            # a non-contiguous file recorded as episode_list [1, 5] carries
+            # episode_end 5, and a range reads that as five episodes.
+            covered = expand_mapping_episodes(mapping) if mapping else []
+            episode_numbers.update(covered or range(episode, upper + 1))
         if mapping and mapping.get("episode_order_type_id") is not None:
             order_type_ids.append(mapping["episode_order_type_id"])
 

@@ -1,4 +1,5 @@
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
@@ -28,8 +29,21 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from rapidfuzz import fuzz
 
+from src.backend.utils.episode_matching import (
+    TITLE_DISAGREEMENT_FLOOR,
+    TITLE_SUGGESTION_FLOOR,
+    ParsedFile,
+    TitleCheck,
+    check_title_against_episode,
+    claimed_season_episodes,
+    episode_designator,
+    episode_spec_text,
+    expand_mapping_episodes,
+    parse_episode_spec,
+    rank_episode_orderings,
+    rank_title_candidates,
+)
 from src.config.tv_tokens import SUPPORTED_TVR_FORMATS
 from src.enums.series import EpisodeFormat
 from src.frontend.custom_widgets.custom_splitter import CustomSplitter
@@ -42,9 +56,16 @@ NO_TVDB_EPISODE_DATA_MESSAGE = (
     "TVDB returned no episode data for this series; enter season/episode manually."
 )
 NO_TVDB_EPISODE_DATA_STYLE = "color: #b3261e; font-weight: bold;"
+TITLE_MISMATCH_STYLE = "color: #8a5300; font-weight: bold;"
 
 EpisodeData = dict[str, Any]
 EpisodeMapping = dict[str, Any]
+
+#: Assignment method for a season/episode the filename states plainly but the
+#: selected TVDB ordering does not list. The numbers are kept as parsed and
+#: flagged rather than discarded -- see ``_store_unverified_parse``.
+UNVERIFIED_PARSE_METHOD = "parsed (no TVDB match)"
+UNVERIFIED_PARSE_CONFIDENCE = 0.6
 
 
 def match_by_absolute(
@@ -167,6 +188,40 @@ def match_by_air_date(
     return matches
 
 
+class EpisodeSpecTableItem(QTableWidgetItem):
+    """Editable cell holding the episodes one file covers.
+
+    Accepts a span -- ``1-2``, ``1,5`` -- rather than a single number, which
+    is the only way to say "this file covers both parts of the premiere".
+    The digits-only cell it replaces could not express that at all: a span
+    survived only where GuessIt had parsed one out of the filename, and
+    retyping the episode silently dropped it.
+
+    Input is not filtered as it is typed, because a half-typed ``1-`` is not
+    yet wrong; ``parse_episode_spec`` decides what a completed edit means.
+    """
+
+    def __init__(self, text: str = "") -> None:
+        super().__init__(text)
+        self.setFlags(self.flags() | Qt.ItemFlag.ItemIsEditable)
+        self.setToolTip(
+            "Episodes this file covers: 1, or 1-2 for a two-part episode, "
+            "or 1,5 for separate episodes."
+        )
+
+
+class TitleOverrideTableItem(QTableWidgetItem):
+    """Editable cell holding a title to use instead of the provider's."""
+
+    def __init__(self, text: str = "") -> None:
+        super().__init__(text)
+        self.setFlags(self.flags() | Qt.ItemFlag.ItemIsEditable)
+        self.setToolTip(
+            "Leave blank to use the episode title from TVDB. Anything typed "
+            "here is what the renamed file and the release title will carry."
+        )
+
+
 class EnhancedFileTableItem(QTableWidgetItem):
     """Enhanced table item for files with episode data"""
 
@@ -224,6 +279,20 @@ class SeriesEpisodeMapper(QWidget):
     mapping_changed = Signal()
     validation_changed = Signal(bool)
 
+    # Files table columns. Named because the literals were spread over a
+    # dozen call sites, so inserting one column meant finding every 3 and 4
+    # that happened to mean "confidence" and "method".
+    COL_FILENAME = 0
+    COL_SEASON = 1
+    COL_EPISODE = 2
+    COL_MATCHED = 3
+    COL_TITLE = 4
+    COL_CONFIDENCE = 5
+    COL_METHOD = 6
+    _COLUMN_COUNT = 7
+    #: Columns the user can type into, and so the only ones worth reacting to.
+    _EDITABLE_COLUMNS = (1, 2, 4)
+
     # Semantic cell colours. The foreground is set alongside every background:
     # the app's default text colour follows the theme, and on the dark theme it
     # is near-white, which is unreadable on any of these.
@@ -236,6 +305,24 @@ class SeriesEpisodeMapper(QWidget):
     _SEARCH_HIGHLIGHT_COLOR = QColor(255, 243, 150)  # search term match
     _MANUAL_MATCH_COLOR = QColor(200, 255, 200)  # manual edit matched TVDB
     _MANUAL_UNVERIFIED_COLOR = QColor(255, 205, 120)  # manual edit unverified
+
+    @contextmanager
+    def _suppress_table_signals(self) -> Iterator[None]:
+        """Write to the files table without re-entering the edit handler.
+
+        Every ``setItem`` and every ``setBackground`` emits ``itemChanged``,
+        so any programmatic write re-enters ``_on_table_item_changed`` -- and
+        that path re-stores the row as a manual edit, overwriting the method
+        and confidence just computed, or deletes the mapping outright while
+        blank cells are going in. Nests safely, so a caller need not know
+        whether its own caller already blocked.
+        """
+        previously_blocked = self.files_table.signalsBlocked()
+        self.files_table.blockSignals(True)
+        try:
+            yield
+        finally:
+            self.files_table.blockSignals(previously_blocked)
 
     @classmethod
     def _paint_cell(
@@ -392,24 +479,41 @@ class SeriesEpisodeMapper(QWidget):
         self.files_table = QTableWidget(self)
         self.files_table.setFrameShape(QFrame.Shape.Box)
         self.files_table.setFrameShadow(QFrame.Shadow.Sunken)
-        self.files_table.setColumnCount(5)
+        self.files_table.setColumnCount(self._COLUMN_COUNT)
         self.files_table.setHorizontalHeaderLabels(
-            ("Filename", "Season", "Episode", "Confidence", "Method")
+            (
+                "Filename",
+                "Season",
+                "Episode(s)",
+                "Matched Episode",
+                "Title Override",
+                "Confidence",
+                "Method",
+            )
         )
         self.files_table.horizontalHeader().setSectionResizeMode(
-            0, QHeaderView.ResizeMode.Stretch
+            self.COL_FILENAME, QHeaderView.ResizeMode.Stretch
         )
         self.files_table.horizontalHeader().setSectionResizeMode(
-            1, QHeaderView.ResizeMode.ResizeToContents
+            self.COL_SEASON, QHeaderView.ResizeMode.ResizeToContents
         )
         self.files_table.horizontalHeader().setSectionResizeMode(
-            2, QHeaderView.ResizeMode.ResizeToContents
+            self.COL_EPISODE, QHeaderView.ResizeMode.ResizeToContents
+        )
+        # The episode a row is bound to is the one thing the user has to be
+        # able to check at a glance: a number that matches while the name it
+        # points at is wrong is exactly how a whole pack went out misnamed.
+        self.files_table.horizontalHeader().setSectionResizeMode(
+            self.COL_MATCHED, QHeaderView.ResizeMode.Stretch
         )
         self.files_table.horizontalHeader().setSectionResizeMode(
-            3, QHeaderView.ResizeMode.ResizeToContents
+            self.COL_TITLE, QHeaderView.ResizeMode.Stretch
         )
         self.files_table.horizontalHeader().setSectionResizeMode(
-            4, QHeaderView.ResizeMode.ResizeToContents
+            self.COL_CONFIDENCE, QHeaderView.ResizeMode.ResizeToContents
+        )
+        self.files_table.horizontalHeader().setSectionResizeMode(
+            self.COL_METHOD, QHeaderView.ResizeMode.ResizeToContents
         )
 
         self.files_table.setSelectionBehavior(
@@ -421,7 +525,17 @@ class SeriesEpisodeMapper(QWidget):
 
         self.files_stats_label = QLabel("Files: 0 total, 0 assigned")
 
+        # Raised when most of the pack's filenames name a different episode
+        # than the one their numbers landed on. That is one ordering problem,
+        # not twenty row problems, so it is said once here rather than by
+        # painting every row amber -- if everything is flagged, nothing is.
+        self.title_warning_label = QLabel("")
+        self.title_warning_label.setStyleSheet(TITLE_MISMATCH_STYLE)
+        self.title_warning_label.setWordWrap(True)
+        self.title_warning_label.hide()
+
         files_layout = QVBoxLayout(files_group)
+        files_layout.addWidget(self.title_warning_label)
         files_layout.addWidget(self.files_table)
         files_layout.addWidget(self.files_stats_label)
 
@@ -453,7 +567,11 @@ class SeriesEpisodeMapper(QWidget):
         # episode controls - right side
         self.episode_order_combo = QComboBox()
         # will be populated dynamically based on available episode types
-        self.episode_order_combo.currentTextChanged.connect(
+        # Index, not text: the item labels carry the fit evidence and are
+        # rewritten whenever the files change, and a text-keyed signal would
+        # read every relabel as the user picking a different ordering and
+        # clear every assignment.
+        self.episode_order_combo.currentIndexChanged.connect(
             self._on_episode_order_changed
         )
 
@@ -517,10 +635,62 @@ class SeriesEpisodeMapper(QWidget):
                 media_input_payload.series_episode_format, manually_selected=True
             )
 
+        # Adopt whatever mapping has already been committed for these files
+        # -- a resumed saved job, or simply this page being entered a second
+        # time. Without this the widget's own dict was the only store, so
+        # every visit started from scratch and any row the user had fixed by
+        # hand (or any row auto-matching cannot re-derive) was silently lost
+        # and the page failed validation again.
+        self._seed_mappings_from_payload()
+
         # load and populate data
         self._load_episode_data()
         self._populate_files_table()
-        self._auto_match_files()
+        self._restore_existing_assignments()
+        self._auto_match_files(preserve_existing=True)
+
+    def _seed_mappings_from_payload(self) -> None:
+        """Adopt the committed ``series_episode_map`` for the current files.
+
+        Rows are copied so later edits in the widget do not mutate the payload
+        before the page commits, and only rows whose file is still in the
+        input list are taken -- a stale row would otherwise keep a mapping
+        alive for a file the user has since removed.
+        """
+        if not self.media_input_payload:
+            return
+
+        committed = self.media_input_payload.series_episode_map
+        if not committed:
+            return
+
+        current_files = set(self.media_input_payload.file_list or ())
+        for file_path, mapping in committed.items():
+            if file_path in current_files and isinstance(mapping, dict):
+                self.file_episode_mappings.setdefault(file_path, dict(mapping))
+
+    def _restore_existing_assignments(self) -> None:
+        """Render the rows already held in ``file_episode_mappings``.
+
+        ``_populate_files_table`` writes every row blank, so anything adopted
+        or carried over has to be painted back into the table before
+        auto-matching runs, or it would be invisible and look unmapped.
+        """
+        for row in range(self.files_table.rowCount()):
+            filename_item = self.files_table.item(row, self.COL_FILENAME)
+            if not isinstance(filename_item, EnhancedFileTableItem):
+                continue
+
+            mapping = self.file_episode_mappings.get(filename_item.file_path)
+            if not mapping:
+                continue
+
+            season = mapping.get("season")
+            episode = mapping.get("episode")
+            if season is None or episode is None:
+                continue
+
+            self._update_file_row_assignment(row, mapping)
 
     def _load_episode_data(self) -> None:
         """Load all available episode data from TVDB"""
@@ -556,27 +726,97 @@ class SeriesEpisodeMapper(QWidget):
 
         self._load_episodes_with_ordering()
 
+    def _parsed_files(self) -> list[ParsedFile]:
+        """What each input filename claims, parsing and caching as needed.
+
+        Reads the input list rather than the files table, because the
+        ordering is chosen while episode data loads -- before the table has
+        been built.
+        """
+        if not self.media_input_payload or not self.media_input_payload.file_list:
+            return []
+
+        parsed_files: list[ParsedFile] = []
+        for file_path in self.media_input_payload.file_list:
+            parsed_data = self._guessit_cache.get(file_path)
+            if parsed_data is None:
+                parsed_data = self._parse_file(file_path)
+                self._guessit_cache[file_path] = parsed_data
+
+            episode = parsed_data.get("episode")
+            if isinstance(episode, list):
+                episodes = tuple(
+                    number for number in sorted(episode) if isinstance(number, int)
+                )
+            elif isinstance(episode, int):
+                episodes = (episode,)
+            else:
+                episodes = ()
+
+            episode_title = parsed_data.get("episode_title")
+            if isinstance(episode_title, list):
+                episode_title = " ".join(
+                    value for value in episode_title if isinstance(value, str)
+                )
+
+            parsed_files.append(
+                ParsedFile(
+                    season=self._coerce_season(parsed_data.get("season")),
+                    episodes=episodes,
+                    title=episode_title if isinstance(episode_title, str) else None,
+                )
+            )
+        return parsed_files
+
+    def _committed_order_type_id(self) -> Any | None:
+        """The ordering the rows already adopted were built against."""
+        for mapping in self.file_episode_mappings.values():
+            type_id = mapping.get("episode_order_type_id")
+            if type_id is not None:
+                return type_id
+        return None
+
     def _setup_episode_order_combo_from_data(self) -> None:
-        """Setup episode order combo based on available enhanced episode types"""
+        """Fill the ordering combo, best fit for these files selected.
+
+        The selection used to be item 0 -- whichever ordering TVDB happened
+        to serve first. That is not a choice: the same season/episode pair
+        names a different episode in each ordering, so landing on the wrong
+        one re-points every file after the first divergence, at full
+        confidence and with nothing on screen saying so. Each item now
+        carries the evidence it was ranked on, so a user who disagrees can
+        see what they are overriding.
+        """
         if not self.episodes_by_type:
             return
+
+        ranked = rank_episode_orderings(
+            self._parsed_files(),
+            self.episodes_by_type,
+            prefer_type_id=self._committed_order_type_id(),
+            allow_absolute=self.get_series_format() is EpisodeFormat.ANIME_ABSOLUTE,
+        )
+        summaries = {score.type_id: score.summary() for score in ranked}
+        best_type_id = ranked[0].type_id if ranked else None
 
         self.episode_order_combo.blockSignals(True)
         try:
             self.episode_order_combo.clear()
 
-            for type_id, type_data in self.episodes_by_type.items():
+            selected_index = 0
+            for index, (type_id, type_data) in enumerate(self.episodes_by_type.items()):
                 type_name = type_data.get("type_name", f"Type {type_id}")
-                episode_count = len(type_data.get("episodes", []))
-                display_name = f"{type_name} ({episode_count} episodes)"
+                summary = summaries.get(type_id)
+                if summary is None:
+                    # Not ranked (absolute order on a non-absolute release);
+                    # still selectable, just without a fit figure.
+                    summary = f"{len(type_data.get('episodes', []))} eps"
+                self.episode_order_combo.addItem(f"{type_name} — {summary}", type_id)
+                if type_id == best_type_id:
+                    selected_index = index
 
-                # store the type ID in the combo item data for easy lookup
-                self.episode_order_combo.addItem(display_name, type_id)
-
-            # set the first item as default selection without running the
-            # ordering/matching pipeline once for every combo mutation.
             if self.episode_order_combo.count() > 0:
-                self.episode_order_combo.setCurrentIndex(0)
+                self.episode_order_combo.setCurrentIndex(selected_index)
                 self._sync_release_format_to_order()
         finally:
             self.episode_order_combo.blockSignals(False)
@@ -584,6 +824,26 @@ class SeriesEpisodeMapper(QWidget):
     def _populate_files_table(self) -> None:
         """Populate the files table with file data"""
         if not self.media_input_payload or not self.media_input_payload.file_list:
+            return
+
+        # Block signals for the whole build. Every setItem() below fires
+        # itemChanged, and the blank Season/Episode cells this writes drive
+        # _on_table_item_changed down its "either field is empty" path, which
+        # deletes the row's mapping. Re-entering the page therefore discarded
+        # every mapping it was about to display -- including a hand-typed one
+        # that auto-matching cannot re-derive. It also rebuilt the whole
+        # episodes tree once per row.
+        self.files_table.blockSignals(True)
+        try:
+            self._populate_files_table_rows()
+        finally:
+            self.files_table.blockSignals(False)
+
+        self._update_files_stats()
+
+    def _populate_files_table_rows(self) -> None:
+        """Write one row per input file. Caller blocks the table's signals."""
+        if not self.media_input_payload:
             return
 
         self.files_table.setRowCount(len(self.media_input_payload.file_list))
@@ -594,10 +854,7 @@ class SeriesEpisodeMapper(QWidget):
             # GuessIt work on the GUI thread.
             parsed_data = self._guessit_cache.get(file_path)
             if parsed_data is None:
-                try:
-                    parsed_data = dict(guessit(str(file_path)))
-                except Exception:
-                    parsed_data = {}
+                parsed_data = self._parse_file(file_path)
                 self._guessit_cache[file_path] = parsed_data
             else:
                 parsed_data = dict(parsed_data)
@@ -606,29 +863,72 @@ class SeriesEpisodeMapper(QWidget):
             filename_item = EnhancedFileTableItem(file_path.name, file_path)
             filename_item.parsed_data = parsed_data
             filename_item.setFlags(filename_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-            self.files_table.setItem(row, 0, filename_item)
+            self.files_table.setItem(row, self.COL_FILENAME, filename_item)
 
             # season column (editable, numeric only)
             season_item = NumericTableItem("")
-            self.files_table.setItem(row, 1, season_item)
+            self.files_table.setItem(row, self.COL_SEASON, season_item)
 
-            # episode column (editable, numeric only)
-            episode_item = NumericTableItem("")
-            self.files_table.setItem(row, 2, episode_item)
+            # episode column (editable, accepts a span)
+            episode_item = EpisodeSpecTableItem("")
+            self.files_table.setItem(row, self.COL_EPISODE, episode_item)
+
+            # title override column (editable, blank means "use TVDB's")
+            title_item = TitleOverrideTableItem("")
+            self.files_table.setItem(row, self.COL_TITLE, title_item)
+
+            # matched episode column (read only)
+            matched_item = QTableWidgetItem("")
+            matched_item.setFlags(matched_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            self.files_table.setItem(row, self.COL_MATCHED, matched_item)
 
             # confidence column (read only)
             confidence_item = QTableWidgetItem("")
             confidence_item.setFlags(
                 confidence_item.flags() & ~Qt.ItemFlag.ItemIsEditable
             )
-            self.files_table.setItem(row, 3, confidence_item)
+            self.files_table.setItem(row, self.COL_CONFIDENCE, confidence_item)
 
             # method column (read only)
             method_item = QTableWidgetItem("")
             method_item.setFlags(method_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-            self.files_table.setItem(row, 4, method_item)
+            self.files_table.setItem(row, self.COL_METHOD, method_item)
 
-        self._update_files_stats()
+    @staticmethod
+    def _parse_file(file_path: Path) -> EpisodeData:
+        """Parse one input file's season, episode and episode title.
+
+        The filename is parsed on its own, and as an episode, which is what
+        every other parse site in the app does. Handing GuessIt the whole
+        path instead let the directories above the file compete for the show
+        title: for a pack sitting in a folder that carries its own release
+        info, GuessIt read the grandparent as the show and the episode title
+        came back as the containing directory's name -- the same value for
+        every file in the pack. Season and episode were unaffected, so the
+        damage was invisible until something read the title, which fuzzy
+        matching does for any file the numbers cannot place.
+
+        The full path is still consulted for a season the filename omits,
+        because a pack may keep its episodes in ``Season NN`` subfolders with
+        bare names like ``ep01.mkv``. Only the season is taken from it.
+        """
+        try:
+            parsed: EpisodeData = dict(
+                guessit(file_path.name, options={"type": "episode"})
+            )
+        except Exception:
+            parsed = {}
+
+        if parsed.get("season") is None:
+            try:
+                from_path = dict(guessit(str(file_path), options={"type": "episode"}))
+            except Exception:
+                from_path = {}
+            season = from_path.get("season")
+            if season is not None:
+                parsed["season"] = season
+
+        return parsed
 
     def _normalize_text(self, text: str) -> str:
         """Normalize text for fuzzy matching"""
@@ -654,22 +954,20 @@ class SeriesEpisodeMapper(QWidget):
             value = value[0] if value else None
         return value if isinstance(value, int) else None
 
-    def _fuzzy_match_episode_name(
-        self,
-        filename: str,
-        season: int | None = None,
-        parsed_data: EpisodeData | None = None,
-    ) -> tuple[int, int, float] | None:
-        """Fuzzy match filename against episode names"""
-        if not self.enable_fuzzy_checkbox.isChecked():
-            return None
+    def _episode_title_candidates(
+        self, filename: str, parsed_data: EpisodeData | None
+    ) -> list[str]:
+        """Strings from one file that might be its episode title.
 
-        threshold = self.fuzzy_threshold_spin.value()
+        GuessIt's own ``episode_title`` is preferred and is passed through
+        unaltered, so the comparison sees the title as written -- stripping
+        punctuation here would throw away the ampersand in "Lost & Found",
+        which the comparison itself knows how to read. The filename-derived
+        fallback is for names GuessIt cannot parse, and does need the show
+        name and release terms taken off it first.
+        """
+        candidates: list[str] = []
 
-        # GuessIt normally gives us the episode title separately. Prefer that
-        # focused value so release metadata cannot drown out the title, but
-        # retain the filename-derived candidate for names GuessIt cannot parse.
-        episode_title_candidates: list[str] = []
         if parsed_data:
             parsed_episode_title = parsed_data.get("episode_title")
             if isinstance(parsed_episode_title, list):
@@ -679,23 +977,17 @@ class SeriesEpisodeMapper(QWidget):
                     if isinstance(value, str) and value.strip()
                 )
             if isinstance(parsed_episode_title, str) and parsed_episode_title.strip():
-                normalized_episode_title = self._normalize_text(parsed_episode_title)
-                if len(normalized_episode_title) >= 3:
-                    episode_title_candidates.append(normalized_episode_title)
+                candidates.append(parsed_episode_title)
 
-        # Extract a fallback episode title from the complete filename by
-        # removing the selected series title first.
         filename_clean = self._normalize_text(filename)
         show_name_variations: list[str] = []
         if (
             self.media_search_payload
-            and hasattr(self.media_search_payload, "title")
             and isinstance(self.media_search_payload.title, str)
             and self.media_search_payload.title.strip()
         ):
             show_title = self.media_search_payload.title.lower()
             show_name_variations.append(self._normalize_text(show_title))
-            # also try with punctuation removed
             show_title_clean = re.sub(r"[^a-z0-9\s]", " ", show_title)
             show_title_clean = re.sub(r"\s+", " ", show_title_clean.strip())
             if show_title_clean and show_title_clean not in show_name_variations:
@@ -710,59 +1002,98 @@ class SeriesEpisodeMapper(QWidget):
 
         # remove common technical terms that don't help with episode matching
         filename_episode_title = re.sub(
-            r"\b(web|dl|rip|bluray|dvd|hdtv|mkv|mp4|avi)\b",
+            r"(web|dl|rip|bluray|dvd|hdtv|mkv|mp4|avi)",
             "",
             filename_episode_title,
         )
+
+        # The group tag survives normalization as a bare word ("-G" -> "g")
+        # and counts as part of the title, which is enough to stop a part
+        # number being recognised as one.
+        release_group = (parsed_data or {}).get("release_group")
+        if isinstance(release_group, str) and release_group.strip():
+            filename_episode_title = re.sub(
+                rf"{re.escape(self._normalize_text(release_group))}",
+                "",
+                filename_episode_title,
+            )
         filename_episode_title = re.sub(r"\s+", " ", filename_episode_title.strip())
         if len(filename_episode_title) >= 3:
-            episode_title_candidates.append(filename_episode_title)
+            candidates.append(filename_episode_title)
 
-        # If neither GuessIt nor the filename produced a meaningful title,
-        # there is nothing useful to compare.
-        if not episode_title_candidates:
+        return candidates
+
+    def _fuzzy_match_episode_name(
+        self,
+        filename: str,
+        season: int | None = None,
+        parsed_data: EpisodeData | None = None,
+        claimed_by: Path | None = None,
+        min_score: float | None = None,
+    ) -> tuple[int, tuple[int, ...], float] | None:
+        """Match a file to episodes by title, returning every episode it covers.
+
+        Answers with a tuple of episode numbers rather than one number: a
+        provider splits a two-part story into two episodes while a release
+        ships it as one file, so a file named after the story matches the
+        story. Matching only its first half left the second half with no file
+        to give it and no way to say so.
+
+        Episodes another file already covers are excluded before ranking, so
+        this cannot manufacture an overlap.
+        """
+        if not self.enable_fuzzy_checkbox.isChecked():
             return None
 
-        best_match: tuple[int, int, float] | None = None
-        best_score = 0.0
+        title_candidates = self._episode_title_candidates(filename, parsed_data)
+        if not title_candidates:
+            return None
 
-        # search in specified season or all seasons. identity check, not
-        # truthiness -- season 0 is a valid TVDB season (specials), and
-        # `season == 0` is falsy in Python.
+        # ``min_score`` raises the bar above the user's general setting for
+        # a caller that is overriding harder evidence than a title.
+        threshold = float(self.fuzzy_threshold_spin.value())
+        if min_score is not None:
+            threshold = max(threshold, min_score)
+
+        # A number parsed with no season beside it is often a part number
+        # rather than an episode: "A.Moral.Star.1" is part one of a two-part
+        # story, not episode one.
+        parsed_episode = (parsed_data or {}).get("episode")
+        part_hint = parsed_episode if isinstance(parsed_episode, int) else None
+
+        # identity check, not truthiness -- season 0 is a valid TVDB season
+        # (specials), and `season == 0` is falsy in Python.
         seasons_to_search = (
-            [season] if season is not None else self.available_episodes.keys()
+            [season] if season is not None else list(self.available_episodes)
         )
 
+        best: tuple[int, tuple[int, ...], float] | None = None
         for search_season in seasons_to_search:
-            if search_season not in self.available_episodes:
+            season_episodes = self.available_episodes.get(search_season)
+            if not season_episodes:
                 continue
 
-            for episode_num, episode_data in self.available_episodes[
-                search_season
-            ].items():
-                episode_name = episode_data.get("name", "")
-                if not episode_name:
-                    continue
+            already_claimed = {
+                number
+                for number in season_episodes
+                if self._episode_is_claimed(search_season, number, claimed_by)
+            }
 
-                episode_name_clean = self._normalize_text(episode_name)
-
-                # Try several fuzzy strategies for every candidate and keep
-                # the strongest result. The GuessIt candidate wins when it is
-                # more precise, while the filename fallback remains available.
-                score = max(
-                    max(
-                        fuzz.ratio(candidate, episode_name_clean),
-                        fuzz.partial_ratio(candidate, episode_name_clean),
-                        fuzz.token_sort_ratio(candidate, episode_name_clean),
-                    )
-                    for candidate in episode_title_candidates
+            for title_candidate in title_candidates:
+                ranked = rank_title_candidates(
+                    title_candidate,
+                    season_episodes,
+                    exclude=already_claimed,
+                    threshold=threshold,
+                    part_hint=part_hint,
                 )
+                if not ranked:
+                    continue
+                candidate = ranked[0]
+                if best is None or candidate.score > best[2] * 100.0:
+                    best = (search_season, candidate.episodes, candidate.score / 100.0)
 
-                if score > best_score and score >= threshold:
-                    best_score = score
-                    best_match = (search_season, episode_num, score / 100.0)
-
-        return best_match
+        return best
 
     def _get_absolute_order_episodes(
         self,
@@ -805,8 +1136,16 @@ class SeriesEpisodeMapper(QWidget):
             for episode_data in season_episodes.values()
         ]
 
-    def _auto_match_files(self) -> None:
-        """Enhanced auto-matching with fuzzy fallback"""
+    def _auto_match_files(self, preserve_existing: bool = False) -> None:
+        """Enhanced auto-matching with fuzzy fallback.
+
+        ``preserve_existing`` leaves rows that already carry a mapping
+        untouched and matches only the rest. Page load passes it so that
+        re-entering the page cannot overwrite a correction the user made --
+        auto-matching would otherwise recompute the same wrong answer that
+        was corrected. The "Re-match All" button deliberately does not,
+        because discarding the current answers is the whole point of it.
+        """
         if not self.available_episodes:
             return
 
@@ -824,12 +1163,15 @@ class SeriesEpisodeMapper(QWidget):
         daily_format_active = self.get_series_format() == EpisodeFormat.DAILY_DATE
 
         for row in range(self.files_table.rowCount()):
-            filename_item = self.files_table.item(row, 0)
+            filename_item = self.files_table.item(row, self.COL_FILENAME)
             if not isinstance(filename_item, EnhancedFileTableItem):
                 continue
 
             file_path = filename_item.file_path
             parsed_data = filename_item.parsed_data
+
+            if preserve_existing and file_path in self.file_episode_mappings:
+                continue
 
             # stage 1: try regex/guessit parsing (highest confidence)
             season = self._coerce_season(parsed_data.get("season"))
@@ -870,19 +1212,90 @@ class SeriesEpisodeMapper(QWidget):
                 confidence = 0.95
                 method = "regex"
 
-                self._store_mapping(
+                title_check = self._title_check_for(file_path, season, episode)
+                method = self._method_label(method, title_check)
+
+                self._update_file_row_assignment(
+                    row,
+                    self._store_mapping(
+                        file_path,
+                        season,
+                        episode,
+                        episode_data,
+                        confidence,
+                        method,
+                        episode_end=episode_end,
+                        episode_list=episode_list,
+                        episode_order_type_id=self.episode_order_combo.currentData(),
+                        title_check=title_check,
+                    ),
+                )
+                matched_count += 1
+                continue
+
+            # Stage 1a: the filename states a season and an episode plainly,
+            # but the selected ordering has no such episode. TVDB's list and
+            # the release's numbering disagree -- most often because a
+            # multi-part premiere is one entry there and two episodes here,
+            # which shortens every ordering that merges it.
+            #
+            # Keep what the filename says, flagged as unverified. Discarding
+            # it left the row blank and handed the file to fuzzy matching,
+            # which has no number to work from and would bind it to whichever
+            # episode title scored best -- in a full pack that is an episode
+            # another file already claims, so the pack failed validation as
+            # "not properly mapped" with every cell on screen filled in. It
+            # also made the auto path strictly worse than the manual one,
+            # which has always stored exactly these numbers when the user
+            # typed them by hand.
+            if season is not None and episode is not None:
+                # Before settling for the numbers alone, see whether this
+                # file's own episode title names an episode the ordering
+                # does have. That is the case where the numbering and the
+                # provider genuinely disagree -- a merged two-part premiere
+                # shifts every later episode -- and the title is then the
+                # better evidence of the two. The bar is deliberately higher
+                # than the user's general fuzzy threshold, because this
+                # overrides a number the filename states plainly.
+                rescued = self._fuzzy_match_episode_name(
+                    file_path.stem,
+                    season=season,
+                    parsed_data=parsed_data,
+                    claimed_by=file_path,
+                    min_score=TITLE_SUGGESTION_FLOOR,
+                )
+                if rescued is not None:
+                    matched_season, matched_episodes, confidence = rescued
+                    self._update_file_row_assignment(
+                        row,
+                        self._store_mapping(
+                            file_path,
+                            matched_season,
+                            matched_episodes[0],
+                            self.available_episodes[matched_season][
+                                matched_episodes[0]
+                            ],
+                            confidence,
+                            "title",
+                            episode_end=(
+                                matched_episodes[-1]
+                                if len(matched_episodes) > 1
+                                else None
+                            ),
+                            episode_list=list(matched_episodes),
+                            episode_order_type_id=self.episode_order_combo.currentData(),
+                        ),
+                    )
+                    matched_count += 1
+                    continue
+
+                self._store_unverified_parse(
+                    row,
                     file_path,
                     season,
                     episode,
-                    episode_data,
-                    confidence,
-                    method,
                     episode_end=episode_end,
                     episode_list=episode_list,
-                    episode_order_type_id=self.episode_order_combo.currentData(),
-                )
-                self._update_file_row_assignment(
-                    row, season, episode, confidence, method
                 )
                 matched_count += 1
                 continue
@@ -941,18 +1354,18 @@ class SeriesEpisodeMapper(QWidget):
                                 ):
                                     matched_episode_end = end_number
 
-                        self._store_mapping(
-                            file_path,
-                            matched_season,
-                            matched_episode,
-                            absolute_episode_data,
-                            confidence,
-                            method,
-                            episode_end=matched_episode_end,
-                            episode_order_type_id=absolute_type_id,
-                        )
                         self._update_file_row_assignment(
-                            row, matched_season, matched_episode, confidence, method
+                            row,
+                            self._store_mapping(
+                                file_path,
+                                matched_season,
+                                matched_episode,
+                                absolute_episode_data,
+                                confidence,
+                                method,
+                                episode_end=matched_episode_end,
+                                episode_order_type_id=absolute_type_id,
+                            ),
                         )
                         matched_count += 1
                         continue
@@ -989,17 +1402,17 @@ class SeriesEpisodeMapper(QWidget):
                         confidence = 0.9
                         method = "daily"
 
-                        self._store_mapping(
-                            file_path,
-                            matched_season,
-                            matched_episode,
-                            daily_episode_data,
-                            confidence,
-                            method,
-                            episode_order_type_id=self.episode_order_combo.currentData(),
-                        )
                         self._update_file_row_assignment(
-                            row, matched_season, matched_episode, confidence, method
+                            row,
+                            self._store_mapping(
+                                file_path,
+                                matched_season,
+                                matched_episode,
+                                daily_episode_data,
+                                confidence,
+                                method,
+                                episode_order_type_id=self.episode_order_combo.currentData(),
+                            ),
                         )
                         matched_count += 1
                         continue
@@ -1009,34 +1422,67 @@ class SeriesEpisodeMapper(QWidget):
                 file_path.stem,
                 season=season,
                 parsed_data=parsed_data,
+                claimed_by=file_path,
             )
             if fuzzy_result:
-                season, episode, confidence = fuzzy_result
-                if (
-                    season in self.available_episodes
-                    and episode in self.available_episodes[season]
-                ):
-                    episode_data = self.available_episodes[season][episode]
-                    method = "fuzzy"
-
+                matched_season, matched_episodes, confidence = fuzzy_result
+                episode_data = self.available_episodes[matched_season][
+                    matched_episodes[0]
+                ]
+                # A title match can cover a whole multi-part story, so the
+                # span is carried through exactly as a parsed "S01E01-E02"
+                # would be.
+                self._update_file_row_assignment(
+                    row,
                     self._store_mapping(
                         file_path,
-                        season,
-                        episode,
+                        matched_season,
+                        matched_episodes[0],
                         episode_data,
                         confidence,
-                        method,
+                        "fuzzy",
+                        episode_end=(
+                            matched_episodes[-1] if len(matched_episodes) > 1 else None
+                        ),
+                        episode_list=list(matched_episodes),
                         episode_order_type_id=self.episode_order_combo.currentData(),
-                    )
-                    self._update_file_row_assignment(
-                        row, season, episode, confidence, method
-                    )
-                    fuzzy_matched_count += 1
-                    continue
+                    ),
+                )
+                fuzzy_matched_count += 1
+                continue
 
+        self._update_title_warning()
         self._update_all_stats()
         self._refresh_episodes_display()
         self.mapping_changed.emit()
+
+    def _update_title_warning(self) -> None:
+        """Say once when the pack as a whole disagrees with this ordering.
+
+        Counted from the scores stored on the rows rather than tallied as
+        matching runs, so it is equally right after an ordering change, which
+        re-resolves rows in place instead of re-matching them.
+        """
+        scores = [
+            mapping["title_match_score"]
+            for mapping in self.file_episode_mappings.values()
+            if isinstance(mapping.get("title_match_score"), (int, float))
+        ]
+        checked = len(scores)
+        disagreements = sum(1 for score in scores if score < TITLE_DISAGREEMENT_FLOOR)
+
+        if checked < 2 or disagreements * 2 <= checked:
+            self.title_warning_label.hide()
+            self.title_warning_label.clear()
+            return
+
+        order_name = self.episode_order_combo.currentText().split(" — ")[0]
+        self.title_warning_label.setText(
+            f"{disagreements} of {checked} filenames name a different episode "
+            f"than {order_name or 'this ordering'} does at the same number. "
+            "Check the episode order above before continuing."
+        )
+        self.title_warning_label.show()
 
     @Slot()
     def _on_re_match_all_clicked(self) -> None:
@@ -1066,15 +1512,15 @@ class SeriesEpisodeMapper(QWidget):
         fuzzy_matched = 0
 
         for row in range(self.files_table.rowCount()):
-            filename_item = self.files_table.item(row, 0)
+            filename_item = self.files_table.item(row, self.COL_FILENAME)
             if not isinstance(filename_item, EnhancedFileTableItem):
                 continue
 
             # A season-only row is intentionally eligible: users commonly
             # enter the season first to constrain fuzzy matching. Only skip a
             # row when both editable assignment fields are populated.
-            season_item = self.files_table.item(row, 1)
-            episode_item = self.files_table.item(row, 2)
+            season_item = self.files_table.item(row, self.COL_SEASON)
+            episode_item = self.files_table.item(row, self.COL_EPISODE)
             season_text = season_item.text().strip() if season_item else ""
             episode_text = episode_item.text().strip() if episode_item else ""
             if season_text and episode_text:
@@ -1099,29 +1545,33 @@ class SeriesEpisodeMapper(QWidget):
                 file_path.stem,
                 season=season,
                 parsed_data=filename_item.parsed_data,
+                claimed_by=file_path,
             )
             if fuzzy_result:
-                season, episode, confidence = fuzzy_result
-                if (
-                    season in self.available_episodes
-                    and episode in self.available_episodes[season]
-                ):
-                    episode_data = self.available_episodes[season][episode]
-                    method = "fuzzy"
-
+                matched_season, matched_episodes, confidence = fuzzy_result
+                episode_data = self.available_episodes[matched_season][
+                    matched_episodes[0]
+                ]
+                # A title match can cover a whole multi-part story, so the
+                # span is carried through exactly as a parsed "S01E01-E02"
+                # would be.
+                self._update_file_row_assignment(
+                    row,
                     self._store_mapping(
                         file_path,
-                        season,
-                        episode,
+                        matched_season,
+                        matched_episodes[0],
                         episode_data,
                         confidence,
-                        method,
+                        "fuzzy",
+                        episode_end=(
+                            matched_episodes[-1] if len(matched_episodes) > 1 else None
+                        ),
+                        episode_list=list(matched_episodes),
                         episode_order_type_id=self.episode_order_combo.currentData(),
-                    )
-                    self._update_file_row_assignment(
-                        row, season, episode, confidence, method
-                    )
-                    fuzzy_matched += 1
+                    ),
+                )
+                fuzzy_matched += 1
 
         self._update_all_stats()
         self._refresh_episodes_display()
@@ -1138,8 +1588,11 @@ class SeriesEpisodeMapper(QWidget):
         episode_end: int | None = None,
         episode_list: Sequence[int] | None = None,
         episode_order_type_id: Any | None = None,
-    ) -> None:
-        """Store file-to-episode mapping.
+        verified: bool = True,
+        title_check: TitleCheck | None = None,
+        episode_title_override: str | None = None,
+    ) -> EpisodeMapping:
+        """Store file-to-episode mapping, and return the stored row.
 
         ``episode_end`` carries the last episode number for a file that spans
         multiple episodes (e.g. a single "S01E01E02" file). It is ``None``
@@ -1150,6 +1603,12 @@ class SeriesEpisodeMapper(QWidget):
         such as "S01E01E05" can be recorded; otherwise it is derived from
         ``episode`` and ``episode_end``, so every row carries a list and no
         reader has to special-case the single-episode file.
+
+        ``verified`` is False when ``episode_data`` is a synthesized stand-in
+        rather than a real episode from the selected ordering -- the filename
+        (or the user) named a season/episode TVDB does not list. Readers that
+        only need the numbers can ignore it; it exists so the UI can say which
+        rows TVDB has confirmed.
 
         ``episode_order_type_id`` records which TVDB episode ordering
         ``episode_data`` came from. TVDB serves several -- aired, DVD,
@@ -1176,60 +1635,234 @@ class SeriesEpisodeMapper(QWidget):
             "confidence": confidence,
             "assignment_method": method,
             "episode_order_type_id": episode_order_type_id,
+            "verified": verified,
+            "title_match_score": title_check.score if title_check else None,
+            "episode_title_override": episode_title_override or None,
         }
+        return self.file_episode_mappings[file_path]
+
+    def _title_check_for(
+        self, file_path: Path, season: int, episode: int
+    ) -> TitleCheck:
+        """Ask a filename's own episode title whether it agrees with the
+        episode its number landed on.
+
+        The number matching proves little on its own: every ordering of a
+        season has an episode 3, so a pack numbered against one ordering
+        binds cleanly to another and renames itself wrong at full
+        confidence.
+        """
+        parsed_data = self._guessit_cache.get(file_path) or {}
+        parsed_title = parsed_data.get("episode_title")
+        if isinstance(parsed_title, list):
+            parsed_title = " ".join(
+                value for value in parsed_title if isinstance(value, str)
+            )
+        return check_title_against_episode(
+            parsed_title if isinstance(parsed_title, str) else None,
+            self.available_episodes.get(season, {}),
+            episode,
+        )
+
+    @staticmethod
+    def _method_label(base: str, title_check: TitleCheck) -> str:
+        """Name the episode a row's own title belongs to, where it differs."""
+        if title_check.points_elsewhere:
+            return f"{base} (title -> E{title_check.suggested_episode:02d}?)"
+        return base
+
+    def _episode_is_claimed(
+        self, season: int, episode: int, claimed_by: Path | None = None
+    ) -> bool:
+        """Whether another file already covers this episode.
+
+        Matching used to be able to put two files on one episode: a file
+        whose number the ordering does not list fell through to fuzzy, which
+        has only a title to go on and in a complete pack lands on an episode
+        some other file already holds. The pack then failed to validate as
+        "not properly mapped", with every row on screen filled in.
+        """
+        for file_path, mapping in self.file_episode_mappings.items():
+            if file_path == claimed_by:
+                continue
+            if (season, episode) in claimed_season_episodes(mapping):
+                return True
+        return False
+
+    def _store_unverified_parse(
+        self,
+        row: int,
+        file_path: Path,
+        season: int,
+        episode: int,
+        episode_end: int | None = None,
+        episode_list: Sequence[int] | None = None,
+    ) -> None:
+        """Record a parsed season/episode the selected ordering cannot confirm.
+
+        Uses the same synthesized payload the manual-entry path builds for a
+        season/episode TVDB has no data for, so a number NfoForge parsed and a
+        number the user typed are stored identically and render identically.
+        The row is painted amber and labelled so it reads as "this is what the
+        filename says, unconfirmed" rather than as a verified match.
+        """
+        episode_data: EpisodeData = {
+            "season": season,
+            "episode": episode,
+            "name": None,
+            "aired": None,
+        }
+        self._update_file_row_assignment(
+            row,
+            self._store_mapping(
+                file_path,
+                season,
+                episode,
+                episode_data,
+                UNVERIFIED_PARSE_CONFIDENCE,
+                UNVERIFIED_PARSE_METHOD,
+                episode_end=episode_end,
+                episode_list=episode_list,
+                episode_order_type_id=self.episode_order_combo.currentData(),
+                verified=False,
+            ),
+        )
 
     def _update_file_row_assignment(
-        self, row: int, season: int, episode: int, confidence: float, method: str
+        self, row: int, mapping: EpisodeMapping, rewrite_inputs: bool = True
     ) -> None:
-        """Update file table row with assignment data"""
-        # block signals while populating cells programmatically: setItem()
-        # fires itemChanged, which would otherwise re-enter
-        # _on_table_item_changed and re-store this mapping through the
-        # "manual" path, clobbering the method/confidence (and episode_end)
-        # that were just computed here.
-        self.files_table.blockSignals(True)
-        try:
-            # season (editable, numeric)
-            season_item = NumericTableItem(str(season))
-            self.files_table.setItem(row, 1, season_item)
+        """Render one stored mapping into its table row.
 
-            # episode (editable, numeric)
-            episode_item = NumericTableItem(str(episode))
-            self.files_table.setItem(row, 2, episode_item)
+        Takes the row itself rather than a handful of scalars so the cells
+        can show everything it holds -- in particular the episode it is bound
+        to. A season and an episode number that look right while naming the
+        wrong episode is exactly how a pack goes out misnamed, and nothing in
+        this table used to say which episode a row had actually landed on.
+
+        ``rewrite_inputs`` is False when the user is the one who just typed
+        into this row: replacing the cells they are editing would throw away
+        the edit in progress, so those are repainted rather than rebuilt.
+        """
+        season = mapping.get("season")
+        confidence = float(mapping.get("confidence", 0.0))
+        method = str(mapping.get("assignment_method", ""))
+        verified = bool(mapping.get("verified", bool(mapping.get("episode_data"))))
+
+        # A row whose own filename names a different episode is no more
+        # trustworthy than one TVDB cannot confirm, so it is flagged the same
+        # way rather than sitting at a reassuring 95%.
+        score = mapping.get("title_match_score")
+        if isinstance(score, (int, float)) and score < TITLE_DISAGREEMENT_FLOOR:
+            verified = False
+        override = mapping.get("episode_title_override")
+
+        with self._suppress_table_signals():
+            if rewrite_inputs:
+                self.files_table.setItem(
+                    row, self.COL_SEASON, NumericTableItem(str(season))
+                )
+                self.files_table.setItem(
+                    row,
+                    self.COL_EPISODE,
+                    EpisodeSpecTableItem(episode_spec_text(mapping)),
+                )
+                self.files_table.setItem(
+                    row, self.COL_TITLE, TitleOverrideTableItem(str(override or ""))
+                )
+            else:
+                # Repaint the cells the user is typing into so a correction
+                # that now matches TVDB loses its amber, and one that still
+                # does not keeps it.
+                for column in (self.COL_SEASON, self.COL_EPISODE):
+                    cell = self.files_table.item(row, column)
+                    if cell is None:
+                        continue
+                    if verified:
+                        self._clear_cell_paint(cell)
+                    else:
+                        self._paint_cell(cell, self._MANUAL_UNVERIFIED_COLOR)
+
+            # the episode this row actually resolved to (read only)
+            matched_item = QTableWidgetItem(self._matched_episode_text(mapping))
+            matched_item.setFlags(matched_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            if not verified:
+                self._paint_cell(matched_item, self._MANUAL_UNVERIFIED_COLOR)
+            self.files_table.setItem(row, self.COL_MATCHED, matched_item)
 
             # confidence with color coding (read only)
             confidence_item = QTableWidgetItem(f"{confidence * 100:.0f}%")
             confidence_item.setFlags(
                 confidence_item.flags() & ~Qt.ItemFlag.ItemIsEditable
             )
-            if confidence >= 0.9:
+            if not verified:
+                # amber, matching the manual-entry path: the numbers stand,
+                # TVDB just cannot confirm them.
+                self._paint_cell(confidence_item, self._MANUAL_UNVERIFIED_COLOR)
+            elif confidence >= 0.9:
                 self._paint_cell(confidence_item, self._CONFIDENCE_HIGH_COLOR)
             elif confidence >= 0.7:
                 self._paint_cell(confidence_item, self._CONFIDENCE_MEDIUM_COLOR)
             else:
                 self._paint_cell(confidence_item, self._CONFIDENCE_LOW_COLOR)
-            self.files_table.setItem(row, 3, confidence_item)
+            self.files_table.setItem(row, self.COL_CONFIDENCE, confidence_item)
 
             # method (read only)
             method_item = QTableWidgetItem(method)
             method_item.setFlags(method_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-            self.files_table.setItem(row, 4, method_item)
-        finally:
-            self.files_table.blockSignals(False)
+            if not verified:
+                self._paint_cell(method_item, self._MANUAL_UNVERIFIED_COLOR)
+            self.files_table.setItem(row, self.COL_METHOD, method_item)
+
+    @staticmethod
+    def _matched_episode_text(mapping: EpisodeMapping) -> str:
+        """``S01E01-E02 - Lost & Found``, or a note when nothing confirms it."""
+        designator = episode_designator(mapping)
+        if not designator:
+            return ""
+
+        override = mapping.get("episode_title_override")
+        name = override if override else mapping.get("episode_name")
+        if not name:
+            return f"{designator}  (not listed in this order)"
+        return f"{designator}  {name}"
 
     def _clear_all_assignments(self) -> None:
         """Clear all file assignments"""
         self.file_episode_mappings.clear()
 
+        # Same signal hazard as _populate_files_table: the blank cells written
+        # below would re-enter _on_table_item_changed and rebuild the episodes
+        # tree once per row.
+        self.files_table.blockSignals(True)
+        try:
+            self._clear_assignment_cells()
+        finally:
+            self.files_table.blockSignals(False)
+
+        self._update_all_stats()
+        self._refresh_episodes_display()
+        self.mapping_changed.emit()
+
+    def _clear_assignment_cells(self) -> None:
+        """Blank every row's editable and status cells. Caller blocks signals."""
         # clear table cells while preserving edit flags
         for row in range(self.files_table.rowCount()):
             # clear Season (keep editable, numeric only)
             season_item = NumericTableItem("")
-            self.files_table.setItem(row, 1, season_item)
+            self.files_table.setItem(row, self.COL_SEASON, season_item)
 
             # clear Episode (keep editable, numeric only)
             episode_item = NumericTableItem("")
-            self.files_table.setItem(row, 2, episode_item)
+            self.files_table.setItem(row, self.COL_EPISODE, episode_item)
+
+            # clear Title Override (keep editable)
+            self.files_table.setItem(row, self.COL_TITLE, TitleOverrideTableItem(""))
+
+            # clear Matched Episode (read-only)
+            matched_item = QTableWidgetItem("")
+            matched_item.setFlags(matched_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            self._clear_cell_paint(matched_item)
+            self.files_table.setItem(row, self.COL_MATCHED, matched_item)
 
             # clear Confidence (read-only)
             confidence_item = QTableWidgetItem("")
@@ -1237,16 +1870,12 @@ class SeriesEpisodeMapper(QWidget):
                 confidence_item.flags() & ~Qt.ItemFlag.ItemIsEditable
             )
             self._clear_cell_paint(confidence_item)
-            self.files_table.setItem(row, 3, confidence_item)
+            self.files_table.setItem(row, self.COL_CONFIDENCE, confidence_item)
 
             # clear Method (read-only)
             method_item = QTableWidgetItem("")
             method_item.setFlags(method_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-            self.files_table.setItem(row, 4, method_item)
-
-        self._update_all_stats()
-        self._refresh_episodes_display()
-        self.mapping_changed.emit()
+            self.files_table.setItem(row, self.COL_METHOD, method_item)
 
     def _load_episodes_with_ordering(self) -> None:
         """Load episodes list with specified ordering from enhanced data"""
@@ -1328,10 +1957,15 @@ class SeriesEpisodeMapper(QWidget):
         if filter_data is None:
             filter_data = "all"
 
-        # get all assigned episodes for marking purposes
-        assigned_episodes: set[tuple[int, int]] = set()
+        # Get all assigned episodes for marking purposes. A file covering
+        # several episodes claims every one of them, not only the first: with
+        # just the start counted, a single "S01E01-E02" file left the season
+        # reading "19/20 assigned" with E02 painted unassigned -- a gap the
+        # user has no file to fill and no way to act on, while validation
+        # (which does expand the span) was already satisfied.
+        assigned_episodes: set[tuple[Any, int]] = set()
         for mapping in self.file_episode_mappings.values():
-            assigned_episodes.add((mapping["season"], mapping["episode"]))
+            assigned_episodes.update(claimed_season_episodes(mapping))
 
         # update episode items to reflect assignment status
         for episode_item in self.episode_items:
@@ -1486,12 +2120,80 @@ class SeriesEpisodeMapper(QWidget):
         self._update_files_stats()
         self._update_episodes_stats()
 
-    @Slot(str)
-    def _on_episode_order_changed(self, _order: str) -> None:
+    @Slot(int)
+    def _on_episode_order_changed(self, _index: int) -> None:
+        """Re-read the same season/episode numbers against a new ordering.
+
+        Clearing every assignment first threw away the user's own edits for
+        no reason: the numbers a row holds are the user's answer, and only
+        the episode each one names changes with the ordering. Rows are
+        re-resolved in place, and auto-matching then fills in whatever still
+        has no mapping.
+        """
         self._sync_release_format_to_order()
         self._load_episodes_with_ordering()
-        self._clear_all_assignments()
-        self._auto_match_files()
+        self._reresolve_mappings_for_ordering()
+        self._auto_match_files(preserve_existing=True)
+
+    def _reresolve_mappings_for_ordering(self) -> None:
+        """Point every existing row at the current ordering's episodes."""
+        order_type_id = self.episode_order_combo.currentData()
+
+        for file_path, mapping in self.file_episode_mappings.items():
+            season = mapping.get("season")
+            episode = mapping.get("episode")
+            if not isinstance(season, int) or not isinstance(episode, int):
+                continue
+
+            season_episodes = self.available_episodes.get(season, {})
+            covered = expand_mapping_episodes(mapping)
+            episode_data = season_episodes.get(episode)
+            if episode_data is None:
+                episode_data = {
+                    "season": season,
+                    "episode": episode,
+                    "name": None,
+                    "aired": None,
+                }
+
+            mapping["episode_data"] = episode_data
+            mapping["episode_name"] = episode_data.get("name", "Unknown")
+            mapping["episode_order_type_id"] = order_type_id
+            mapping["verified"] = bool(season_episodes) and all(
+                number in season_episodes for number in covered
+            )
+
+            # The previous check was made against the old ordering's names,
+            # and whether the filenames agree is the main thing a user wants
+            # to know right after switching ordering.
+            title_check = self._title_check_for(file_path, season, episode)
+            mapping["title_match_score"] = title_check.score
+            base = str(mapping.get("assignment_method", "")).split(" (title")[0]
+            if base.startswith("regex"):
+                if not mapping["verified"]:
+                    # The new ordering does not list this episode at all, so
+                    # the row is what the filename says and nothing more.
+                    mapping["assignment_method"] = UNVERIFIED_PARSE_METHOD
+                    mapping["confidence"] = UNVERIFIED_PARSE_CONFIDENCE
+                else:
+                    mapping["assignment_method"] = self._method_label(base, title_check)
+
+        self._render_all_rows()
+        self._update_title_warning()
+
+    def _render_all_rows(self) -> None:
+        """Repaint every row that has a mapping, dropping the rest."""
+        for row in range(self.files_table.rowCount()):
+            filename_item = self.files_table.item(row, self.COL_FILENAME)
+            if not isinstance(filename_item, EnhancedFileTableItem):
+                continue
+
+            mapping = self.file_episode_mappings.get(filename_item.file_path)
+            if mapping:
+                self._update_file_row_assignment(row, mapping)
+            else:
+                with self._suppress_table_signals():
+                    self._clear_row_assignment_data(row)
 
     @Slot(int)
     def _on_release_format_changed(self, _idx: int) -> None:
@@ -1521,63 +2223,75 @@ class SeriesEpisodeMapper(QWidget):
 
     @Slot(QTableWidgetItem)
     def _on_table_item_changed(self, item: QTableWidgetItem) -> None:
-        """Handle direct editing of season/episode in table"""
+        """Re-read a row the user edited.
+
+        A thin dispatcher: every editable column funnels into ``_apply_row``,
+        which reads the whole row at once. The previous version reacted to
+        one cell at a time and painted as it went, with four separate
+        ``blockSignals`` pairs guarding against re-entering itself -- a shape
+        that could not survive gaining more editable columns.
+        """
         if not item:
             return
-
-        row = item.row()
-        col = item.column()
-
-        # only process season (col 1) and episode (col 2) changes
-        if col not in [1, 2]:
+        if item.column() not in self._EDITABLE_COLUMNS:
             return
+        self._apply_row(item.row())
 
-        # get the filename item to identify the file
-        filename_item = self.files_table.item(row, 0)
+    def _apply_row(self, row: int) -> None:
+        """Store what one row now says, and render the result."""
+        filename_item = self.files_table.item(row, self.COL_FILENAME)
         if not isinstance(filename_item, EnhancedFileTableItem):
             return
 
         file_path = filename_item.file_path
+        season_item = self.files_table.item(row, self.COL_SEASON)
+        episode_item = self.files_table.item(row, self.COL_EPISODE)
+        if season_item is None or episode_item is None:
+            # Mid-build: the row is still being assembled cell by cell.
+            return
+
+        title_item = self.files_table.item(row, self.COL_TITLE)
+        title_override = title_item.text().strip() if title_item else ""
 
         try:
-            # get current season and episode values
-            season_item = self.files_table.item(row, 1)
-            episode_item = self.files_table.item(row, 2)
+            season_text = season_item.text().strip()
+            episodes = parse_episode_spec(episode_item.text())
 
-            if not season_item or not episode_item:
+            if episodes is None:
+                # Not readable as episode numbers -- a half-typed "1-", or a
+                # typo. Leave the stored mapping exactly as it was rather
+                # than dropping it over a keystroke.
                 return
 
-            season_text = season_item.text().strip()
-            episode_text = episode_item.text().strip()
-
-            # validate and convert to integers
-            if not season_text or not episode_text:
-                # remove mapping if either field is empty
+            if not season_text or not episodes:
                 if file_path in self.file_episode_mappings:
                     del self.file_episode_mappings[file_path]
-                    self._clear_row_assignment_data(row)
+                    with self._suppress_table_signals():
+                        self._clear_row_assignment_data(row)
+                self._after_mapping_change()
                 return
 
             try:
                 season = int(season_text)
-                episode = int(episode_text)
             except ValueError:
                 return
 
-            # check if episode exists in TVDB data
-            has_tvdb_match = (
-                season in self.available_episodes
-                and episode in self.available_episodes[season]
+            episode = episodes[0]
+            episode_end = episodes[-1] if len(episodes) > 1 else None
+
+            season_episodes = self.available_episodes.get(season, {})
+            # A span is only confirmed when TVDB lists every episode in it.
+            has_tvdb_match = bool(season_episodes) and all(
+                number in season_episodes for number in episodes
             )
-            if has_tvdb_match:
-                episode_data = self.available_episodes[season][episode]
-            else:
+            episode_data = season_episodes.get(episode)
+            if episode_data is None:
                 # TVDB has no data for this season/episode (or no episode
                 # data at all for the series): still store what the user
-                # typed using a minimal synthesized payload instead of
-                # clearing the row. Otherwise the user has no way to map
-                # this file at all, and the wizard has no Back button to
-                # escape the resulting dead end.
+                # typed, using a minimal synthesized payload, instead of
+                # clearing the row. Otherwise the user has no way to map this
+                # file at all, and the wizard has no Back button to escape
+                # the resulting dead end.
                 episode_data = {
                     "season": season,
                     "episode": episode,
@@ -1585,106 +2299,61 @@ class SeriesEpisodeMapper(QWidget):
                     "aired": None,
                 }
 
-            confidence = 1.0  # 100%
-            method = "manual"
-
-            # store the mapping
-            existing_mapping = self.file_episode_mappings.get(file_path)
-            existing_end = None
-            existing_list = None
-            if existing_mapping is not None:
-                existing_end = existing_mapping.get("episode_end")
-                # The list only survives while it still describes this file's
-                # start. Retyping the episode moves the start, and a list
-                # detected from the old one would name episodes the file no
-                # longer claims; re-deriving from the ends is right there.
-                if existing_mapping.get("episode") == episode:
-                    existing_list = existing_mapping.get("episode_list")
-            self._store_mapping(
+            stored = self._store_mapping(
                 file_path,
                 season,
                 episode,
                 episode_data,
-                confidence,
-                method,
-                episode_end=existing_end,
-                episode_list=existing_list,
+                1.0,
+                "manual",
+                episode_end=episode_end,
+                episode_list=episodes,
                 episode_order_type_id=self.episode_order_combo.currentData(),
+                verified=has_tvdb_match,
+                episode_title_override=title_override,
             )
-
-            # update confidence and method columns
-            confidence_item = QTableWidgetItem(f"{confidence * 100:.0f}%")
-            confidence_item.setFlags(
-                confidence_item.flags() & ~Qt.ItemFlag.ItemIsEditable
-            )
-            method_item = QTableWidgetItem(method)
-            method_item.setFlags(method_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-
-            if has_tvdb_match:
-                self._paint_cell(
-                    confidence_item, self._MANUAL_MATCH_COLOR
-                )  # Manual = green
-                # season/episode items are already attached to the table;
-                # a previous edit may have painted them amber (unverified
-                # manual mapping) before this correction matched TVDB
-                # data, so reset them back to the table default. block
-                # signals while touching them so setBackground() (which
-                # emits itemChanged) doesn't re-enter this slot
-                self.files_table.blockSignals(True)
-                try:
-                    self._clear_cell_paint(season_item)
-                    self._clear_cell_paint(episode_item)
-                finally:
-                    self.files_table.blockSignals(False)
-            else:
-                # amber: manual entry not confirmed against TVDB data
-                self._paint_cell(confidence_item, self._MANUAL_UNVERIFIED_COLOR)
-                self._paint_cell(method_item, self._MANUAL_UNVERIFIED_COLOR)
-                # season/episode items are already attached to the table;
-                # block signals while touching them so setBackground()
-                # (which emits itemChanged) doesn't re-enter this slot
-                self.files_table.blockSignals(True)
-                try:
-                    self._paint_cell(season_item, self._MANUAL_UNVERIFIED_COLOR)
-                    self._paint_cell(episode_item, self._MANUAL_UNVERIFIED_COLOR)
-                finally:
-                    self.files_table.blockSignals(False)
-
-            self.files_table.setItem(row, 3, confidence_item)
-            self.files_table.setItem(row, 4, method_item)
+            self._update_file_row_assignment(row, stored, rewrite_inputs=False)
 
         except Exception as e:
             LOG.warning(
                 LOG.LOG_SOURCE.FE,
-                f"Failed to process manual season/episode edit for "
-                f"'{file_path.name}': {e}",
+                f"Failed to process manual episode edit for '{file_path.name}': {e}",
             )
 
-        # update stats and refresh display
+        self._after_mapping_change()
+
+    def _after_mapping_change(self) -> None:
+        """Refresh everything that reads the mappings, and announce it."""
         self._update_all_stats()
         self._refresh_episodes_display()
         self.mapping_changed.emit()
 
     def _clear_row_assignment_data(self, row: int) -> None:
         """Clear confidence and method data for a row"""
+        # clear matched episode
+        matched_item = QTableWidgetItem("")
+        matched_item.setFlags(matched_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+        self._clear_cell_paint(matched_item)
+        self.files_table.setItem(row, self.COL_MATCHED, matched_item)
+
         # clear confidence
         confidence_item = QTableWidgetItem("")
         confidence_item.setFlags(confidence_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
         self._clear_cell_paint(confidence_item)
-        self.files_table.setItem(row, 3, confidence_item)
+        self.files_table.setItem(row, self.COL_CONFIDENCE, confidence_item)
 
         # clear method
         method_item = QTableWidgetItem("")
         method_item.setFlags(method_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-        self.files_table.setItem(row, 4, method_item)
+        self.files_table.setItem(row, self.COL_METHOD, method_item)
 
         # reset season/episode background: a previous edit may have
         # painted them amber (unverified manual mapping), but the mapping
         # no longer exists so the cells should show no special color.
         # block signals while touching them so setBackground() (which
         # emits itemChanged) doesn't re-enter _on_table_item_changed
-        season_item = self.files_table.item(row, 1)
-        episode_item = self.files_table.item(row, 2)
+        season_item = self.files_table.item(row, self.COL_SEASON)
+        episode_item = self.files_table.item(row, self.COL_EPISODE)
         if season_item is not None and episode_item is not None:
             self.files_table.blockSignals(True)
             try:
@@ -1761,44 +2430,82 @@ class SeriesEpisodeMapper(QWidget):
     def is_valid(self) -> bool:
         """Check that every file is mapped and no two files target overlapping episodes.
 
-        A mapping is expanded to every ``(season, episode)`` pair it covers --
-        a normal single-episode mapping covers just its own ``episode``, while
-        a multi-episode mapping (``episode_end`` set, e.g. a single
-        "S01E01E02" file) covers every episode from ``episode`` through
-        ``episode_end`` inclusive. If any ``(season, episode)`` pair is
-        claimed by more than one file, the mappings overlap and this returns
-        ``False`` -- this generalizes the old exact-duplicate-start check,
-        which missed overlaps like file A "S01E01-E02" and file B "S01E02":
-        their start tuples ``(1, 1)`` and ``(1, 2)`` differ even though both
-        claim S01E02.
+        A mapping is expanded to every ``(season, episode)`` pair it covers
+        by ``claimed_season_episodes``, which reads a stored ``episode_list``
+        where there is one and falls back to the ``episode``..``episode_end``
+        range otherwise. If any pair is claimed by more than one file, the
+        mappings overlap and this returns ``False`` -- catching overlaps like
+        file A "S01E01-E02" and file B "S01E02", whose start tuples ``(1, 1)``
+        and ``(1, 2)`` differ even though both claim S01E02.
         """
         if not self.media_input_payload or not self.media_input_payload.file_list:
             return False
 
-        if len(self.file_episode_mappings) != len(self.media_input_payload.file_list):
+        # Compare file by file rather than by count. A row left behind for a
+        # path no longer in the input list made the totals agree while a
+        # genuinely unmapped file sat there unreported.
+        if self.unmapped_files():
             return False
 
-        claimed_targets: set[tuple[Any, Any]] = set()
-        for mapping in self.file_episode_mappings.values():
-            season = mapping.get("season")
-            episode = mapping.get("episode")
-            episode_end = mapping.get("episode_end")
-            range_end = episode_end if episode_end is not None else episode
-
-            if episode is None or range_end is None:
-                target = (season, episode)
-                if target in claimed_targets:
-                    return False
-                claimed_targets.add(target)
-                continue
-
-            for target_episode in range(episode, range_end + 1):
-                target = (season, target_episode)
-                if target in claimed_targets:
-                    return False
-                claimed_targets.add(target)
+        if self.overlapping_claims():
+            return False
 
         return True
+
+    def focus_first_problem(self) -> None:
+        """Select and scroll to the first row the user has to fix.
+
+        A refusal that names files still leaves them to be found in a list
+        that may not fit on screen.
+        """
+        problem_files = list(self.unmapped_files())
+        for _target, claimants in self.overlapping_claims():
+            problem_files.extend(claimants)
+        if not problem_files:
+            return
+
+        wanted = set(problem_files)
+        for row in range(self.files_table.rowCount()):
+            filename_item = self.files_table.item(row, self.COL_FILENAME)
+            if (
+                isinstance(filename_item, EnhancedFileTableItem)
+                and filename_item.file_path in wanted
+            ):
+                self.files_table.selectRow(row)
+                self.files_table.scrollToItem(filename_item)
+                return
+
+    def unmapped_files(self) -> list[Path]:
+        """Input files with no season/episode mapping, in input order."""
+        if not self.media_input_payload or not self.media_input_payload.file_list:
+            return []
+        return [
+            file_path
+            for file_path in self.media_input_payload.file_list
+            if file_path not in self.file_episode_mappings
+        ]
+
+    def overlapping_claims(self) -> list[tuple[tuple[Any, Any], list[Path]]]:
+        """Episodes claimed by more than one file.
+
+        Each entry pairs a ``(season, episode)`` with every file claiming it,
+        so the caller can name them. A file spanning several episodes claims
+        each one, which is how "S01E01-E02" and a separate "S01E02" are
+        caught despite their start numbers differing.
+        """
+        claimants: dict[tuple[Any, Any], list[Path]] = {}
+        for file_path, mapping in self.file_episode_mappings.items():
+            claimed = claimed_season_episodes(mapping)
+            if not claimed:
+                claimed = [(mapping.get("season"), mapping.get("episode"))]
+            for target in claimed:
+                claimants.setdefault(target, []).append(file_path)
+
+        return [
+            (target, sorted(files))
+            for target, files in claimants.items()
+            if len(files) > 1
+        ]
 
     def has_tvdb_episode_data(self) -> bool:
         """Whether TVDB returned any episode data for the current series."""
@@ -1836,6 +2543,8 @@ class SeriesEpisodeMapper(QWidget):
 
         if "absolute" in order_type or "absolute" in order_name:
             return EpisodeFormat.ANIME_ABSOLUTE
+        if "dvd" in order_type or "dvd" in order_name:
+            return EpisodeFormat.DVD
         return EpisodeFormat.STANDARD
 
     def _set_release_format(

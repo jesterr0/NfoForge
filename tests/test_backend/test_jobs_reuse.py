@@ -314,10 +314,11 @@ def _image_backend(
         Any,
         SimpleNamespace(
             settings=SimpleNamespace(
+                general=SimpleNamespace(timeout=60),
                 screenshots=SimpleNamespace(
                     optimize_generated_images=False,
                     optimize_downloaded_images=False,
-                )
+                ),
             )
         ),
     )
@@ -615,3 +616,74 @@ def test_uploaded_images_round_trip_through_the_codec(tmp_path: Path) -> None:
     assert restored.shared_data.uploaded_image_hosts == {
         TrackerSelection.AITHER: ImageHostRef(ImageHost.CHEVERETO_V3)
     }
+
+
+# --------------------------------------------------------------------------
+# a record is only worth reusing where it holds a URL
+# --------------------------------------------------------------------------
+def test_a_failed_upload_in_the_record_is_not_offered_for_reuse() -> None:
+    """The shape that put three blank images on three trackers.
+
+    A failed upload is stored as `ImageUploadData(None, None)`, which is
+    indistinguishable from a real one by shape. Jobs saved before that was
+    filtered still hold them, so the filter has to be here as well as at the
+    point of recording.
+    """
+    context = ProcessingContext()
+    context.shared_data.uploaded_images_by_host[ImageHostRef(ImageHost.PIXHOST)] = {
+        0: ImageUploadData(url="https://pixhost/0.png", medium_url=None),
+        1: ImageUploadData(url=None, medium_url=None),
+    }
+
+    reusable = ProcessBackEnd._reusable_uploaded_images(
+        context, TrackerSelection.AITHER, ImageHostRef(ImageHost.PIXHOST)
+    )
+
+    assert reusable == {
+        0: ImageUploadData(url="https://pixhost/0.png", medium_url=None)
+    }
+
+
+def test_a_record_of_nothing_but_failures_is_no_record_at_all() -> None:
+    context = ProcessingContext()
+    context.shared_data.uploaded_images_by_host[ImageHostRef(ImageHost.PIXHOST)] = {
+        0: ImageUploadData(url=None, medium_url=None)
+    }
+
+    assert (
+        ProcessBackEnd._reusable_uploaded_images(
+            context, TrackerSelection.AITHER, ImageHostRef(ImageHost.PIXHOST)
+        )
+        is None
+    )
+
+
+def test_a_partial_record_still_needs_the_screenshots_on_disk() -> None:
+    """Nine of twelve is worth keeping, but it is not a reason to skip the rest.
+
+    `needs_local_images` gates whether a run may proceed without the files. A
+    partial record answering "no files needed" would leave the missing three
+    with nowhere to be uploaded from.
+    """
+    context = ProcessingContext()
+    context.shared_data.loaded_images = [Path(f"shot_{i}.png") for i in range(3)]
+    context.shared_data.uploaded_images_by_host[ImageHostRef(ImageHost.PIXHOST)] = {
+        0: ImageUploadData(url="https://pixhost/0.png", medium_url=None)
+    }
+
+    assert ProcessBackEnd.needs_local_images(
+        context, TrackerSelection.AITHER, ImageHostRef(ImageHost.PIXHOST)
+    )
+
+
+def test_a_complete_record_needs_no_screenshots() -> None:
+    context = ProcessingContext()
+    context.shared_data.loaded_images = [Path(f"shot_{i}.png") for i in range(2)]
+    context.shared_data.uploaded_images_by_host[ImageHostRef(ImageHost.PIXHOST)] = {
+        index: ImageUploadData(url=f"https://pixhost/{index}.png", medium_url=None)
+        for index in range(2)
+    }
+
+    assert not ProcessBackEnd.needs_local_images(
+        context, TrackerSelection.AITHER, ImageHostRef(ImageHost.PIXHOST)
+    )

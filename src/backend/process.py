@@ -1,5 +1,5 @@
 import asyncio
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from html import escape
 from pathlib import Path
 import shutil
@@ -94,7 +94,11 @@ from src.backend.trackers.title_rules import TITLE_RULES, ReleaseProperties
 from src.backend.trackers.unit3d_base import Unit3dBaseSearch
 from src.backend.trackers.utils import format_image_tag
 from src.backend.upload_retry import (
+    IMAGE_UPLOAD_ATTEMPTS,
     RETRY_ATTEMPTS,
+    ImageRetryAction,
+    ImageRetryDecision,
+    ImageUploadFailure,
     TrackerRunOutcome,
     UploadFailure,
     UploadFailurePhase,
@@ -164,6 +168,34 @@ def _media_source_available(media_input: Any) -> bool:
     """Report source availability while remaining compatible with test stubs."""
     checker = getattr(media_input, "source_available", None)
     return bool(checker()) if callable(checker) else True
+
+
+def _usable_uploads(
+    images: Mapping[int, ImageUploadData] | None,
+) -> dict[int, ImageUploadData]:
+    """The entries that actually carry a URL.
+
+    A failed upload is recorded as `ImageUploadData(None, None)`, which by
+    shape alone is indistinguishable from a successful one. Handing such a
+    record back as "already uploaded" is what put three blank images on three
+    trackers, so nothing without a URL survives this.
+    """
+    if not images:
+        return {}
+    return {index: data for index, data in images.items() if data.url}
+
+
+def _expected_image_count(context: ProcessingContext) -> int | None:
+    """How many screenshots this run is working with, where it can tell.
+
+    None means nothing on disk and no URLs -- an archive restored without its
+    images. Such a run cannot count what it is missing, so whatever it carries
+    is as complete as it will get.
+    """
+    for source in (context.shared_data.loaded_images, context.shared_data.url_data):
+        if source:
+            return len(source)
+    return None
 
 
 class ProcessBackEnd:
@@ -979,6 +1011,8 @@ class ProcessBackEnd:
         ]
         | None = None,
         upload_retry_cb: Callable[[UploadFailure], UploadRetryAction] | None = None,
+        image_retry_cb: Callable[[ImageUploadFailure], ImageRetryDecision]
+        | None = None,
         run_outcome_cb: Callable[[TrackerSelection, TrackerRunOutcome], None]
         | None = None,
         phase: RunPhase = RunPhase.FULL,
@@ -1012,7 +1046,7 @@ class ProcessBackEnd:
 
         # handle image uploading
         images = self.handle_images_for_trackers(
-            context, process_dict, queued_text_update, progress_bar_cb
+            context, process_dict, queued_text_update, progress_bar_cb, image_retry_cb
         )
 
         self.progress_bar_cb = progress_bar_cb
@@ -1669,12 +1703,22 @@ class ProcessBackEnd:
         process_dict: dict[str, Any],
         queued_text_update: Callable[[str], None],
         progress_bar_cb: Callable[[float], None],
+        image_retry_cb: Callable[[ImageUploadFailure], ImageRetryDecision]
+        | None = None,
     ) -> dict[TrackerSelection, dict[int, ImageUploadData]]:
         """
         Handles the uploading of images for various trackers based on the provided process dictionary.
 
         This function determines the image sources and destinations, downloads images if necessary,
         and uploads them to the specified image hosts.
+
+        Images are tracked by *position* in this run's sorted screenshot list
+        rather than as an all-or-nothing batch, because a position is the unit
+        a host actually fails at: three images out of twelve is the ordinary
+        shape of a bad upload. Holding positions lets one mechanism serve three
+        jobs that used to have nothing in common -- the first upload, a retry
+        of only what failed, and topping up a saved job whose stored URLs cover
+        part of the set.
 
         Args:
             context (ProcessingContext): The processing context containing state data.
@@ -1684,6 +1728,9 @@ class ProcessBackEnd:
                 or log messages related to the upload process.
             progress_bar_cb (Callable[[float], None]): A callback function to track
                 the progress of the torrent generation.
+            image_retry_cb: Asked what to do about a host that left gaps. None
+                is the headless contract the job queue uses: with nobody to
+                ask, the run fails on the gap exactly as it always did.
 
         Returns:
             dict[TrackerSelection, dict[int, ImageUploadData]]: A dictionary mapping trackers to their
@@ -1696,6 +1743,8 @@ class ProcessBackEnd:
         files_to_upload: Sequence[Path] | None = None
 
         url_data: dict[TrackerSelection, dict[int, ImageUploadData]] = {}
+        # every position this run holds a working URL for, per host
+        carried: dict[ImageHostRef, dict[int, ImageUploadData]] = {}
 
         # build tracker_to_host_map and determine where the images are from/to
         for tracker_name, data in process_dict.items():
@@ -1710,27 +1759,26 @@ class ProcessBackEnd:
                     f"Image destination for {tracker_name}: {img_to!r} (from {image_host_data.img_from!r})",
                 )
                 cur_tracker = TrackerSelection(tracker_name)
+                tracker_to_host_map[cur_tracker] = img_to
 
                 # a resumed job may already hold this tracker's uploaded URLs;
                 # reuse them rather than putting the same images on the host a
-                # second time, but only while the destination still matches
+                # second time, but only while the destination still matches. A
+                # partial record is carried the same way -- those URLs are
+                # real, and only the positions missing from it are uploaded.
                 reusable = self._reusable_uploaded_images(context, cur_tracker, img_to)
-                if reusable is not None:
-                    url_data[cur_tracker] = reusable
-                    tracker_to_host_map[cur_tracker] = img_to
+                if reusable and isinstance(img_to, ImageHostRef):
+                    carried.setdefault(img_to, {}).update(reusable)
                     queued_text_update(
                         f"<br /><span>Reusing {len(reusable)} already-uploaded "
                         f"image(s) for <b>{tracker_name}</b></span>"
                     )
-                    continue
 
                 # track the image host to be used for each tracker
                 if isinstance(img_to, ImageHostRef) and img_to != DISABLED_HOST:
                     to_image_hosts.add(img_to)
                 elif not to_url and img_to is ImageSource.URLS:
                     to_url = True
-
-                tracker_to_host_map[cur_tracker] = img_to
             else:
                 # the tracker cannot be mapped to a destination at all, so it will
                 # reach the NFO stage with no images and no other explanation
@@ -1740,12 +1788,21 @@ class ProcessBackEnd:
                     f"and got {type(image_host_data).__name__}: {image_host_data!r}",
                 )
 
+        # A host whose carried URLs already cover the run needs nothing from
+        # the upload path -- not even the screenshot files, which a source-less
+        # archive no longer has.
+        hosts_needing_upload = {
+            host
+            for host in to_image_hosts
+            if not self._uploads_cover_run(context, carried.get(host, {}))
+        }
+
         # handle image host uploads
         if to_image_hosts or to_url:
             queued_text_update(
                 '<br /><h3 style="margin-bottom: 0; padding-bottom: 0;">🎥 Image Handling:</h3>'
             )
-        if to_image_hosts:
+        if hosts_needing_upload:
             if img_from is ImageSource.URLS:
                 queued_text_update(
                     f"<br />Attempting to download {len(context.shared_data.url_data)} user-provided URL(s)",
@@ -1783,14 +1840,14 @@ class ProcessBackEnd:
                 if servable:
                     raise ImageHostError(
                         "No screenshot files are available to upload to "
-                        f"{', '.join(sorted(str(host) for host in to_image_hosts))}. "
+                        f"{', '.join(sorted(str(host) for host in hosts_needing_upload))}. "
                         "This job already holds uploaded images for "
                         f"{', '.join(servable)} -- select one of those, or "
                         "restore the screenshots it was saved with."
                     )
                 LOG.warning(
                     LOG.LOG_SOURCE.BE,
-                    f"No images available to upload to {len(to_image_hosts)} image host(s), "
+                    f"No images available to upload to {len(hosts_needing_upload)} image host(s), "
                     "every tracker will be processed without images",
                 )
                 queued_text_update(
@@ -1823,49 +1880,61 @@ class ProcessBackEnd:
                             f"<br />Failed to optimize image(s) ({opt_e})"
                         )
 
-                # upload images
-                queued_text_update(
-                    f"<br />Uploading {len(files_to_upload)} images to {len(to_image_hosts)} image host(s)",
+                # Position 3 must mean the same file on a retry as it did on
+                # the first attempt. Each uploader sorts its own input, which
+                # made the order right by accident; the optimizer hands back a
+                # directory listing, which does not. Sorting here makes the
+                # order this function's own, and every position below --
+                # including the ones named in a failure -- indexes this list.
+                files_to_upload = sorted(files_to_upload)
+                # `|=`, because switching hosts mid-run introduces a
+                # destination this set was built before anyone knew about
+                to_image_hosts |= self._upload_images_for_hosts(
+                    context=context,
+                    hosts=hosts_needing_upload,
+                    files=files_to_upload,
+                    carried=carried,
+                    tracker_to_host_map=tracker_to_host_map,
+                    queued_text_update=queued_text_update,
+                    progress_bar_cb=progress_bar_cb,
+                    image_retry_cb=image_retry_cb,
                 )
-                async_loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(async_loop)
-                upload_results: dict[ImageHostRef, dict[int, ImageUploadData]] = (
-                    async_loop.run_until_complete(
-                        self.handle_image_upload(
-                            to_image_hosts, files_to_upload, progress_bar_cb
-                        )
-                    )
-                )
-                async_loop.close()
 
+        # map what each tracker's host ended up holding back onto the tracker
+        expected = len(files_to_upload) if files_to_upload else None
+        for tracker, img_host in tracker_to_host_map.items():
+            if not isinstance(img_host, ImageHostRef) or img_host not in to_image_hosts:
                 LOG.debug(
                     LOG.LOG_SOURCE.BE,
-                    f"Upload results returned for image host(s): {sorted(str(h) for h in upload_results)}",
+                    f"No uploaded images for {tracker}, its destination {img_host!r} "
+                    "was not part of this upload",
                 )
-
-                # Recorded here, before anything below can raise. A single
-                # image that failed to upload sends `assert_all_images_uploaded`
-                # out of this function, and the per-tracker recording at the end
-                # never runs -- which threw away every host that had just
-                # succeeded, so a later run uploaded all of them again.
-                for img_host, host_results in upload_results.items():
-                    if host_results:
-                        context.shared_data.uploaded_images_by_host[img_host] = dict(
-                            host_results
-                        )
-
-                # map the uploaded image hosts to the appropriate trackers
-                for tracker, img_host in tracker_to_host_map.items():
-                    if img_host in upload_results:
-                        tracker_results = upload_results[img_host]
-                        assert_all_images_uploaded(str(tracker), tracker_results)
-                        url_data[tracker] = tracker_results
-                    else:
-                        LOG.debug(
-                            LOG.LOG_SOURCE.BE,
-                            f"No uploaded images for {tracker}, its destination {img_host!r} "
-                            "was not part of this upload",
-                        )
+                continue
+            images = carried.get(img_host, {})
+            if expected is None:
+                if not images:
+                    # Nothing was uploaded and nothing was carried, so there is
+                    # no count to hold this host to. The branch above has
+                    # already said why, and a tracker with no images is a
+                    # supported outcome.
+                    LOG.debug(
+                        LOG.LOG_SOURCE.BE,
+                        f"No uploaded images for {tracker}, nothing was sent to "
+                        f"{img_host!r} and nothing was carried",
+                    )
+                    continue
+                images = dict(sorted(images.items()))
+            else:
+                # A gap is a missing key in `carried`, but
+                # `assert_all_images_uploaded` reads a failure as an entry that
+                # is present without a URL. Pad them back so it names the same
+                # positions it always has. Union rather than comprehension, so
+                # a saved job carrying more URLs than this run has screenshots
+                # keeps the extras instead of having them truncated away.
+                gaps = {index: ImageUploadData(None, None) for index in range(expected)}
+                images = dict(sorted((gaps | images).items()))
+            assert_all_images_uploaded(str(tracker), images)
+            url_data[tracker] = images
 
         # using URLs as is
         if to_url:
@@ -1908,10 +1977,189 @@ class ProcessBackEnd:
             host = tracker_to_host_map.get(tracker)
             if host is None or not images:
                 continue
-            context.shared_data.uploaded_images[tracker] = dict(images)
+            context.shared_data.uploaded_images[tracker] = _usable_uploads(images)
             context.shared_data.uploaded_image_hosts[tracker] = host
 
         return url_data
+
+    def _upload_images_for_hosts(
+        self,
+        *,
+        context: ProcessingContext,
+        hosts: set[ImageHostRef],
+        files: Sequence[Path],
+        carried: dict[ImageHostRef, dict[int, ImageUploadData]],
+        tracker_to_host_map: dict[TrackerSelection, ImageHostRef | ImageSource],
+        queued_text_update: Callable[[str], None],
+        progress_bar_cb: Callable[[float], None],
+        image_retry_cb: Callable[[ImageUploadFailure], ImageRetryDecision] | None,
+    ) -> set[ImageHostRef]:
+        """Upload every position each host still owes, asking about the gaps.
+
+        Mutates `carried` with the URLs it wins, and `tracker_to_host_map` when
+        the user sends a host's trackers somewhere else, so the caller's view
+        of where each tracker's images ended up stays true whichever way the
+        run got there.
+
+        Returns every host this actually sent to, which is not the set it was
+        given: switching hosts names one the caller has never seen, and its
+        trackers would otherwise be read as having no images at all.
+        """
+        total = len(files)
+        default_timeout = self.config.settings.general.timeout
+        timeouts: dict[ImageHostRef, int] = {}
+        attempt = 0
+
+        def outstanding(host: ImageHostRef) -> tuple[int, ...]:
+            have = carried.get(host, {})
+            return tuple(index for index in range(total) if index not in have)
+
+        pending = {
+            host: positions for host in hosts if (positions := outstanding(host))
+        }
+        touched: set[ImageHostRef] = set(pending)
+
+        while pending:
+            attempt += 1
+            queued_text_update(
+                f"<br />Uploading {sum(len(p) for p in pending.values())} images to "
+                f"{len(pending)} image host(s)",
+            )
+
+            async_loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(async_loop)
+            try:
+                upload_results = async_loop.run_until_complete(
+                    self.handle_image_upload(pending, files, progress_bar_cb, timeouts)
+                )
+            finally:
+                async_loop.close()
+
+            LOG.debug(
+                LOG.LOG_SOURCE.BE,
+                f"Upload results returned for image host(s): {sorted(str(h) for h in upload_results)}",
+            )
+
+            # Recorded here, before anything below can raise or the user can
+            # cancel. A single failed image used to send
+            # `assert_all_images_uploaded` out of this function before any of
+            # it was written down, which threw away every host that had just
+            # succeeded -- so a later run uploaded all of them again. Only
+            # entries that carry a URL are kept: recording the failures too is
+            # what let a later run "reuse" three blank images.
+            for img_host, host_results in upload_results.items():
+                usable = _usable_uploads(host_results)
+                if not usable:
+                    continue
+                carried.setdefault(img_host, {}).update(usable)
+                context.shared_data.uploaded_images_by_host.setdefault(
+                    img_host, {}
+                ).update(usable)
+
+            pending = {
+                host: missing for host in pending if (missing := outstanding(host))
+            }
+            if not pending or image_retry_cb is None:
+                # No callback is the headless contract: the gaps stay, and the
+                # caller's `assert_all_images_uploaded` reports them.
+                return touched
+
+            for host in tuple(pending):
+                missing = pending[host]
+                waiting = tuple(
+                    tracker
+                    for tracker, destination in tracker_to_host_map.items()
+                    if destination == host
+                )
+                message = (
+                    f"{len(missing)} of {total} image uploads failed for {host} "
+                    f"(positions: {', '.join(str(index) for index in missing)})"
+                )
+                queued_text_update(
+                    f'<br /><span style="font-weight: bold; color: red;">{message}</span>'
+                )
+                decision = image_retry_cb(
+                    ImageUploadFailure(
+                        host=host,
+                        trackers=waiting,
+                        failed_positions=missing,
+                        total=total,
+                        attempt=attempt,
+                        automatic_attempts=IMAGE_UPLOAD_ATTEMPTS,
+                        timeout=timeouts.get(host, default_timeout),
+                        message=message,
+                    )
+                )
+
+                if decision.action is ImageRetryAction.CANCEL:
+                    raise ProcessCancelled(
+                        f"Cancelled after images failed to upload to {host}"
+                    )
+
+                if (
+                    decision.action is ImageRetryAction.SWITCH_HOST
+                    and decision.host
+                    and decision.host != host
+                ):
+                    self._switch_image_host(
+                        context=context,
+                        old_host=host,
+                        new_host=decision.host,
+                        waiting=waiting,
+                        tracker_to_host_map=tracker_to_host_map,
+                        queued_text_update=queued_text_update,
+                    )
+                    del pending[host]
+                    touched.add(decision.host)
+                    # Everything, not just `missing`: the new host holds none
+                    # of this run's images, so the positions the old host did
+                    # manage still have to get there.
+                    remaining = outstanding(decision.host)
+                    if remaining:
+                        pending[decision.host] = remaining
+                    if decision.timeout:
+                        timeouts[decision.host] = decision.timeout
+                    continue
+
+                if decision.timeout:
+                    timeouts[host] = decision.timeout
+
+        return touched
+
+    @staticmethod
+    def _switch_image_host(
+        *,
+        context: ProcessingContext,
+        old_host: ImageHostRef,
+        new_host: ImageHostRef,
+        waiting: Sequence[TrackerSelection],
+        tracker_to_host_map: dict[TrackerSelection, ImageHostRef | ImageSource],
+        queued_text_update: Callable[[str], None],
+    ) -> None:
+        """Point every tracker on `old_host` at `new_host` instead.
+
+        The run's own map and the shared selection are both updated: the first
+        decides where the images are uploaded now, the second is what a job
+        saved or archived afterwards records, and a job that remembered the
+        host the user just abandoned would walk straight back into it.
+        """
+        for tracker in waiting:
+            tracker_to_host_map[tracker] = new_host
+            selection = context.shared_data.tracker_image_hosts.get(tracker)
+            if selection:
+                context.shared_data.tracker_image_hosts[tracker] = ImageUploadFromTo(
+                    selection.img_from, new_host
+                )
+        LOG.info(
+            LOG.LOG_SOURCE.BE,
+            f"Image host switched from {old_host} to {new_host} for "
+            f"{', '.join(str(tracker) for tracker in waiting)}",
+        )
+        queued_text_update(
+            f"<br /><span>Sending images for <b>"
+            f"{', '.join(str(tracker) for tracker in waiting)}</b> to "
+            f"<b>{new_host}</b> instead</span>"
+        )
 
     def _record_template_fingerprints(
         self, process_dict: dict[str, Any], context: ProcessingContext
@@ -1949,13 +2197,27 @@ class ProcessBackEnd:
         files?" cannot drift apart. Two cases need no files: a destination that
         uploads nothing (a URL passthrough, or `DISABLED`), and one whose
         images already went to that same host.
+
+        "Already went there" means all of them. A record covering nine of
+        twelve is worth keeping but is not a reason to let the run proceed
+        without the files the missing three have to be uploaded from.
         """
         if not isinstance(destination, ImageHostRef) or destination == DISABLED_HOST:
             return False
-        return (
-            ProcessBackEnd._reusable_uploaded_images(context, tracker, destination)
-            is None
+        reusable = ProcessBackEnd._reusable_uploaded_images(
+            context, tracker, destination
         )
+        return not ProcessBackEnd._uploads_cover_run(context, reusable or {})
+
+    @staticmethod
+    def _uploads_cover_run(
+        context: ProcessingContext, images: Mapping[int, ImageUploadData]
+    ) -> bool:
+        """Whether `images` accounts for every screenshot this run works with."""
+        if not images:
+            return False
+        expected = _expected_image_count(context)
+        return expected is None or len(images) >= expected
 
     @staticmethod
     def _reusable_uploaded_images(
@@ -1976,17 +2238,25 @@ class ProcessBackEnd:
         tracker pointed at a host this job already uploaded to has nothing to
         gain from sending the same screenshots again -- and an archive whose
         local copies are gone has nothing to send.
+
+        Only entries that carry a URL come back, so what is returned may cover
+        part of the set rather than all of it. Records written before that
+        filter existed -- and restored by `jobs.codec` -- hold the failures
+        too, and reusing one of those is how a run that reported three failed
+        uploads went on to publish three blank images.
         """
         if not isinstance(destination, ImageHostRef) or destination == DISABLED_HOST:
             return None
         # `==`, not `is`: a destination is a value now, and two refs naming
         # the same host are equal without being the same object
         if context.shared_data.uploaded_image_hosts.get(tracker) == destination:
-            images = context.shared_data.uploaded_images.get(tracker)
+            images = _usable_uploads(context.shared_data.uploaded_images.get(tracker))
             if images:
-                return dict(images)
-        by_host = context.shared_data.uploaded_images_by_host.get(destination)
-        return dict(by_host) if by_host else None
+                return images
+        by_host = _usable_uploads(
+            context.shared_data.uploaded_images_by_host.get(destination)
+        )
+        return by_host or None
 
     def _optimize_images(
         self, progress_bar_cb: Callable[[float], None], files_to_upload: Sequence[Path]
@@ -2015,20 +2285,30 @@ class ProcessBackEnd:
 
     async def handle_image_upload(
         self,
-        to_image_hosts: set[ImageHostRef],
+        pending: Mapping[ImageHostRef, Sequence[int]],
         filepaths: Sequence[Path],
         progress_bar_cb: Callable[[float], None],
+        timeouts: Mapping[ImageHostRef, int] | None = None,
     ) -> dict[ImageHostRef, dict[int, ImageUploadData]]:
         """
-        Handles the image upload process to multiple image hosts asynchronously.
+        Uploads each host's outstanding positions concurrently.
+
+        `pending` names positions in `filepaths` rather than files, because a
+        retry sends only the handful that failed and their URLs still have to
+        land back where they belong. The results come back keyed the same way,
+        so nothing above here re-derives the mapping.
 
         Args:
-            to_image_hosts (set[ImageHostRef]): The set of image hosts to upload to.
-            filepaths (Sequence[Path]): The file paths of the images to be uploaded.
+            pending: Positions in `filepaths` each image host still owes.
+            filepaths: This run's sorted screenshot list, which every position
+                indexes.
             progress_bar_cb (Callable[[float], None): Callback function to track upload progress.
+            timeouts: Per-host override of the configured network timeout,
+                for a retry the user chose to give more room.
 
         Returns:
-            dict[ImageHostRef, dict[int, ImageUploadData]]: A mapping of image hosts to uploaded image data.
+            dict[ImageHostRef, dict[int, ImageUploadData]]: A mapping of image hosts to
+            uploaded image data, keyed by position.
         """
 
         def progress_callback(_job: str, _ind: float, overall: float) -> None:
@@ -2036,42 +2316,41 @@ class ProcessBackEnd:
 
         image_uploader = ImageUploader(progress_signal=progress_callback)
 
-        jobs: dict[str, ImageHostRef] = {}
         host_to_job: dict[ImageHostRef, str] = {}
 
         # register image hosts and their corresponding uploaders
         self._register_image_hosts(
-            to_image_hosts, filepaths, image_uploader, jobs, host_to_job
+            pending, filepaths, image_uploader, host_to_job, timeouts or {}
         )
 
         # start all jobs and wait for results
         results = await image_uploader.start_jobs()
 
-        # map uploaded URLs back to each tracker
-        uploaded_urls = self._map_uploaded_urls(host_to_job, results)
+        # map uploaded URLs back to the positions they were sent for
+        uploaded_urls = self._map_uploaded_urls(host_to_job, pending, results)
 
         return uploaded_urls
 
     def _register_image_hosts(
         self,
-        to_image_hosts: set[ImageHostRef],
+        pending: Mapping[ImageHostRef, Sequence[int]],
         filepaths: Sequence[Path],
         image_uploader: ImageUploader,
-        jobs: dict[str, ImageHostRef],
         host_to_job: dict[ImageHostRef, str],
+        timeouts: Mapping[ImageHostRef, int],
     ) -> None:
         """
         Registers image hosts and associates them with upload jobs.
 
         Args:
-            to_image_hosts (set[ImageHostRef]): The set of image hosts to register.
-            filepaths (Sequence[Path]): The file paths of images to be uploaded.
+            pending: Positions in `filepaths` each image host still owes.
+            filepaths: This run's sorted screenshot list.
             image_uploader (ImageUploader): The image uploader instance.
-            jobs (dict): Dictionary mapping job IDs to image hosts.
             host_to_job (dict): Dictionary mapping image hosts to job IDs.
+            timeouts: Per-host override of the configured network timeout.
         """
-        for img_host in to_image_hosts:
-            if img_host in host_to_job:
+        for img_host, positions in pending.items():
+            if img_host in host_to_job or not positions:
                 continue
 
             uploader = self._get_uploader_for_host(img_host)
@@ -2079,11 +2358,18 @@ class ProcessBackEnd:
             # user-chosen label, and would then collide in the uploader registry
             image_uploader.register_uploader(img_host.key(), uploader)
 
-            job_id = image_uploader.add_job(
-                img_host.key(), ImageUploadRequest(filepaths=filepaths)
+            host_to_job[img_host] = image_uploader.add_job(
+                img_host.key(),
+                ImageUploadRequest(
+                    filepaths=[filepaths[index] for index in positions],
+                    # Image hosts used to set no timeout at all and inherit
+                    # aiohttp's five-minute default, so a host that stopped
+                    # answering held the whole run.
+                    timeout=timeouts.get(
+                        img_host, self.config.settings.general.timeout
+                    ),
+                ),
             )
-            jobs[job_id] = img_host
-            host_to_job[img_host] = job_id
 
     def _get_uploader_for_host(self, img_host: ImageHostRef) -> BaseImageHostUploader:
         """
@@ -2257,20 +2543,34 @@ class ProcessBackEnd:
 
     def _map_uploaded_urls(
         self,
-        host_to_job: dict[ImageHostRef, str],
-        results: dict[str, dict[int, ImageUploadData]],
+        host_to_job: Mapping[ImageHostRef, str],
+        pending: Mapping[ImageHostRef, Sequence[int]],
+        results: Mapping[str, dict[int, ImageUploadData]],
     ) -> dict[ImageHostRef, dict[int, ImageUploadData]]:
         """
-        Maps uploaded URLs to their respective image hosts.
+        Re-keys one upload's results from batch offsets to run positions.
+
+        An uploader answers with indexes into the list it was handed, so a
+        retry of positions 3, 6 and 11 comes back as 0, 1 and 2. Left that way
+        it would overwrite the first three images of the set.
 
         Args:
             host_to_job (dict): Mapping of image hosts to job IDs.
-            results (dict[str, dict[int, ImageUploadData]]): The upload results.
+            pending: Positions each host was asked for, in the order they were sent.
+            results (Mapping[str, dict[int, ImageUploadData]]): The upload results.
 
         Returns:
             dict[ImageHostRef, dict[int, ImageUploadData]]: The mapped results.
         """
-        return {tracker: results[job_id] for tracker, job_id in host_to_job.items()}
+        mapped: dict[ImageHostRef, dict[int, ImageUploadData]] = {}
+        for host, job_id in host_to_job.items():
+            positions = pending[host]
+            mapped[host] = {
+                positions[offset]: data
+                for offset, data in results.get(job_id, {}).items()
+                if 0 <= offset < len(positions)
+            }
+        return mapped
 
     def _prepare_base_torrent(
         self,

@@ -6,6 +6,35 @@ NfoForge supports series workflows for standard TV episodes, daily/date releases
 
 When media search identifies the input as a series, the wizard opens a **Series Match** step before rename. This step maps each selected file to TVDB episode metadata and chooses the release-format token set.
 
+### Choosing the episode ordering
+
+TVDB publishes several orderings of the same season — aired, DVD, absolute — and the same season/episode pair names a different episode in each. NfoForge scores every ordering against the filenames and pre-selects the one that fits, showing the evidence on each entry in the **TVDB Order** list:
+
+```
+Aired Order — 20 eps · 20/20 matched · titles 100%
+DVD Order — 19 eps · 19/20 matched · titles 47%
+```
+
+Coverage counts every episode the files claim, and the title figure compares each filename's own episode title against the episode its number lands on. Pick a different ordering whenever you disagree; your existing rows are re-read against it rather than discarded. If most of the filenames disagree with the selected ordering, a warning appears above the file list, and individual rows say which episode their title actually belongs to (`regex (title -> E02?)`).
+
+### Mapping files to episodes
+
+The **Episode(s)** column takes a span, not just a number:
+
+| Typed | Means                                              |
+| ----- | -------------------------------------------------- |
+| `3`   | Episode 3                                          |
+| `1-2` | A file covering both parts of a two-part episode   |
+| `1,5` | A file covering two episodes that are not adjacent |
+
+**Matched Episode** shows the episode each row resolved to, so a number that looks right while naming the wrong episode is visible before anything is renamed. **Title Override** replaces the episode title for that file; leave it blank to use TVDB's.
+
+Matching weighs numbers and titles together. Where a filename carries no episode number, its title is matched against the season — and against whole multi-part stories, so `Show.Lost.and.Found.mkv` maps to `S01E01-E02` rather than to half of it. Where a filename names a part (`A.Moral.Star.2`, `Supernova.1`), it maps to that part alone; a bare trailing number counts as a part only when the rest of the title is the story's own and the number fits within it, so `Apollo 13` is left alone. Where a filename states an episode the ordering does not list, a strong title match to an unclaimed episode wins and the row reads `title`.
+
+A season and episode NfoForge reads cleanly from a filename is kept even when the selected ordering has no such episode — the row is marked `parsed (no TVDB match)` and highlighted rather than dropped, so the pack still validates and you can correct it if it is wrong.
+
+A file covering several episodes is named after the title its episodes share once part markers are removed, so `S01E01-E02` holding "Lost & Found (1)" and "Lost & Found (2)" renames to `Show.S01E01-02.Lost.and.Found...`. Where the episodes have genuinely different titles, none is used — one episode's title would not describe the file. Tracker release names never carry an episode title for a span, which is what those trackers' own rules require.
+
 ## Season packs
 
 Opening a folder works for any of these layouts:
@@ -34,8 +63,9 @@ Supported release-format token sets:
 - **Standard**
 - **Daily / Date**
 - **Anime / Absolute**
+- **DVD**
 
-DVD order can be used as a TVDB episode ordering when available, but it currently uses the **Standard** release-format token set. DVD is not a separate configurable filename/title format yet.
+Selecting DVD order on the Series Match page selects the **DVD** token set, which has its own filename and title fields in Settings → Series. It ships as a copy of the Standard pair, so nothing is named differently until you edit it; a profile saved before the DVD fields existed reads the Standard tokens for them.
 
 ## Tracker support
 

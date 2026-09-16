@@ -19,6 +19,7 @@ from src.frontend.global_signals import GSigs
 from src.frontend.utils import set_top_parent_geometry
 from src.frontend.wizards.media_input import MediaInput
 from src.frontend.wizards.media_search import MediaSearch
+from src.frontend.wizards.series_match import _incomplete_mapping_message
 
 
 class SandboxMediaInputPage(QWizardPage):
@@ -122,10 +123,11 @@ class SandboxSeriesMapperPage(QWizardPage):
     def validatePage(self) -> bool:
         """Validate the series mapping"""
         if not self.series_mapper.is_valid():
+            self.series_mapper.focus_first_problem()
             QMessageBox.warning(
                 self,
                 "Incomplete Mapping",
-                "Please ensure all files are properly mapped to episodes before continuing.",
+                _incomplete_mapping_message(self.series_mapper),
             )
             return False
 

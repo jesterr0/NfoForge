@@ -18,6 +18,7 @@ from src.backend.tokens import FileToken, NfoToken, TokenData, Tokens, TokenType
 from src.backend.utils.anime import is_anime_release
 from src.backend.utils.audio_channels import ParseAudioChannels
 from src.backend.utils.audio_codecs import AudioCodecs
+from src.backend.utils.episode_matching import shared_span_title
 from src.backend.utils.guessit_helpers import get_guessit_title
 from src.backend.utils.language import (
     get_full_language_str,
@@ -89,6 +90,16 @@ class TokenReplacer:
     # handler re-maps it to the canonical name instead of printing whatever
     # string happens to be stored.
     CANONICALIZED_OVERRIDES = frozenset({"source"})
+
+    # The three tiers of episode title, which a per-row override replaces
+    # together: they differ only in how the string is formatted afterwards.
+    _EPISODE_TITLE_TOKENS = frozenset(
+        {
+            Tokens.EPISODE_TITLE.token,
+            Tokens.EPISODE_TITLE_CLEAN.token,
+            Tokens.EPISODE_TITLE_EXACT.token,
+        }
+    )
 
     # TVDB placeholder episode titles that should render as empty rather
     # than landing in output verbatim: exactly "TBA", or "Episode" followed
@@ -541,6 +552,22 @@ class TokenReplacer:
         ):
             return self._optional_user_input(
                 self.user_tokens.get(token_data.token, ""), token_data
+            )
+
+        # A title set on this file's own mapping row beats the pack-wide
+        # override. Both are the user's, but one names this episode and the
+        # other names every episode in the pack, so the specific one wins --
+        # otherwise a pack-wide value stamps the same title onto all of them
+        # and the per-row column could never take effect.
+        if (
+            token_data.bracket_token in self._EPISODE_TITLE_TOKENS
+            and self._row_title_override()
+        ):
+            return self._optional_user_input(
+                self._format_episode_title(
+                    token_data, self._row_title_override() or ""
+                ),
+                token_data,
             )
 
         # handle override tokens
@@ -2566,8 +2593,46 @@ class TokenReplacer:
             return None
 
         season, episode = get_info
-        if self._span_end_episode(season, episode) is not None:
-            return ""
+
+        override = self._row_title_override()
+        if override:
+            return override
+
+        span = self._span_episode_list(season, episode)
+        if len(span) > 1:
+            if not self.file_name_mode:
+                # Tracker rules name the episode only where there is one
+                # episode to name, so a span is left unnamed in a release
+                # title. A filename is the opposite: the convention there is
+                # "Show.S01E01-E02.Lost.and.Found", and the source files
+                # users are working from already carry it.
+                return ""
+
+            # Only the span's first episode has a mapping row, so the rest
+            # resolve through the TVDB fallback -- which reads the aired list
+            # unless it is told which ordering this file was matched against.
+            order_type_id = self._selected_order_type_id(season, episode)
+            # A file covering several episodes has no single episode title,
+            # so naming it after the first would assert that one episode's
+            # title describes all of them. The common case, though, is one
+            # story told in parts, where every episode carries the same
+            # title and differs only by its part marker -- there the shared
+            # stem describes the file exactly, and dropping it lost the only
+            # name the file had.
+            return (
+                shared_span_title(
+                    [
+                        (
+                            self._get_selected_episode_data(
+                                season, number, order_type_id
+                            )
+                            or {}
+                        ).get("name")
+                        for number in span
+                    ]
+                )
+                or ""
+            )
 
         title = ""
         episode_data = self._get_selected_episode_data(season, episode)
@@ -2577,6 +2642,32 @@ class TokenReplacer:
             title = ""
         # a manually mapped episode with no TVDB match synthesizes name: None
         return title or ""
+
+    def _row_title_override(self) -> str | None:
+        """A title the user typed for this file on the Series Match page.
+
+        Belongs to the mapping row rather than to any one episode, so it
+        also answers for a file covering several -- which is the case with
+        no provider title of its own to fall back on.
+        """
+        get_info = self._verify_series_info()
+        if not get_info:
+            return None
+
+        mapped_episode = self._get_mapped_episode_payload(*get_info)
+        if not mapped_episode:
+            return None
+
+        override = mapped_episode.get("episode_title_override")
+        return str(override) if override else None
+
+    def _format_episode_title(self, token_data: TokenData, title: str) -> str:
+        """Apply the formatting tier the requested title token implies."""
+        if token_data.bracket_token == Tokens.EPISODE_TITLE_CLEAN.token:
+            return self._title_formatting_cleaned(title, self.title_clean_rules)
+        if token_data.bracket_token == Tokens.EPISODE_TITLE_EXACT.token:
+            return title
+        return self._title_formatting_standard(title)
 
     def _episode_title(self, token_data: TokenData) -> str:
         title = self._selected_episode_title()
@@ -2993,7 +3084,9 @@ class TokenReplacer:
             if get_air_date and get_air_date.get("aired"):
                 air_date = get_air_date.get("aired")
 
-            episode_name = episode_data.get("episode_name")
+            episode_name = episode_data.get("episode_title_override") or (
+                episode_data.get("episode_name")
+            )
             if self._is_placeholder_episode_title(episode_name):
                 episode_name = None
 
@@ -3072,7 +3165,9 @@ class TokenReplacer:
                 if season_episode_str:
                     block_lines.append(season_episode_str)
 
-                episode_name = episode_data.get("episode_name")
+                episode_name = episode_data.get("episode_title_override") or (
+                    episode_data.get("episode_name")
+                )
                 if episode_name and not self._is_placeholder_episode_title(
                     episode_name
                 ):
@@ -3138,7 +3233,9 @@ class TokenReplacer:
                 if season_episode_str:
                     parts.append(season_episode_str)
 
-                episode_name = episode_data.get("episode_name")
+                episode_name = episode_data.get("episode_title_override") or (
+                    episode_data.get("episode_name")
+                )
                 if episode_name and not self._is_placeholder_episode_title(
                     episode_name
                 ):

@@ -7,8 +7,14 @@ from typing import Any, Literal, cast
 
 import aiohttp
 
+from src.backend.image_host_uploading.retry import (
+    RETRYABLE_STATUS,
+    RetryableStatus,
+    image_client_timeout,
+    retry_image_upload,
+)
+from src.backend.upload_retry import IMAGE_UPLOAD_ATTEMPTS
 from src.exceptions import ImageUploadError
-from src.logger.nfo_forge_logger import LOG
 from src.packages.custom_types import ImageUploadData
 
 AuthMode = Literal["body", "header", "both"]
@@ -20,9 +26,10 @@ async def _post_image(
     auth_mode: AuthMode,
     image_data: str,
     host_name: str,
-    retries: int = 3,
+    timeout: int | None = None,
+    attempts: int = IMAGE_UPLOAD_ATTEMPTS,
 ) -> dict[str, Any]:
-    """Uploads a base64-encoded image using aiohttp with retries and proper error handling."""
+    """Uploads a base64-encoded image using aiohttp, retrying transient failures."""
     data: dict[str, str] = {"image": image_data}
     headers: dict[str, str] | None = None
     if auth_mode in ("body", "both"):
@@ -30,29 +37,26 @@ async def _post_image(
     if auth_mode in ("header", "both"):
         headers = {"X-API-Key": api_key}
 
-    async with aiohttp.ClientSession() as session:
-        for attempt in range(retries):
-            try:
-                async with session.post(url, data=data, headers=headers) as response:
-                    if response.status == 200:
-                        return cast(dict[str, Any], await response.json())
+    async with aiohttp.ClientSession(timeout=image_client_timeout(timeout)) as session:
 
-                    if response.status in {429, 500, 502, 503, 504}:
-                        await asyncio.sleep(2**attempt)
-                        continue
-                    else:
-                        return {"status": response.status, "reason": response.reason}
+        async def post_once() -> dict[str, Any]:
+            async with session.post(url, data=data, headers=headers) as response:
+                if response.status == 200:
+                    return cast(dict[str, Any], await response.json())
+                if response.status in RETRYABLE_STATUS:
+                    raise RetryableStatus(response.status, response.reason)
+                # Any other status is the host's answer, not a hiccup: an
+                # invalid key or a rejected image says the same thing however
+                # many times it is asked.
+                return {"status": response.status, "reason": response.reason}
 
-            except (aiohttp.ClientError, asyncio.TimeoutError) as e:
-                if attempt < retries - 1:
-                    await asyncio.sleep(2**attempt)
-                else:
-                    LOG.warning(
-                        LOG.LOG_SOURCE.BE,
-                        f"{host_name}: upload failed after {retries} attempts: {e}",
-                    )
+        result = await retry_image_upload(
+            post_once, host_name=host_name, attempts=attempts
+        )
 
-    return {"status": "Failed", "reason": "Failure on retry"}
+    if result is None:
+        return {"status": "Failed", "reason": "Failure on retry"}
+    return result
 
 
 def _sub_mapping(source: Mapping[str, Any], key: str) -> Mapping[str, Any] | None:
@@ -111,13 +115,17 @@ async def _upload_batch(
     filepaths: Sequence[Path],
     start_index: int,
     cb: Callable[[int], Awaitable[None]] | None = None,
+    timeout: int | None = None,
+    attempts: int = IMAGE_UPLOAD_ATTEMPTS,
 ) -> dict[int, ImageUploadData]:
     async def upload_single_image(
         filepath: PathLike[str], index: int
     ) -> tuple[int, ImageUploadData]:
         with open(filepath, "rb") as image_file:
             image_data = base64.b64encode(image_file.read()).decode("utf-8")
-            response = await _post_image(url, api_key, auth_mode, image_data, host_name)
+            response = await _post_image(
+                url, api_key, auth_mode, image_data, host_name, timeout, attempts
+            )
             upload_data = extract_image_urls(response)
             if cb:
                 await cb(index + 1)
@@ -139,6 +147,8 @@ async def api_key_image_upload(
     filepaths: Sequence[Path],
     batch_size: int = 4,
     progress_callback: Callable[[int], Awaitable[None]] | None = None,
+    timeout: int | None = None,
+    attempts: int = IMAGE_UPLOAD_ATTEMPTS,
 ) -> dict[int, ImageUploadData] | None:
     """Shared upload flow for image hosts that accept a base64-encoded image
     plus a static API key (as a ``key`` form field, an ``X-API-Key`` header,
@@ -163,7 +173,15 @@ async def api_key_image_upload(
         batch = filepaths[i : i + batch_size]
         task = asyncio.create_task(
             _upload_batch(
-                url, api_key, auth_mode, host_name, batch, i, progress_callback
+                url,
+                api_key,
+                auth_mode,
+                host_name,
+                batch,
+                i,
+                progress_callback,
+                timeout,
+                attempts,
             )
         )
         tasks.append(task)
