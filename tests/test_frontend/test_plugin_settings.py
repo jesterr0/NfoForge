@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from PySide6.QtCore import Signal
-from PySide6.QtWidgets import QWidget
+from PySide6.QtWidgets import QMessageBox, QWidget
 import pytest
 
 from src.config.config import ConfigManager
@@ -112,3 +112,75 @@ def test_plugin_status_explains_that_disabled_plugins_were_not_loaded(
     assert item is not None
     assert item.text(0) == "External plugins disabled"
     assert item.text(3) == "Not loaded"
+
+
+def test_the_plugins_folder_is_named_on_the_page(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Drop-in installation is the documented route, so the folder it needs
+    has to be findable without reading the documentation."""
+    widget, manager = _make_plugin_settings(tmp_path, monkeypatch)
+
+    assert widget.plugin_dir_entry.text() == str(manager.paths.plugins)
+
+
+def test_opening_the_plugins_folder_creates_it_first(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Nothing creates it until a load runs, so on a fresh installation with
+    plugins disabled there would be nothing to open."""
+    widget, manager = _make_plugin_settings(tmp_path, monkeypatch)
+    opened: list[Path] = []
+    monkeypatch.setattr(
+        "src.frontend.stacked_windows.settings.plugins.open_explorer",
+        opened.append,
+    )
+
+    widget._handle_open_plugin_dir_click()
+
+    assert manager.paths.plugins.is_dir()
+    assert opened == [manager.paths.plugins]
+
+
+def test_installing_a_plugin_offers_the_restart_it_needs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Plugins are imported at startup, so one that arrives afterwards is on
+    disk and inert until NfoForge is restarted."""
+    widget, manager = _make_plugin_settings(tmp_path, monkeypatch)
+    installed = manager.paths.plugins / "my-plugin"
+    monkeypatch.setattr(
+        "src.frontend.stacked_windows.settings.plugins.install_from_folder",
+        lambda parent, paths: installed,
+    )
+    asked: list[str] = []
+    monkeypatch.setattr(
+        QMessageBox,
+        "question",
+        staticmethod(
+            lambda parent, title, text, *args, **kwargs: (
+                asked.append(text) or QMessageBox.StandardButton.No
+            )
+        ),
+    )
+
+    widget._handle_install_from_folder_click()
+
+    assert asked and "restarted" in asked[0]
+
+
+def test_declining_the_folder_dialog_asks_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    widget, _ = _make_plugin_settings(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        "src.frontend.stacked_windows.settings.plugins.install_from_archive",
+        lambda parent, paths: None,
+    )
+
+    def refuse(*args: object, **kwargs: object) -> None:
+        raise AssertionError("nothing was installed, so nothing should be asked")
+
+    monkeypatch.setattr(QMessageBox, "question", staticmethod(refuse))
+
+    widget._handle_install_from_archive_click()

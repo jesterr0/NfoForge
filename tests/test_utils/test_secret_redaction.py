@@ -1,6 +1,6 @@
 import pytest
 
-from src.utils.secret_redaction import scrub_secrets
+from src.utils.secret_redaction import blank_credentials, scrub_secrets
 
 
 @pytest.mark.parametrize(
@@ -50,3 +50,62 @@ def test_scrub_secrets_redacts_a_passkey_in_a_full_mkbrr_command_line() -> None:
 
     assert "deadbeefdeadbeefdeadbeefdeadbeef" not in scrubbed
     assert "--source EXAMPLE" in scrubbed
+
+
+def test_blank_credentials_empties_a_credential_at_any_depth() -> None:
+    document = {
+        "general": {"releasers_name": "someone"},
+        "tracker": {
+            "aither": {
+                "api_key": "SECRET",
+                "announce_url": "https://aither.cc/announce/PASSKEY",
+                "source": "Aither",
+            }
+        },
+        "image_hosts": {
+            "chevereto_v3": {
+                "abc123": {"user": "me", "password": "hunter2", "label": "mine"}
+            }
+        },
+    }
+
+    touched = blank_credentials(document)
+
+    assert document["tracker"]["aither"]["api_key"] == ""
+    assert document["tracker"]["aither"]["announce_url"] == ""
+    assert document["image_hosts"]["chevereto_v3"]["abc123"]["password"] == ""
+    # Settings and identity are left alone.
+    assert document["tracker"]["aither"]["source"] == "Aither"
+    assert document["general"]["releasers_name"] == "someone"
+    assert set(touched) == {
+        "tracker.aither.api_key",
+        "tracker.aither.announce_url",
+        "image_hosts.chevereto_v3.abc123.user",
+        "image_hosts.chevereto_v3.abc123.password",
+    }
+
+
+def test_blank_credentials_reaches_inside_an_array_of_tables() -> None:
+    """Nothing in the schema uses one today, and a missed one is unrecoverable."""
+    document = {"hosts": [{"api_key": "SECRET", "base_url": "https://example"}]}
+
+    touched = blank_credentials(document)
+
+    assert document["hosts"][0]["api_key"] == ""
+    assert document["hosts"][0]["base_url"] == "https://example"
+    assert touched == ("hosts[0].api_key",)
+
+
+def test_blank_credentials_leaves_an_already_empty_value_alone() -> None:
+    document = {"tracker": {"aither": {"api_key": ""}}}
+    assert blank_credentials(document) == ()
+
+
+def test_blank_credentials_does_not_replace_a_table_named_like_a_credential() -> None:
+    """A Chevereto instance keyed `password` is a table, not a secret."""
+    document = {"image_hosts": {"password": {"api_key": "SECRET", "label": "odd"}}}
+
+    blank_credentials(document)
+
+    assert document["image_hosts"]["password"]["label"] == "odd"
+    assert document["image_hosts"]["password"]["api_key"] == ""

@@ -9,6 +9,7 @@ import traceback
 from typing import Any
 
 import tomlkit
+import tomllib
 
 from src.config.paths import default_paths
 from src.exceptions import PluginError
@@ -36,11 +37,125 @@ class PluginLoadReport:
 
 
 @dataclass(frozen=True, slots=True)
-class _LocalCandidate:
+class LocalCandidate:
     plugin_id: str
     root: Path
     module: str
     object_name: str
+
+
+def declared_identity(directory: Path) -> tuple[str, str] | None:
+    """The id and module a directory claims, or None if it claims nothing.
+
+    Deliberately weaker than `read_local_manifest`, which raises. This answers
+    "what does this say it is", which is the question a collision check asks --
+    and it has to be answerable about a neighbour whose own manifest is broken,
+    because a broken plugin still occupies its id and its module name as far as
+    the next launch is concerned.
+
+    The module comes back as an empty string when none is declared, so that a
+    manifest missing it cannot collide with every other manifest missing it.
+    """
+    try:
+        document = tomllib.loads(
+            (directory / LOCAL_MANIFEST).read_text(encoding="utf-8")
+        )
+    except (OSError, tomllib.TOMLDecodeError, UnicodeDecodeError):
+        return None
+
+    declared_id = document.get("id")
+    if not isinstance(declared_id, str) or not declared_id.strip():
+        return None
+    declared_module = document.get("module")
+    module = declared_module.strip() if isinstance(declared_module, str) else ""
+    return declared_id.strip(), module
+
+
+@dataclass(frozen=True, slots=True)
+class InstalledPlugin:
+    """What a directory below a plugins folder claims to be.
+
+    Claims, not facts: assembled from `declared_identity`, so a plugin whose
+    manifest is otherwise broken still appears here. That is the point -- a
+    broken plugin still occupies its id and its module name as far as the next
+    launch is concerned, so anything asking "is this taken" has to see it.
+    """
+
+    root: Path
+    plugin_id: str
+    module: str
+
+
+def declared_plugins(directory: Path) -> tuple[InstalledPlugin, ...]:
+    """Every plugin declaring an id directly below `directory`.
+
+    Not deduplicated by id. Two directories declaring the same id is a state
+    the filesystem allows and the loader reports as a duplicate, and collapsing
+    them here would hide the second one's module from a collision check.
+
+    An unreadable directory yields nothing rather than raising: callers ask
+    this about folders that may not exist yet.
+    """
+    try:
+        entries = sorted(entry for entry in directory.iterdir() if entry.is_dir())
+    except OSError:
+        return ()
+
+    found: list[InstalledPlugin] = []
+    for entry in entries:
+        declared = declared_identity(entry)
+        if declared is not None:
+            found.append(InstalledPlugin(entry, declared[0], declared[1]))
+    return tuple(found)
+
+
+def read_local_manifest(root: Path, manifest: Path) -> LocalCandidate:
+    """Validate one `nfoforge-plugin.toml` and describe what it declares.
+
+    Module level rather than a method because installing a plugin has to answer
+    the same question before anything is copied, and the answer must be the one
+    startup will give. Two validators would drift, and the way that drift shows
+    up is a plugin that installs cleanly and then fails to load on the next
+    launch, in a status table, with the folder already on disk.
+
+    Raises `PluginError` naming the offending field.
+    """
+    try:
+        document = tomlkit.parse(manifest.read_text(encoding="utf-8"))
+    except Exception as error:
+        raise PluginError(f"Invalid {LOCAL_MANIFEST}: {error}") from error
+
+    raw_version = document.get("schema_version")
+    raw_id = document.get("id")
+    raw_module = document.get("module")
+    raw_object = document.get("object", "plugin")
+    if not isinstance(raw_version, int) or isinstance(raw_version, bool):
+        raise PluginError("Manifest schema_version must be 1")
+    schema_version = raw_version
+    if schema_version != 1:
+        raise PluginError(
+            f"Unsupported manifest schema version {schema_version}; expected 1"
+        )
+    if not isinstance(raw_id, str) or not raw_id.strip():
+        raise PluginError("Manifest requires a non-empty string id")
+    if not isinstance(raw_module, str) or not raw_module.strip():
+        raise PluginError("Manifest requires a non-empty string module")
+    if not isinstance(raw_object, str) or not raw_object.strip():
+        raise PluginError("Manifest object must be a non-empty string")
+    module = raw_module.strip()
+    object_name = raw_object.strip()
+    if not module.isidentifier():
+        raise PluginError(
+            "Manifest module must be a top-level Python module or package name"
+        )
+    if not object_name.isidentifier():
+        raise PluginError("Manifest object must be a valid Python identifier")
+    return LocalCandidate(
+        plugin_id=raw_id.strip(),
+        root=root,
+        module=module,
+        object_name=object_name,
+    )
 
 
 class PluginLoader:
@@ -94,7 +209,7 @@ class PluginLoader:
             if not manifest.is_file():
                 continue
             try:
-                candidate = self._read_local_manifest(root, manifest)
+                candidate = read_local_manifest(root, manifest)
                 self._notify(f"Loading plugin: {candidate.plugin_id}")
                 definition = self._load_local_definition(candidate)
                 self.manager.register(
@@ -154,46 +269,7 @@ class PluginLoader:
         return roots
 
     @staticmethod
-    def _read_local_manifest(root: Path, manifest: Path) -> _LocalCandidate:
-        try:
-            document = tomlkit.parse(manifest.read_text(encoding="utf-8"))
-        except Exception as error:
-            raise PluginError(f"Invalid {LOCAL_MANIFEST}: {error}") from error
-
-        raw_version = document.get("schema_version")
-        raw_id = document.get("id")
-        raw_module = document.get("module")
-        raw_object = document.get("object", "plugin")
-        if not isinstance(raw_version, int) or isinstance(raw_version, bool):
-            raise PluginError("Manifest schema_version must be 1")
-        schema_version = raw_version
-        if schema_version != 1:
-            raise PluginError(
-                f"Unsupported manifest schema version {schema_version}; expected 1"
-            )
-        if not isinstance(raw_id, str) or not raw_id.strip():
-            raise PluginError("Manifest requires a non-empty string id")
-        if not isinstance(raw_module, str) or not raw_module.strip():
-            raise PluginError("Manifest requires a non-empty string module")
-        if not isinstance(raw_object, str) or not raw_object.strip():
-            raise PluginError("Manifest object must be a non-empty string")
-        module = raw_module.strip()
-        object_name = raw_object.strip()
-        if not module.isidentifier():
-            raise PluginError(
-                "Manifest module must be a top-level Python module or package name"
-            )
-        if not object_name.isidentifier():
-            raise PluginError("Manifest object must be a valid Python identifier")
-        return _LocalCandidate(
-            plugin_id=raw_id.strip(),
-            root=root,
-            module=module,
-            object_name=object_name,
-        )
-
-    @staticmethod
-    def _load_local_definition(candidate: _LocalCandidate) -> PluginDefinition:
+    def _load_local_definition(candidate: LocalCandidate) -> PluginDefinition:
         existing = sys.modules.get(candidate.module)
         if existing is not None:
             module_file = getattr(existing, "__file__", None)

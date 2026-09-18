@@ -1,7 +1,8 @@
 """Helpers for keeping credentials out of logs and user-facing errors."""
 
-from collections.abc import Mapping
+from collections.abc import Mapping, MutableMapping, MutableSequence
 import re
+from typing import Any
 
 _REDACTED = "[redacted]"
 
@@ -126,3 +127,88 @@ def scrub_mapping(mapping: Mapping[str, object]) -> dict[str, object]:
         key: _REDACTED if key.casefold() in _SECRET_FIELD_NAMES else value
         for key, value in mapping.items()
     }
+
+
+# Everything above answers "what must never appear in a log". Exporting a
+# profile asks a wider question -- "what must never leave this machine" --
+# which takes in fields that are identity rather than secrecy (`username`,
+# `api_user`) and a passkey that is carried as an ordinary URL
+# (`announce_url`). Both questions are answered from this one module so that
+# adding a tracker means extending one vocabulary rather than finding two.
+CREDENTIAL_FIELD_NAMES = _SECRET_FIELD_NAMES | frozenset(
+    {
+        "alt_2_fa_token",
+        "announce_url",
+        "api_user",
+        "rss_key",
+        "session_cookie",
+        "tmdb_api_key",
+        "totp",
+        "user",
+        "username",
+    }
+)
+"""Profile keys whose value is a credential, in any table at any depth.
+
+Deliberately not a superset of everything personal: `releasers_name` and
+`release_group` are the user's publishing identity and are usually the point of
+sharing a configuration, so they are left alone and named in the export dialog
+instead of being stripped silently.
+"""
+
+
+def blank_credentials(document: MutableMapping[str, Any]) -> tuple[str, ...]:
+    """Empty every credential in `document`, in place, returning what was hit.
+
+    Blanked to `""` rather than to `[redacted]`, which is what the logger uses:
+    the result here has to remain a *loadable profile*, and `""` is what the
+    packaged default holds for every one of these keys. A placeholder would
+    survive schema validation and then be sent to a tracker as though it were a
+    key.
+
+    Only string values are touched. A credential name is a credential name
+    wherever it appears, but a table sitting under one -- a Chevereto instance
+    whose id happens to be `password` -- is recursed into rather than replaced,
+    which would delete its contents.
+
+    The returned dotted keys are for reporting. Callers show them so that an
+    export says what it removed instead of asking the user to take it on trust.
+    """
+    touched: list[str] = []
+    _blank_mapping(document, "", touched)
+    return tuple(touched)
+
+
+def _blank_mapping(
+    mapping: MutableMapping[str, Any], prefix: str, touched: list[str]
+) -> None:
+    for key, value in mapping.items():
+        path = f"{prefix}{key}"
+        if isinstance(value, MutableMapping):
+            _blank_mapping(value, f"{path}.", touched)
+        elif isinstance(value, MutableSequence):
+            _blank_sequence(value, path, touched)
+        elif (
+            isinstance(value, str)
+            and value
+            and key.casefold() in CREDENTIAL_FIELD_NAMES
+        ):
+            mapping[key] = ""
+            touched.append(path)
+
+
+def _blank_sequence(
+    sequence: MutableSequence[Any], prefix: str, touched: list[str]
+) -> None:
+    """Walk an array of tables, which TOML allows anywhere a table is allowed.
+
+    Nothing in the current schema uses one -- Chevereto instances are keyed
+    sub-tables precisely because tomlkit drops an empty array-of-tables -- but a
+    credential hidden one array deep would be exported in full, and noticing
+    that after the fact is not a recoverable mistake.
+    """
+    for index, value in enumerate(sequence):
+        if isinstance(value, MutableMapping):
+            _blank_mapping(value, f"{prefix}[{index}].", touched)
+        elif isinstance(value, MutableSequence):
+            _blank_sequence(value, f"{prefix}[{index}]", touched)

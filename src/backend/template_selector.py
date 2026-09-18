@@ -5,6 +5,14 @@ from src.config.paths import default_paths
 from src.enums.media_type import MediaType
 from src.logger.nfo_forge_logger import LOG
 
+TEMPLATE_SUFFIX = ".txt"
+"""What a template file is called on disk.
+
+Named because the templates directory is no longer only read by this class:
+exporting a configuration has to collect the files a profile references, and
+has to agree with this module about which files those are.
+"""
+
 DEF_MV_TEMPLATE = """\
 Info
 Title:                  : {{ title_exact }} {{ release_year_parentheses }}
@@ -84,7 +92,7 @@ class TemplateSelectorBackEnd:
         self.templates.clear()
         if self.template_dir.is_dir():
             for item in self.template_dir.iterdir():
-                if item.is_file() and item.suffix == ".txt":
+                if item.is_file() and item.suffix == TEMPLATE_SUFFIX:
                     self.templates[item.stem] = item
         return self.templates
 

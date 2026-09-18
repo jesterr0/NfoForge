@@ -6,25 +6,25 @@ If you are installing NfoForge for the first time, none of this applies and you 
 
 ## Where your data lives now
 
-| System  | Location                                   |
-| ------- | ------------------------------------------ |
-| Windows | `%LOCALAPPDATA%\nfoforge`                  |
-| macOS   | `~/Library/Application Support/nfoforge`   |
-| Linux   | `~/.local/share/nfoforge`                  |
+| System  | Location                                 |
+| ------- | ---------------------------------------- |
+| Windows | `%LOCALAPPDATA%\nfoforge`                |
+| macOS   | `~/Library/Application Support/nfoforge` |
+| Linux   | `~/.local/share/nfoforge`                |
 
 Inside it:
 
-| Folder                 | Holds                                            |
-| ---------------------- | ------------------------------------------------ |
-| `config/profiles/`     | Your configuration profiles                      |
-| `config/program.toml`  | Program preferences, including the active profile |
-| `config/plugins/`      | Plugin settings                                  |
-| `cookies/`             | Tracker cookies                                  |
-| `templates/`           | Your NFO templates                               |
-| `plugins/`             | Your plugins                                     |
-| `tools/`               | Bundled tools such as FrameForge                 |
-| `logs/`                | Logs                                             |
-| `workspace/`           | Saved jobs and run output                        |
+| Folder                | Holds                                             |
+| --------------------- | ------------------------------------------------- |
+| `config/profiles/`    | Your configuration profiles                       |
+| `config/program.toml` | Program preferences, including the active profile |
+| `config/plugins/`     | Plugin settings                                   |
+| `cookies/`            | Tracker cookies                                   |
+| `templates/`          | Your NFO templates                                |
+| `plugins/`            | Your plugins                                      |
+| `tools/`              | Bundled tools such as FrameForge                  |
+| `logs/`               | Logs                                              |
+| `workspace/`          | Saved jobs and run output                         |
 
 ## When the upgrade happens
 
@@ -48,8 +48,7 @@ Do this in the order below, and in particular **do not rename or move your old f
 
 <!--prettier-ignore-end -->
 
-!!! warning "Why the order matters"
-    Settings that name a tool record its **full path**, including the name of the folder it was in. NfoForge repoints those by comparing them against the folder you pick, so if you rename the old folder first, a recorded path no longer matches it and cannot be recognised as belonging to it.
+!!! warning "Why the order matters" Settings that name a tool record its **full path**, including the name of the folder it was in. NfoForge repoints those by comparing them against the folder you pick, so if you rename the old folder first, a recorded path no longer matches it and cannot be recognised as belonging to it.
 
     Such a setting is reported rather than silently left -- see **Settings naming something that is not there** below -- but you would then have to fix it by hand, and the whole point of the order above is that you do not have to.
 
@@ -61,8 +60,7 @@ NfoForge looks in the folder the application is running from for a previous inst
 - **Choose a folder...** — point at your previous NfoForge folder yourself. Pick the folder you extracted the old release into, the one holding the application. A folder with no NfoForge settings in it is refused rather than accepted silently.
 - **Start fresh** — begin with default settings.
 
-!!! tip "Extracted the new release somewhere new?"
-    Then nothing will be found automatically, because NfoForge only looks where it is running from. Use **Choose a folder...** and pick your old folder.
+!!! tip "Extracted the new release somewhere new?" Then nothing will be found automatically, because NfoForge only looks where it is running from. Use **Choose a folder...** and pick your old folder.
 
 ## What is brought across
 
@@ -75,8 +73,7 @@ Plugin repositories are copied without disposable development content such as vi
 
 Anything already inside your data folder from an earlier version (saved jobs, run output, the FrameForge index cache) is moved into `workspace` at the same time. That happens whether or not you import anything.
 
-!!! info "Your old folder is never changed"
-    Everything is copied, never moved, and nothing in the previous installation is deleted or modified. If the result is not what you wanted, the old folder is still exactly as it was.
+!!! info "Your old folder is never changed" Everything is copied, never moved, and nothing in the previous installation is deleted or modified. If the result is not what you wanted, the old folder is still exactly as it was.
 
 ## What you will be told afterward
 
@@ -100,8 +97,7 @@ A whole folder is set aside if anything in it clashes, rather than the individua
 
 This does not arise when you upgrade, because the folders being imported did not exist in your data folder before. It only applies to importing from **Settings** into a folder already in use.
 
-!!! warning "Settings in set-aside profiles are not corrected"
-    The two corrections described above are applied to the profiles in use. A profile that was set aside keeps its original paths, so check its tool locations before putting it into use.
+!!! warning "Settings in set-aside profiles are not corrected" The two corrections described above are applied to the profiles in use. A profile that was set aside keeps its original paths, so check its tool locations before putting it into use.
 
 ## If you chose Start fresh
 

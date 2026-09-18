@@ -8,8 +8,7 @@ Run from [Release](#run-from-release) or [Run From Source](#run-from-source).
 2. Extract the contents of the release.
 3. Execute **NfoForge**.
 
-!!! info "Already using an older version?"
-    From 1.2.0 onward your settings and data live outside the application folder, so replacing a release leaves them alone. The first launch offers to bring your existing settings across. See [Upgrading](upgrading.md).
+!!! info "Already using an older version?" From 1.2.0 onward your settings and data live outside the application folder, so replacing a release leaves them alone. The first launch offers to bring your existing settings across. See [Upgrading](upgrading.md).
 
 ## Run From Source
 

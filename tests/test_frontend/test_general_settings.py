@@ -135,3 +135,46 @@ def test_release_group_loads_saves_and_resets(
 
     widget.apply_defaults()
     assert widget.release_group_entry.text() == ""
+
+
+def test_the_data_folder_row_offers_export_and_import(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    widget, _ = _make_general_settings(tmp_path, monkeypatch)
+
+    assert widget.export_config_btn.isEnabled()
+    assert widget.import_config_btn.isEnabled()
+
+
+def test_a_successful_import_reloads_the_profile_list(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An import adds profiles, and a combo still showing the old set would
+    offer names that no longer match the directory behind it."""
+    widget, _ = _make_general_settings(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        "src.frontend.stacked_windows.settings.general.import_configuration",
+        lambda parent, config: True,
+    )
+    reloaded: list[bool] = []
+    monkeypatch.setattr(widget, "load_selected_configs", lambda: reloaded.append(True))
+
+    widget._handle_import_config_click()
+
+    assert reloaded == [True]
+
+
+def test_a_cancelled_import_leaves_the_profile_list_alone(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    widget, _ = _make_general_settings(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        "src.frontend.stacked_windows.settings.general.import_configuration",
+        lambda parent, config: False,
+    )
+    reloaded: list[bool] = []
+    monkeypatch.setattr(widget, "load_selected_configs", lambda: reloaded.append(True))
+
+    widget._handle_import_config_click()
+
+    assert reloaded == []
