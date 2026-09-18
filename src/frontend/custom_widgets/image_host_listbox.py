@@ -495,9 +495,10 @@ class ImageHostListBox(QWidget):
             if parent.checkState(0) == Qt.CheckState.Checked:
                 for j in range(parent.childCount()):
                     child = parent.child(j)
-                    image_edit = self.tree.itemWidget(child, 0)
-                    if image_edit and isinstance(image_edit, ImageHostEditBase):
-                        image_edit.validate_data()
+                    if child:
+                        image_edit = self.tree.itemWidget(child, 0)
+                        if image_edit and isinstance(image_edit, ImageHostEditBase):
+                            image_edit.validate_data()
 
     def _open_context_menu(self, position: QPoint) -> None:
         """Opens the right-click context menu for managing and expanding hosts"""
@@ -688,9 +689,10 @@ class ImageHostListBox(QWidget):
                 return None
             for j in range(parent.childCount()):
                 child = parent.child(j)
-                image_edit = self.tree.itemWidget(child, 0)
-                if image_edit and isinstance(image_edit, ImageHostEditBase):
-                    image_edit.save_data.emit()
+                if child:
+                    image_edit = self.tree.itemWidget(child, 0)
+                    if image_edit and isinstance(image_edit, ImageHostEditBase):
+                        image_edit.save_data.emit()
 
     def clear(self) -> None:
         self.tree.clear()

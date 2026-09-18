@@ -9,7 +9,13 @@ class ResizableStackedWidget(QStackedWidget):
         super().__init__(parent)
 
     def sizeHint(self) -> QSize:
-        return self.currentWidget().sizeHint()
+        widget = self.currentWidget()
+        return widget.sizeHint() if widget is not None else super().sizeHint()
 
     def minimumSizeHint(self) -> QSize:
-        return self.currentWidget().minimumSizeHint()
+        widget = self.currentWidget()
+        return (
+            widget.minimumSizeHint()
+            if widget is not None
+            else super().minimumSizeHint()
+        )
