@@ -2,6 +2,29 @@
 
 NfoForge plugins are trusted Python code loaded into the application process. Install only plugins whose source and author you trust. Enabled plugins are loaded once at startup; changing the enabled setting prompts you to restart NfoForge, and a restart is still required afterward for a new or changed plugin to actually be picked up.
 
+## Installing a plugin
+
+**Settings → Plugins** names your `plugins` folder, opens it, and offers **Install** with two entries: **From folder...** and **From archive...**. Both do the same thing a manual copy does, with the manifest read first, so a plugin that could never load is refused now rather than reported as a load failure on the next launch.
+
+Before copying anything, NfoForge checks that the folder or archive holds one `nfoforge-plugin.toml`, that the manifest is valid, and that the module it names is actually there. It then shows what it found -- the ID, the module and where it came from -- and asks. **The plugin is never imported during any of this**: a plugin is trusted code that runs inside NfoForge, and nothing runs it before you have said yes.
+
+### Updating a plugin
+
+Choosing a plugin whose ID is already installed is an **update**, not an error. The dialog says what it is replacing, and installing moves the copy you have into `old_plugins` inside your plugins folder, timestamped. Nothing is deleted, so an update that turns out worse than what it replaced can be put back by hand. Archived copies sit a level too deep for NfoForge to load, so they are kept without being seen.
+
+NfoForge cannot tell you which of the two is newer. A plugin's version lives in the `PluginDefinition` its module exports, and reading it would mean running the code you are being asked to approve -- so the dialog names the path being replaced and leaves the judgement to you.
+
+Two clashes cannot be resolved by replacing and are refused outright:
+
+- An ID that **ships with NfoForge**. A release's own example cannot be replaced; your copy would register first and the example would be reported as broken on every launch.
+- A **module name** another installed plugin declares. The loader resolves a module by name and refuses a second one from a different location, so the two cannot coexist whichever is installed second. Plugins built from the same example start out sharing the example's module name, which makes this the likelier clash of the two -- and left to startup it reads as an install that silently did nothing.
+
+An archive is accepted whether the manifest sits at its root or inside a single wrapping folder, which is the shape a downloaded repository unpacks into. Disposable development content -- virtual environments, `.git`, bytecode, build and coverage output -- is left behind; source, tests, documentation and resources come across.
+
+A newly installed plugin is on disk but inert. Plugins are imported once, at startup, so **NfoForge has to be restarted** before it is available, and external plugins have to be enabled.
+
+Copying a folder in by hand still works and is described below.
+
 ## Local plugins
 
 Place each plugin repository directly inside the `plugins` folder of [your NfoForge data folder](../getting-started/upgrading.md#where-your-data-lives-now) and add `nfoforge-plugin.toml` at the repository root:

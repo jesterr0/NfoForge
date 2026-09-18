@@ -31,7 +31,7 @@ from src.backend.utils.working_dir import (
     normalise_path,
 )
 from src.config.paths import AppPaths
-from src.plugins.loader import LOCAL_MANIFEST
+from src.plugins.loader import declared_identity, declared_plugins
 
 PLUGINS_DIR_NAME = "plugins"
 """Where the user's own plugins live, once they stop living beside the release."""
@@ -631,8 +631,7 @@ def render_plan(plan: MigrationPlan) -> str:
 
 def _plugin_ids(directory: Path) -> frozenset[str]:
     """Every plugin ID declared directly below `directory`."""
-    found = {_plugin_id(entry) for entry in _children(directory) if entry.is_dir()}
-    return frozenset(plugin_id for plugin_id in found if plugin_id is not None)
+    return frozenset(found.plugin_id for found in declared_plugins(directory))
 
 
 def _plugin_id(directory: Path) -> str | None:
@@ -641,13 +640,13 @@ def _plugin_id(directory: Path) -> str | None:
     None for a directory that is not a plugin, which is deliberately not the
     same as an ID that matches nothing: a directory with no manifest is still
     the user's and is still imported.
+
+    Reads through `declared_identity`, which the plugin installer also asks, so
+    that "what does this directory claim to be" has one answer rather than one
+    per caller.
     """
-    manifest = directory / LOCAL_MANIFEST
-    try:
-        declared = tomllib.loads(manifest.read_text(encoding="utf-8")).get("id")
-    except (OSError, tomllib.TOMLDecodeError, UnicodeDecodeError):
-        return None
-    return declared.strip() if isinstance(declared, str) and declared.strip() else None
+    declared = declared_identity(directory)
+    return declared[0] if declared is not None else None
 
 
 _PLUGIN_IGNORED_DIRECTORY_NAMES = frozenset(

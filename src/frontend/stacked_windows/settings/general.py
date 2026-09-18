@@ -30,13 +30,17 @@ from src.enums.logging_settings import LogLevel
 from src.enums.media_search_mode import MediaSearchMode
 from src.enums.theme import NfoForgeTheme
 from src.enums.tmdb_languages import TMDBLanguage
-from src.exceptions import ConfigSchemaError
+from src.exceptions import ConfigError, ConfigSchemaError
 from src.frontend.custom_widgets.combo_box import CustomComboBox
 from src.frontend.custom_widgets.masked_qline_edit import MaskedQLineEdit
 from src.frontend.global_signals import GSigs
 from src.frontend.stacked_windows.settings.base import BaseSettings
 from src.frontend.utils import build_h_line, create_form_layout
 from src.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
+from src.frontend.windows.config_transfer import (
+    export_configuration,
+    import_configuration,
+)
 from src.frontend.windows.legacy_import import (
     LegacyImportRunner,
     choose_legacy_install,
@@ -265,12 +269,31 @@ class GeneralSettings(BaseSettings):
         self.import_legacy_btn.setToolTip("Import from a previous installation")
         self.import_legacy_btn.clicked.connect(self._handle_import_legacy_click)
 
+        self.export_config_btn = QToolButton(self)
+        QTAThemeSwap().register(
+            self.export_config_btn, "ph.export-light", icon_size=QSize(20, 20)
+        )
+        self.export_config_btn.setToolTip(
+            "Export profiles and their templates to a bundle you can copy to "
+            "another machine or share"
+        )
+        self.export_config_btn.clicked.connect(self._handle_export_config_click)
+
+        self.import_config_btn = QToolButton(self)
+        QTAThemeSwap().register(
+            self.import_config_btn, "ph.file-arrow-down-light", icon_size=QSize(20, 20)
+        )
+        self.import_config_btn.setToolTip("Import a configuration bundle")
+        self.import_config_btn.clicked.connect(self._handle_import_config_click)
+
         data_dir_widget = QWidget()
         data_dir_layout = QHBoxLayout(data_dir_widget)
         data_dir_layout.setContentsMargins(0, 0, 0, 0)
         data_dir_layout.addWidget(self.data_dir_entry, stretch=1)
         data_dir_layout.addWidget(self.data_dir_open_btn)
         data_dir_layout.addWidget(self.import_legacy_btn)
+        data_dir_layout.addWidget(self.export_config_btn)
+        data_dir_layout.addWidget(self.import_config_btn)
 
         self.add_layout(create_form_layout(config_lbl, config_widget))
         self.add_layout(create_form_layout(suffix_lbl, self.ui_suffix))
@@ -550,6 +573,52 @@ class GeneralSettings(BaseSettings):
 
         self._legacy_import_runner = LegacyImportRunner(self.config.paths, self)
         self._legacy_import_runner.start(found)
+
+    @Slot()
+    def _handle_export_config_click(self) -> None:
+        """Write selected profiles, and their templates, to a bundle.
+
+        Separate from the legacy import beside it, which moves a whole previous
+        installation on this machine. This one produces a file that can leave
+        it -- so it strips credentials unless the user says otherwise.
+        """
+        export_configuration(self, self.config)
+
+    @Slot()
+    def _handle_import_config_click(self) -> None:
+        """Bring a bundle in, then re-read the profile list.
+
+        The list is rebuilt rather than left alone because an import adds
+        profiles, and a combo still showing what was there would offer a set
+        that no longer matches the directory behind it.
+        """
+        outcome = import_configuration(self, self.config)
+        if outcome is None or not outcome.written:
+            return
+
+        self.load_selected_configs()
+        active = self.config.program.current_config
+        if not active:
+            return
+        active_path = self.config.paths.user_configs / f"{active}.toml"
+        if active_path not in outcome.written:
+            return
+
+        # Validation during import is deliberately a dry run, so replacing the
+        # profile currently in use leaves the manager and every settings page
+        # describing the old document until it is explicitly loaded.  A later
+        # Apply would otherwise write that stale document back over the import.
+        try:
+            self.config.load_profile(active)
+        except ConfigError as error:
+            QMessageBox.critical(
+                self,
+                "Reload Imported Profile",
+                "The active profile was imported but could not be reloaded:\n\n"
+                f"{error}\n\nRestart NfoForge before changing other settings.",
+            )
+            return
+        self.settings_window.re_load_settings.emit()
 
     @Slot()
     def _handle_open_working_dir_click(self) -> None:

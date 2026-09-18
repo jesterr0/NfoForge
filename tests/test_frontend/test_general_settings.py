@@ -1,4 +1,5 @@
 from pathlib import Path
+from types import SimpleNamespace
 
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QMessageBox, QWidget
@@ -135,3 +136,76 @@ def test_release_group_loads_saves_and_resets(
 
     widget.apply_defaults()
     assert widget.release_group_entry.text() == ""
+
+
+def test_the_data_folder_row_offers_export_and_import(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    widget, _ = _make_general_settings(tmp_path, monkeypatch)
+
+    assert widget.export_config_btn.isEnabled()
+    assert widget.import_config_btn.isEnabled()
+
+
+def test_a_successful_import_reloads_the_profile_list(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An import adds profiles, and a combo still showing the old set would
+    offer names that no longer match the directory behind it."""
+    widget, _ = _make_general_settings(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        "src.frontend.stacked_windows.settings.general.import_configuration",
+        lambda parent, config: SimpleNamespace(
+            written=(config.paths.user_configs / "imported.toml",)
+        ),
+    )
+    reloaded: list[bool] = []
+    monkeypatch.setattr(widget, "load_selected_configs", lambda: reloaded.append(True))
+
+    widget._handle_import_config_click()
+
+    assert reloaded == [True]
+
+
+def test_a_cancelled_import_leaves_the_profile_list_alone(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    widget, _ = _make_general_settings(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        "src.frontend.stacked_windows.settings.general.import_configuration",
+        lambda parent, config: None,
+    )
+    reloaded: list[bool] = []
+    monkeypatch.setattr(widget, "load_selected_configs", lambda: reloaded.append(True))
+
+    widget._handle_import_config_click()
+
+    assert reloaded == []
+
+
+def test_replacing_the_active_profile_reloads_manager_and_settings_pages(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    widget, manager = _make_general_settings(tmp_path, monkeypatch)
+    active = manager.paths.user_configs / "test.toml"
+    imported = tomlkit.parse(active.read_text(encoding="utf-8"))
+    imported["general"]["release_group"] = "IMPORTED"  # type: ignore[index]
+    active.write_text(tomlkit.dumps(imported), encoding="utf-8")
+    monkeypatch.setattr(
+        "src.frontend.stacked_windows.settings.general.import_configuration",
+        lambda parent, config: SimpleNamespace(written=(active,)),
+    )
+    reload_calls: list[bool] = []
+    widget.settings_window.re_load_settings.connect(lambda: reload_calls.append(True))
+
+    widget._handle_import_config_click()
+
+    assert manager.settings.general.release_group == "IMPORTED"
+    assert reload_calls == [True]
+
+    # A later, unrelated save must build on the imported document instead of
+    # writing the stale pre-import manager state back over it.
+    manager.settings.general.timeout += 1
+    manager.save()
+    saved = tomlkit.parse(active.read_text(encoding="utf-8"))
+    assert saved["general"]["release_group"] == "IMPORTED"  # type: ignore[index]
