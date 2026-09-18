@@ -109,3 +109,34 @@ def test_blank_credentials_does_not_replace_a_table_named_like_a_credential() ->
 
     assert document["image_hosts"]["password"]["label"] == "odd"
     assert document["image_hosts"]["password"]["api_key"] == ""
+
+
+@pytest.mark.parametrize(
+    ("uri", "expected"),
+    (
+        (
+            "https://alice:swordfish@example.test/plugins/httprpc/action.php",
+            "https://example.test/plugins/httprpc/action.php",
+        ),
+        (
+            "http://bob:hunter2@127.0.0.1/transmission/rpc",
+            "http://127.0.0.1/transmission/rpc",
+        ),
+    ),
+)
+def test_blank_credentials_removes_uri_userinfo_from_client_hosts(
+    uri: str, expected: str
+) -> None:
+    document = {"torrent_client": {"client": {"host": uri}}}
+
+    touched = blank_credentials(document)
+
+    assert document["torrent_client"]["client"]["host"] == expected
+    assert touched == ("torrent_client.client.host",)
+
+
+def test_blank_credentials_keeps_a_public_client_host() -> None:
+    document = {"torrent_client": {"client": {"host": "http://127.0.0.1"}}}
+
+    assert blank_credentials(document) == ()
+    assert document["torrent_client"]["client"]["host"] == "http://127.0.0.1"

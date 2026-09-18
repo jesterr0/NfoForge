@@ -25,6 +25,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path, PurePosixPath
+import shutil
 from typing import Any, Protocol
 import zipfile
 
@@ -108,6 +109,11 @@ _ILLEGAL_NAME_CHARACTERS = '/\\:*?"<>|'
 
 class TransferError(Exception):
     """An export or import was refused, with a reason worth showing a user."""
+
+    def __init__(self, message: str, *, unchanged: bool = True) -> None:
+        super().__init__(message)
+        self.unchanged = unchanged
+        """Whether an apply failure left the profiles/templates as they were."""
 
 
 class NameConflict(Enum):
@@ -709,10 +715,12 @@ def plan_import(
     """
     entries: list[PlannedEntry] = []
     taken_profiles = {
-        path.stem.casefold() for path in _existing(paths.user_configs, PROFILE_SUFFIX)
+        path.stem.casefold(): path.stem
+        for path in _existing(paths.user_configs, PROFILE_SUFFIX)
     }
     taken_templates = {
-        path.stem.casefold() for path in _existing(paths.templates, TEMPLATE_SUFFIX)
+        path.stem.casefold(): path.stem
+        for path in _existing(paths.templates, TEMPLATE_SUFFIX)
     }
 
     for kind, names, taken in (
@@ -727,7 +735,7 @@ def plan_import(
                 continue
             destination, disposition = _resolve_name(name, taken, policy)
             if disposition is not Disposition.SKIPPED:
-                taken.add(destination.casefold())
+                taken[destination.casefold()] = destination
             entries.append(PlannedEntry(kind, name, destination, disposition))
 
     return ImportPlan(
@@ -755,20 +763,25 @@ def _template_already_here(paths: AppPaths, stem: str, incoming: str) -> bool:
 
 def _existing(directory: Path, suffix: str) -> tuple[Path, ...]:
     try:
-        return tuple(directory.glob(f"*{suffix}"))
+        return tuple(path for path in directory.glob(f"*{suffix}") if path.is_file())
     except OSError:
         return ()
 
 
 def _resolve_name(
-    name: str, taken: set[str], policy: NameConflict
+    name: str, taken: Mapping[str, str], policy: NameConflict
 ) -> tuple[str, Disposition]:
-    if name.casefold() not in taken:
+    folded = name.casefold()
+    if folded not in taken:
         return name, Disposition.NEW
     if policy is NameConflict.SKIP:
         return name, Disposition.SKIPPED
     if policy is NameConflict.REPLACE:
-        return name, Disposition.REPLACED
+        # Preserve the spelling of the path already on disk.  On a
+        # case-sensitive filesystem, treating ``Foo`` as taken but writing to
+        # ``foo`` would create a second file while claiming the first was
+        # replaced.
+        return taken[folded], Disposition.REPLACED
     counter = 2
     while f"{name} ({counter})".casefold() in taken:
         counter += 1
@@ -822,25 +835,40 @@ def apply_import(
 
     written: list[Path] = []
     archived: list[Path] = []
-    for entry in plan.entries:
-        if entry.disposition in (Disposition.SKIPPED, Disposition.UNCHANGED):
-            continue
-        if entry.kind is EntryKind.PROFILE:
-            target = paths.user_configs / f"{entry.destination_name}{PROFILE_SUFFIX}"
-            payload = prepared[entry.destination_name]
-        else:
-            target = paths.templates / f"{entry.destination_name}{TEMPLATE_SUFFIX}"
-            payload = contents.templates[entry.source_name]
+    applied: list[tuple[Path, Path | None]] = []
+    target: Path | None = None
+    try:
+        for entry in plan.entries:
+            if entry.disposition in (Disposition.SKIPPED, Disposition.UNCHANGED):
+                continue
+            if entry.kind is EntryKind.PROFILE:
+                target = (
+                    paths.user_configs / f"{entry.destination_name}{PROFILE_SUFFIX}"
+                )
+                payload = prepared[entry.destination_name]
+            else:
+                target = paths.templates / f"{entry.destination_name}{TEMPLATE_SUFFIX}"
+                payload = contents.templates[entry.source_name]
 
-        if entry.disposition is Disposition.REPLACED and target.exists():
-            archived.append(_archive(target))
-        try:
+            backup: Path | None = None
+            if entry.disposition is Disposition.REPLACED and target.exists():
+                backup = _archive(target)
+                archived.append(backup)
             atomic_write_text(target, payload)
-        except OSError as error:
-            raise TransferError(
-                f"'{target.name}' could not be written: {error}"
-            ) from error
-        written.append(target)
+            written.append(target)
+            applied.append((target, backup))
+    except Exception as error:
+        rollback_errors = _rollback_import(applied)
+        detail = (
+            f"'{target.name}' could not be written: {error}"
+            if target is not None
+            else f"The import could not be written: {error}"
+        )
+        if rollback_errors:
+            detail += "\n\nAutomatic rollback was incomplete:\n  " + "\n  ".join(
+                rollback_errors
+            )
+        raise TransferError(detail, unchanged=not rollback_errors) from error
 
     wanted: set[str] = set()
     selected: set[str] = set()
@@ -908,7 +936,7 @@ def _record_import(paths: AppPaths, outcome: ImportOutcome) -> None:
 
 
 def _archive(target: Path) -> Path:
-    """Move an existing file aside, reusing the manager's own backup layout.
+    """Copy an existing file aside, reusing the manager's own backup layout.
 
     Named for profiles because that is what it was written for, but it is a
     timestamped copy into an `old_configs` folder beside the file, which is
@@ -921,9 +949,27 @@ def _archive(target: Path) -> Path:
     """
     from src.config.config import ConfigManager
 
-    backup = ConfigManager.archive_profile(target)
-    target.unlink()
-    return backup
+    return ConfigManager.archive_profile(target)
+
+
+def _rollback_import(applied: Sequence[tuple[Path, Path | None]]) -> tuple[str, ...]:
+    """Undo completed writes after a later entry fails.
+
+    Replacements are restored from the backup made before their atomic write;
+    newly-created files are removed.  Rollback is best effort, and every
+    failure is returned so the UI never claims the data tree is unchanged when
+    it could not be put back.
+    """
+    errors: list[str] = []
+    for target, backup in reversed(applied):
+        try:
+            if backup is None:
+                target.unlink(missing_ok=True)
+            else:
+                shutil.copy2(backup, target)
+        except OSError as error:
+            errors.append(f"{target}: {error}")
+    return tuple(errors)
 
 
 def _prepare_profile(

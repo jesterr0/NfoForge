@@ -107,6 +107,12 @@ def test_a_bundle_carries_the_profile_and_the_templates_it_names(
 def test_credentials_are_removed_unless_asked_for(tmp_path: Path) -> None:
     manager = _manager(tmp_path)
     _edit(manager.paths, "mysetup")
+    profile = manager.paths.user_configs / "mysetup.toml"
+    source_document = tomlkit.parse(profile.read_text(encoding="utf-8"))
+    source_document["torrent_client"]["transmission"]["host"] = (  # type: ignore[index]
+        "http://alice:swordfish@example.test/transmission/rpc"
+    )
+    profile.write_text(tomlkit.dumps(source_document), encoding="utf-8")
 
     outcome = export_bundle(manager.paths, ["mysetup"], tmp_path / "bundle")
     contents = read_bundle(outcome.archive)
@@ -114,6 +120,9 @@ def test_credentials_are_removed_unless_asked_for(tmp_path: Path) -> None:
 
     assert document["tracker"]["aither"]["api_key"] == ""  # type: ignore[index]
     assert document["tracker"]["aither"]["announce_url"] == ""  # type: ignore[index]
+    assert document["torrent_client"]["transmission"]["host"] == (  # type: ignore[index]
+        "http://example.test/transmission/rpc"
+    )
     # Identity, not a credential, and usually the reason a setup is shared.
     assert document["general"]["releasers_name"] == "someone"  # type: ignore[index]
     assert contents.manifest.credentials_included is False
@@ -395,6 +404,50 @@ def test_replace_keeps_a_copy_of_what_was_there(tmp_path: Path) -> None:
     ) == "incoming"
     assert len(result.archived) == 2
     assert all(path.parent.name == "old_configs" for path in result.archived)
+
+
+def test_a_later_write_failure_rolls_back_every_completed_write(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target, contents, plan = _round_trip(tmp_path, NameConflict.REPLACE)
+    profile = target.paths.user_configs / "mysetup.toml"
+    template = target.paths.templates / "movie.txt"
+    original_profile = profile.read_text(encoding="utf-8")
+    original_template = template.read_text(encoding="utf-8")
+
+    from src.config import transfer
+
+    real_write = transfer.atomic_write_text
+    writes = 0
+
+    def fail_second(path: Path, payload: str) -> None:
+        nonlocal writes
+        writes += 1
+        if writes == 2:
+            raise OSError("simulated full disk")
+        real_write(path, payload)
+
+    monkeypatch.setattr(transfer, "atomic_write_text", fail_second)
+
+    with pytest.raises(TransferError) as raised:
+        apply_import(target.paths, contents, plan, target)
+
+    assert raised.value.unchanged is True
+    assert profile.read_text(encoding="utf-8") == original_profile
+    assert template.read_text(encoding="utf-8") == original_template
+
+
+def test_replace_preserves_the_existing_paths_spelling(tmp_path: Path) -> None:
+    source = _manager(tmp_path / "a", "mysetup")
+    bundle = export_bundle(source.paths, ["mysetup"], tmp_path / "bundle").archive
+    target = _manager(tmp_path / "b", "MySetup")
+
+    contents = read_bundle(bundle)
+    plan = plan_import(target.paths, contents, NameConflict.REPLACE)
+
+    profile = plan.for_kind(EntryKind.PROFILE)[0]
+    assert profile.disposition is Disposition.REPLACED
+    assert profile.destination_name == "MySetup"
 
 
 def test_an_identical_template_is_recognised_rather_than_duplicated(

@@ -95,6 +95,17 @@ _SECRET_MAPPING_VALUE = re.compile(
     r"(?P<quote>['\"])(?P<value>[^'\"]*)(?P=quote)"
 )
 
+# rTorrent and Transmission store their credentials in URI userinfo rather
+# than in the otherwise-public ``host`` field.  Keep the endpoint when sharing
+# a profile, but remove everything before ``@`` in its authority.  Applying
+# this only to URI-bearing fields avoids treating an ordinary host name as a
+# credential while still covering both clients' supported configuration shape.
+_URI_USERINFO = re.compile(
+    r"(?i)^(?P<scheme>[a-z][a-z0-9+.-]*://)(?P<userinfo>[^/?#@]*)@"
+)
+_URI_CREDENTIAL_FIELDS = frozenset({"host", "base_url"})
+_URI_USERINFO_PLACEHOLDERS = frozenset({"<user>:<password>"})
+
 
 def scrub_secrets(text: str) -> str:
     """Redact credentials from URLs, exception messages, and payload reprs."""
@@ -195,6 +206,17 @@ def _blank_mapping(
         ):
             mapping[key] = ""
             touched.append(path)
+        elif isinstance(value, str) and key.casefold() in _URI_CREDENTIAL_FIELDS:
+            without_userinfo = _URI_USERINFO.sub(_remove_uri_userinfo, value)
+            if without_userinfo != value:
+                mapping[key] = without_userinfo
+                touched.append(path)
+
+
+def _remove_uri_userinfo(match: re.Match[str]) -> str:
+    if match.group("userinfo").casefold() in _URI_USERINFO_PLACEHOLDERS:
+        return match.group(0)
+    return match.group("scheme")
 
 
 def _blank_sequence(

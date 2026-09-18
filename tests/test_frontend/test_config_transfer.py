@@ -213,7 +213,7 @@ def test_import_reports_a_file_that_is_not_a_bundle(
         staticmethod(lambda parent, title, text, *a, **k: seen.append(text)),
     )
 
-    assert import_configuration(QWidget(), manager) is False
+    assert import_configuration(QWidget(), manager) is None
     assert seen and "not a readable zip" in seen[0]
 
 
@@ -229,7 +229,10 @@ def test_import_writes_the_bundle_and_reports_it(
     )
     monkeypatch.setattr(QDialog, "exec", lambda self: QDialog.DialogCode.Accepted)
 
-    assert import_configuration(QWidget(), target) is True
+    outcome = import_configuration(QWidget(), target)
+
+    assert outcome is not None
+    assert outcome.written
     assert (target.paths.user_configs / "mysetup.toml").is_file()
     assert (target.paths.templates / "movie.txt").is_file()
 
@@ -246,7 +249,7 @@ def test_cancelling_the_import_writes_nothing(
     )
     monkeypatch.setattr(QDialog, "exec", lambda self: QDialog.DialogCode.Rejected)
 
-    assert import_configuration(QWidget(), target) is False
+    assert import_configuration(QWidget(), target) is None
     assert not (target.paths.user_configs / "mysetup.toml").exists()
 
 

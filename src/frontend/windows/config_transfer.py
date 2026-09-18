@@ -43,6 +43,7 @@ from src.config.profiles import PROFILE_SUFFIX
 from src.config.transfer import (
     BundleContents,
     Disposition,
+    ImportOutcome,
     ImportPlan,
     NameConflict,
     TransferError,
@@ -439,28 +440,30 @@ def export_configuration(parent: QWidget, config: ConfigManager) -> None:
     summary.deleteLater()
 
 
-def import_configuration(parent: QWidget, config: ConfigManager) -> bool:
+def import_configuration(
+    parent: QWidget, config: ConfigManager
+) -> ImportOutcome | None:
     """Ask for a bundle, show what it would do, then do it.
 
-    Returns whether anything was written, so the caller can reload the list of
-    profiles rather than leaving one on screen that no longer matches disk.
+    Returns the completed outcome, or ``None`` when cancelled/refused, so the
+    caller can reload an active profile if that exact file was replaced.
     """
     chosen, _ = QFileDialog.getOpenFileName(
         parent, "Select a configuration bundle", str(Path.home()), IMPORT_FILTER
     )
     if not chosen:
-        return False
+        return None
 
     try:
         contents = read_bundle(Path(chosen))
     except TransferError as error:
         QMessageBox.critical(parent, "Import", str(error))
-        return False
+        return None
 
     dialog = ConfigImportDialog(config.paths, contents, parent=parent)
     try:
         if dialog.exec() != QDialog.DialogCode.Accepted:
-            return False
+            return None
         plan = dialog.plan()
     finally:
         dialog.deleteLater()
@@ -468,22 +471,32 @@ def import_configuration(parent: QWidget, config: ConfigManager) -> bool:
     try:
         outcome = apply_import(config.paths, contents, plan, config)
     except TransferError as error:
+        aftermath = (
+            "Nothing was imported and your existing profiles are unchanged."
+            if error.unchanged
+            else "Some changes could not be rolled back automatically. Review "
+            "the paths above and the old_configs backups before continuing."
+        )
         QMessageBox.critical(
             parent,
             "Import",
-            f"{error}\n\nNothing was imported and your existing profiles are "
-            "unchanged.",
+            f"{error}\n\n{aftermath}",
         )
-        return False
+        return None
+
+    intro = f"{len(outcome.written)} file(s) imported. "
+    if outcome.archived:
+        intro += "Every replaced file was backed up first."
+    else:
+        intro += "Nothing that was already here was overwritten."
 
     summary = TransferSummaryDialog(
         "Import complete",
-        f"{len(outcome.written)} file(s) imported. Nothing that was already "
-        "here was overwritten.",
+        intro,
         render_import_summary(outcome),
         config.paths.state_root,
         parent=parent,
     )
     summary.exec()
     summary.deleteLater()
-    return bool(outcome.written)
+    return outcome

@@ -28,6 +28,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 import shutil
+import sys
 import tempfile
 import zipfile
 
@@ -260,6 +261,21 @@ def resolve_conflict(candidate: PluginCandidate, paths: AppPaths) -> Path | None
                 f"module '{candidate.module}'. Two plugins cannot share a "
                 "module name; only one of them would load."
             )
+
+    loaded = sys.modules.get(candidate.module)
+    if loaded is not None:
+        module_file = getattr(loaded, "__file__", None)
+        allowed_roots = tuple(
+            root for root in (candidate.root, replaces) if root is not None
+        )
+        if module_file is None or not any(
+            _is_below(Path(module_file), root) for root in allowed_roots
+        ):
+            raise PluginInstallError(
+                f"The module '{candidate.module}' is already loaded from a "
+                "different location. This plugin would install successfully "
+                "but fail to load after restart."
+            )
     return replaces
 
 
@@ -278,17 +294,52 @@ def install(candidate: PluginCandidate, paths: AppPaths) -> InstallOutcome:
     """
     replaces = resolve_conflict(candidate, paths)
 
+    replaced: Path | None = None
     try:
         paths.plugins.mkdir(parents=True, exist_ok=True)
-        replaced = _archive(replaces) if replaces is not None else None
-        destination = _free_destination(paths.plugins, candidate.directory_name)
-        shutil.copytree(
-            candidate.root,
-            destination,
-            ignore=lambda directory, names: copy_ignored_names(
-                CopyPolicy.PLUGIN, candidate.root, Path(directory), names
-            ),
-        )
+        # Copy and re-inspect before moving an installed version.  Besides
+        # making ordinary copy failures harmless, this supports selecting the
+        # installed folder itself: its contents are safely staged before that
+        # folder is archived.
+        with tempfile.TemporaryDirectory(
+            prefix=".nfoforge-install-", dir=paths.plugins
+        ) as workspace:
+            staged = Path(workspace) / candidate.directory_name
+            shutil.copytree(
+                candidate.root,
+                staged,
+                ignore=lambda directory, names: copy_ignored_names(
+                    CopyPolicy.PLUGIN, candidate.root, Path(directory), names
+                ),
+            )
+            staged_candidate = inspect_folder(staged)
+            if (
+                staged_candidate.plugin_id != candidate.plugin_id
+                or staged_candidate.module != candidate.module
+                or staged_candidate.object_name != candidate.object_name
+            ):
+                raise PluginInstallError(
+                    "The staged plugin no longer matches the manifest that was "
+                    "approved. Nothing was installed."
+                )
+
+            try:
+                replaced = _archive(replaces) if replaces is not None else None
+                destination = _free_destination(paths.plugins, candidate.directory_name)
+                staged.replace(destination)
+            except OSError:
+                if replaced is not None and replaces is not None:
+                    try:
+                        shutil.move(str(replaced), str(replaces))
+                    except OSError as rollback_error:
+                        raise PluginInstallError(
+                            f"'{candidate.plugin_id}' could not be installed, and "
+                            "the previous copy could not be restored automatically: "
+                            f"{rollback_error}. It is still available at {replaced}."
+                        ) from rollback_error
+                raise
+    except PluginInstallError:
+        raise
     except OSError as error:
         raise PluginInstallError(
             f"'{candidate.plugin_id}' could not be installed: {error}"
@@ -300,6 +351,14 @@ def install(candidate: PluginCandidate, paths: AppPaths) -> InstallOutcome:
         f"'{candidate.plugin_id}' at {destination}",
     )
     return InstallOutcome(destination=destination, replaced=replaced)
+
+
+def _is_below(path: Path, root: Path) -> bool:
+    try:
+        path.resolve().relative_to(root.resolve())
+    except (OSError, ValueError):
+        return False
+    return True
 
 
 def _archive(existing: Path) -> Path:

@@ -30,7 +30,7 @@ from src.enums.logging_settings import LogLevel
 from src.enums.media_search_mode import MediaSearchMode
 from src.enums.theme import NfoForgeTheme
 from src.enums.tmdb_languages import TMDBLanguage
-from src.exceptions import ConfigSchemaError
+from src.exceptions import ConfigError, ConfigSchemaError
 from src.frontend.custom_widgets.combo_box import CustomComboBox
 from src.frontend.custom_widgets.masked_qline_edit import MaskedQLineEdit
 from src.frontend.global_signals import GSigs
@@ -592,8 +592,33 @@ class GeneralSettings(BaseSettings):
         profiles, and a combo still showing what was there would offer a set
         that no longer matches the directory behind it.
         """
-        if import_configuration(self, self.config):
-            self.load_selected_configs()
+        outcome = import_configuration(self, self.config)
+        if outcome is None or not outcome.written:
+            return
+
+        self.load_selected_configs()
+        active = self.config.program.current_config
+        if not active:
+            return
+        active_path = self.config.paths.user_configs / f"{active}.toml"
+        if active_path not in outcome.written:
+            return
+
+        # Validation during import is deliberately a dry run, so replacing the
+        # profile currently in use leaves the manager and every settings page
+        # describing the old document until it is explicitly loaded.  A later
+        # Apply would otherwise write that stale document back over the import.
+        try:
+            self.config.load_profile(active)
+        except ConfigError as error:
+            QMessageBox.critical(
+                self,
+                "Reload Imported Profile",
+                "The active profile was imported but could not be reloaded:\n\n"
+                f"{error}\n\nRestart NfoForge before changing other settings.",
+            )
+            return
+        self.settings_window.re_load_settings.emit()
 
     @Slot()
     def _handle_open_working_dir_click(self) -> None:

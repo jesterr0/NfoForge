@@ -323,6 +323,21 @@ def test_a_module_name_already_in_use_is_refused(tmp_path: Path) -> None:
         install(inspect_folder(other), paths)
 
 
+def test_a_module_already_loaded_by_python_is_refused(tmp_path: Path) -> None:
+    """The loader rejects this on restart even when no plugin claims it."""
+    paths = build_app_paths(tmp_path / "data")
+    source = tmp_path / "typing-plugin"
+    source.mkdir()
+    (source / "nfoforge-plugin.toml").write_text(
+        'schema_version = 1\nid = "example.typing"\nmodule = "typing"\n',
+        encoding="utf-8",
+    )
+    (source / "typing.py").write_text("plugin = object()\n", encoding="utf-8")
+
+    with pytest.raises(PluginInstallError, match="already loaded"):
+        install(inspect_folder(source), paths)
+
+
 def test_a_module_shared_with_a_shipped_example_is_refused(tmp_path: Path) -> None:
     paths = build_app_paths(tmp_path / "data")
     _plugin(paths.plugin_examples / "shipped")
@@ -365,6 +380,65 @@ def test_an_update_keeps_the_copy_it_replaced(tmp_path: Path) -> None:
     assert (outcome.destination / "notes.txt").read_text(
         encoding="utf-8"
     ) == "version two"
+
+
+def test_reinstalling_from_the_installed_folder_stages_before_archiving(
+    tmp_path: Path,
+) -> None:
+    paths = build_app_paths(tmp_path / "data")
+    installed = _plugin(paths.plugins / "my-plugin")
+
+    outcome = install(inspect_folder(installed), paths)
+
+    assert outcome.destination == paths.plugins / "my-plugin"
+    assert outcome.destination.is_dir()
+    assert outcome.replaced is not None
+    assert outcome.replaced.is_dir()
+
+
+def test_a_failed_update_copy_leaves_the_installed_plugin_in_place(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    paths = build_app_paths(tmp_path / "data")
+    source = _plugin(tmp_path / "my-plugin")
+    installed = install(inspect_folder(source), paths).destination
+    (installed / "notes.txt").write_text("version one", encoding="utf-8")
+
+    def fail_copy(*args, **kwargs):
+        raise OSError("simulated copy failure")
+
+    monkeypatch.setattr("src.plugins.install.shutil.copytree", fail_copy)
+
+    with pytest.raises(PluginInstallError, match="simulated copy failure"):
+        install(inspect_folder(source), paths)
+
+    assert installed.is_dir()
+    assert (installed / "notes.txt").read_text(encoding="utf-8") == "version one"
+    assert not (paths.plugins / ARCHIVE_DIR_NAME).exists()
+
+
+def test_a_failed_staged_commit_restores_the_archived_plugin(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    paths = build_app_paths(tmp_path / "data")
+    source = _plugin(tmp_path / "my-plugin")
+    (source / "notes.txt").write_text("version one", encoding="utf-8")
+    installed = install(inspect_folder(source), paths).destination
+    (source / "notes.txt").write_text("version two", encoding="utf-8")
+    real_replace = Path.replace
+
+    def fail_staged_replace(path: Path, target: Path) -> Path:
+        if path.parent.name.startswith(".nfoforge-install-"):
+            raise OSError("simulated commit failure")
+        return real_replace(path, target)
+
+    monkeypatch.setattr(Path, "replace", fail_staged_replace)
+
+    with pytest.raises(PluginInstallError, match="simulated commit failure"):
+        install(inspect_folder(source), paths)
+
+    assert installed.is_dir()
+    assert (installed / "notes.txt").read_text(encoding="utf-8") == "version one"
 
 
 def test_an_update_keeps_the_folder_name_rather_than_suffixing_it(
