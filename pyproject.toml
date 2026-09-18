@@ -82,9 +82,11 @@ include = [
 
 [tool.uv]
 constraint-dependencies = ["requests>=2.32.4"]
-# urllib3-future intentionally shares urllib3's import namespace when its
-# wheel is installed. Build it from source so Niquests can use its separate
-# urllib3_future namespace alongside the upstream urllib3 used by Requests.
+# urllib3-future intentionally overlaps urllib3's import namespace by default.
+# Build it from source and set URLLIB3_NO_OVERRIDE=1 before sync/install so
+# Niquests uses urllib3_future alongside upstream urllib3 for Requests clients.
+# Keep uv.lock on urllib3-future >=2.14.900; older releases can mix files from
+# the two distributions when they are installed concurrently.
 no-binary-package = ["urllib3-future"]
 
 [tool.ruff.lint]
