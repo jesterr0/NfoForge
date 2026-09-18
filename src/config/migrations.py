@@ -92,7 +92,7 @@ from typing import Any, cast
 import tomlkit
 
 from src.config.codec import TomlConfigCodec
-from src.config.paths import ConfigPaths
+from src.config.paths import default_paths
 
 # Schema 1 predates the `schema_version` field; a document without the key is
 # treated as this version.
@@ -246,7 +246,7 @@ def _unwrap(value: Any) -> Any:
 
 
 def _load_packaged_default() -> Mapping[str, Any]:
-    default_text = ConfigPaths().default_config.read_text(encoding="utf-8")
+    default_text = default_paths().default_config.read_text(encoding="utf-8")
     return tomlkit.parse(default_text)
 
 
@@ -298,7 +298,7 @@ def migrate_unversioned_to_v2(
             document or a plain ``dict``).
         default_document: The packaged schema-2 default document to source
             brand new sections from. When omitted, the packaged default is
-            read from the default ``ConfigPaths().default_config`` location.
+            read from the default ``default_paths().default_config`` location.
             Callers that already have a defaults document loaded (e.g.
             ``ConfigManager``) should pass it explicitly so the migration
             uses the exact same defaults the rest of the load path uses.

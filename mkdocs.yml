@@ -6,6 +6,7 @@ nav:
   - Home: index.md
   - Getting Started:
       - Install: view/getting-started/install.md
+      - Upgrading: view/getting-started/upgrading.md
       - Initial Setup: view/getting-started/initial-setup.md
       - Using The Wizard: view/getting-started/using-the-wizard.md
       - How Torrents Are Built: view/getting-started/how-torrents-are-built.md

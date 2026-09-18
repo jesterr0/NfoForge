@@ -4,6 +4,7 @@ from threading import Lock
 
 import pytest
 
+from src.config.paths import DATA_DIR_ENV_VAR
 from src.exceptions import PluginError, PluginExecutionError
 from src.payloads.media_search import MediaSearchPayload
 from src.plugins.api import (
@@ -573,3 +574,121 @@ def test_token_replacer_uses_typed_request() -> None:
     )
 
     assert manager.replace_tokens("token.example", request) == "A value"
+
+
+def test_shipped_examples_load_alongside_the_users_own_plugins(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Two roots are scanned: the user's directory and the release's own.
+
+    The examples a release ships used to sit in the same folder the user
+    installs into, which meant they could not be updated without touching what
+    the user put there, and a migration could not tell them apart.
+    """
+    plugin_dir = tmp_path / "plugins"
+    shipped_dir = tmp_path / "assets" / "plugin_examples"
+    _write_plugin(
+        plugin_dir,
+        "mine",
+        "test.mine",
+        "nfoforge_test_mine",
+        "from src.plugins.api import PluginDefinition\n"
+        "def sample(value): return value\n"
+        "plugin = PluginDefinition(display_name='Mine', version='1.0.0', "
+        "jinja2_filters={'sample': sample})\n",
+    )
+    _write_plugin(
+        shipped_dir,
+        "example",
+        "test.example",
+        "nfoforge_test_example",
+        "from src.plugins.api import PluginDefinition\n"
+        "def sample(value): return value\n"
+        "plugin = PluginDefinition(display_name='Example', version='1.0.0', "
+        "jinja2_filters={'example_sample': sample})\n",
+    )
+    monkeypatch.setattr(PluginLoader, "_entry_points", staticmethod(lambda: ()))
+    manager = PluginManager()
+
+    PluginLoader(manager, plugin_dir=plugin_dir, shipped_dir=shipped_dir).load_plugins()
+
+    assert manager.plugin_ids == frozenset({"test.mine", "test.example"})
+
+
+def test_a_users_plugin_wins_a_collision_with_a_shipped_example(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The user's own copy takes precedence, matching existing precedence rules.
+
+    Local plugins already beat installed entry points for the same reason: what
+    the user put there must not be silently shadowed by something that arrived
+    with a release.
+    """
+    plugin_dir = tmp_path / "plugins"
+    shipped_dir = tmp_path / "assets" / "plugin_examples"
+    _write_plugin(
+        plugin_dir,
+        "theirs",
+        "test.shared",
+        "nfoforge_test_theirs",
+        "from src.plugins.api import PluginDefinition\n"
+        "def sample(value): return value\n"
+        "plugin = PluginDefinition(display_name='Theirs', version='9.9.9', "
+        "jinja2_filters={'sample': sample})\n",
+    )
+    _write_plugin(
+        shipped_dir,
+        "ours",
+        "test.shared",
+        "nfoforge_test_ours",
+        "from src.plugins.api import PluginDefinition\n"
+        "def sample(value): return value\n"
+        "plugin = PluginDefinition(display_name='Ours', version='1.0.0', "
+        "jinja2_filters={'sample': sample})\n",
+    )
+    monkeypatch.setattr(PluginLoader, "_entry_points", staticmethod(lambda: ()))
+    manager = PluginManager()
+
+    report = PluginLoader(
+        manager, plugin_dir=plugin_dir, shipped_dir=shipped_dir
+    ).load_plugins()
+
+    assert [record.definition.display_name for record in report.loaded] == ["Theirs"]
+    assert len(report.failures) == 1
+
+
+def test_a_missing_shipped_directory_is_not_created(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The shipped root lives inside the release, which is read-only territory.
+
+    Only the user's own directory is created on demand; writing into the
+    asset tree is the thing this whole refactor exists to stop.
+    """
+    plugin_dir = tmp_path / "plugins"
+    shipped_dir = tmp_path / "assets" / "plugin_examples"
+    monkeypatch.setattr(PluginLoader, "_entry_points", staticmethod(lambda: ()))
+
+    report = PluginLoader(
+        PluginManager(), plugin_dir=plugin_dir, shipped_dir=shipped_dir
+    ).load_plugins()
+
+    assert report.failures == ()
+    assert plugin_dir.is_dir()
+    assert not shipped_dir.exists()
+
+
+def test_the_plugin_directory_defaults_to_the_data_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Not beside the executable, which a release replaces.
+
+    Defaulting there would have a migrated installation load nothing: the
+    plugins were copied into the data directory and the loader would be looking
+    in the release folder it was extracted from.
+    """
+    monkeypatch.setenv(DATA_DIR_ENV_VAR, str(tmp_path / "data"))
+
+    loader = PluginLoader(PluginManager())
+
+    assert loader.plugin_dir == tmp_path / "data" / "plugins"

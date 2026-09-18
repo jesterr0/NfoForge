@@ -37,7 +37,7 @@ from src.backend.utils.rename_normalizations import (
 from src.backend.utils.resolution import VideoResolutionAnalyzer
 from src.backend.utils.streaming_services import abbreviate_streaming_service
 from src.backend.utils.tvdb_episodes import tvdb_episode_list
-from src.backend.utils.working_dir import RUNTIME_DIR
+from src.backend.utils.working_dir import asset_root
 from src.config.models import DynamicRangeSettings, HdrType, ResolutionKey
 from src.enums.media_type import MediaType
 from src.enums.multi_episode_style import MultiEpisodeStyle
@@ -1460,7 +1460,7 @@ class TokenReplacer:
                 audio_codecs = AudioCodecs()
                 # The bundled conventions file is a runtime asset in both source and frozen builds.
                 audio_convention_path = Path(
-                    RUNTIME_DIR / "config" / "audio_conventions" / "default.json"
+                    asset_root() / "config" / "audio_conventions" / "default.json"
                 )
                 codec = audio_codecs.get_codec(
                     self.media_info_obj.audio_tracks[0],

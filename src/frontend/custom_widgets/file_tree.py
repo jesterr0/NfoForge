@@ -6,7 +6,7 @@ from PySide6.QtCore import Qt, Slot
 from PySide6.QtGui import QIcon, QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import QFileIconProvider, QFrame, QHeaderView, QTreeView, QWidget
 
-from src.backend.utils.working_dir import RUNTIME_DIR
+from src.backend.utils.working_dir import asset_root
 from src.logger.nfo_forge_logger import LOG
 
 
@@ -21,7 +21,7 @@ class FileSystemTreeView(QTreeView):
     AUDIO_EXTENSION = (".ac3", ".ec3", ".eac3", ".thd", ".flac", ".aac", ".opus")
     TEXT_EXTENSIONS = (".txt", ".log", ".vpy", ".avs")
     INDEX_EXTENSIONS = (".ffindex", ".lwi", ".d2v")
-    IMAGE_DIR = RUNTIME_DIR / "images"
+    IMAGE_DIR = asset_root() / "images"
 
     def __init__(
         self,

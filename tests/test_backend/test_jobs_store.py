@@ -1,11 +1,13 @@
 """Coverage for reading/writing saved jobs and their schema migrations."""
 
 import json
+import os
 from pathlib import Path
 
 import pytest
 
 from src.backend.jobs import migrations, store
+from src.backend.jobs.assets import copy_images
 from src.backend.jobs.migrations import (
     JOB_SCHEMA_VERSION,
     JobMigrationError,
@@ -417,3 +419,83 @@ def test_a_job_is_prepared_when_every_selected_tracker_has_release_data(
     )
 
     assert store.list_jobs([working_dir])[0].prepared is True
+
+
+def _job_with_screenshots(working_dir: Path, count: int = 2) -> tuple[Path, list[Path]]:
+    """A saved job whose screenshots were copied into its own directory."""
+    loose = working_dir.parent / "loose"
+    loose.mkdir(parents=True, exist_ok=True)
+    originals = []
+    for index in range(count):
+        shot = loose / f"shot{index}.png"
+        shot.write_bytes(b"\x89PNG" + bytes([index]))
+        originals.append(shot)
+
+    job = _build()
+    directory = store.job_dir(working_dir, job.job_id, ensure_exists=True)
+    copied = copy_images(directory, originals)
+    job.context = {
+        "media_input": {},
+        "media_search": {},
+        "shared_data": {"loaded_images": [str(path) for path in copied]},
+    }
+    store.save_job(job, working_dir)
+    for original in originals:
+        original.unlink()
+    return directory, copied
+
+
+def test_a_relocated_job_still_finds_the_screenshots_it_owns(tmp_path: Path) -> None:
+    """A job's own assets are found by where the job is, not where it was.
+
+    The recorded path is where the screenshot was when it was saved, which goes
+    stale for plenty of reasons that have nothing to do with the screenshot:
+    the working directory moves, a backup is restored somewhere else, the jobs
+    folder is carried to another machine. The images are still inside the job,
+    one directory along, so resolving them against the directory being loaded
+    finds them where trusting the recorded path does not.
+    """
+    original_working_dir = tmp_path / "before" / "nfoforge"
+    directory, copied = _job_with_screenshots(original_working_dir)
+
+    relocated_working_dir = tmp_path / "after" / "nfoforge"
+    relocated_working_dir.parent.mkdir(parents=True)
+    os.replace(original_working_dir, relocated_working_dir)
+    relocated = jobs_dir(relocated_working_dir) / directory.name
+
+    loaded = store.load_job(relocated)
+
+    restored = loaded.context["shared_data"]["loaded_images"]
+    assert [Path(entry).parent for entry in restored] == [
+        relocated / "images" for _ in copied
+    ]
+    assert all(Path(entry).is_file() for entry in restored)
+
+
+def test_a_screenshot_kept_outside_the_job_keeps_its_recorded_path(
+    tmp_path: Path,
+) -> None:
+    """Not every recorded path is one the job owns, and those are left alone.
+
+    When a screenshot is already missing at save time, `copy_images` records its
+    original path deliberately, so that `uploaded_images` stays correctly
+    numbered by position. Re-anchoring that onto the job directory would invent
+    a file that was never there.
+    """
+    working_dir = tmp_path / "nfoforge"
+    elsewhere = tmp_path / "elsewhere" / "kept.png"
+    elsewhere.parent.mkdir(parents=True)
+    elsewhere.write_bytes(b"\x89PNG")
+
+    job = _build()
+    directory = store.job_dir(working_dir, job.job_id, ensure_exists=True)
+    job.context = {
+        "media_input": {},
+        "media_search": {},
+        "shared_data": {"loaded_images": [str(elsewhere)]},
+    }
+    store.save_job(job, working_dir)
+
+    loaded = store.load_job(directory)
+
+    assert loaded.context["shared_data"]["loaded_images"] == [str(elsewhere)]

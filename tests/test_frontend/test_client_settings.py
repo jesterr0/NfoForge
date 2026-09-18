@@ -13,30 +13,11 @@ from src.frontend.custom_widgets.client_listbox import QBittorrentClientEdit
 from src.frontend.custom_widgets.client_settings import ClientSettingsWidget
 from src.frontend.custom_widgets.masked_qline_edit import MaskedQLineEdit
 from src.frontend.stacked_windows.settings.clients import ClientsSettings
-from tests.repo_paths import DEFAULT_CONFIG_DIR
+from tests.repo_paths import build_app_paths
 
 
 def _paths(tmp_path: Path) -> ConfigPaths:
-    defaults = tmp_path / "defaults"
-    defaults.mkdir()
-    source_defaults = DEFAULT_CONFIG_DIR
-    default_config = defaults / "default_config.toml"
-    default_program = defaults / "default_program_conf.toml"
-    default_config.write_text(
-        (source_defaults / "default_config.toml").read_text(encoding="utf-8"),
-        encoding="utf-8",
-    )
-    default_program.write_text(
-        (source_defaults / "default_program_conf.toml").read_text(encoding="utf-8"),
-        encoding="utf-8",
-    )
-    return ConfigPaths(
-        default_config=default_config,
-        default_program=default_program,
-        program=tmp_path / "program/conf.toml",
-        user_configs=tmp_path / "user",
-        tracker_cookies=tmp_path / "cookies",
-    )
+    return build_app_paths(tmp_path)
 
 
 def _config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> ConfigManager:

@@ -22,7 +22,7 @@ from src.backend.utils.images import (
     vapoursynth_to_ffmpeg_crop,
 )
 from src.backend.utils.subprocess_flags import get_subprocess_creation_flags
-from src.backend.utils.working_dir import RUNTIME_DIR
+from src.backend.utils.working_dir import asset_root
 from src.enums.cropping import Cropping
 from src.enums.image_plugin import ImagePlugin
 from src.enums.indexer import Indexer
@@ -32,7 +32,7 @@ from src.packages.crop_detect import CropDetect
 from src.packages.custom_types import AdvancedResize, CropValues, SubNames
 
 COMPARISON_FONT_PATH = (
-    RUNTIME_DIR / "fonts" / "Montserrat" / "static" / "Montserrat-Medium.ttf"
+    asset_root() / "fonts" / "Montserrat" / "static" / "Montserrat-Medium.ttf"
 )
 
 

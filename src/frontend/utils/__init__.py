@@ -1,6 +1,5 @@
 from collections.abc import Mapping, Sequence
 from functools import partial
-from pathlib import Path
 from queue import Queue
 from typing import Any, Self
 import weakref
@@ -19,7 +18,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from src.backend.utils.working_dir import RUNTIME_DIR
+from src.backend.utils.working_dir import asset_root
 from src.frontend.global_signals import GSigs
 from src.plugins.plugin_prompt_dialog import PluginPromptDialog
 
@@ -49,7 +48,7 @@ class AutoThemeIconButton(QToolButton):
         self.icon_name = icon
         self.icon_width = width
         self.icon_height = height
-        self.svg_path = Path(RUNTIME_DIR) / "svg" / self.icon_name
+        self.svg_path = asset_root() / "svg" / self.icon_name
 
         self.setObjectName(object_name)
         self.setToolButtonStyle(
@@ -110,7 +109,7 @@ class SvgWidget(QSvgWidget):
         self.icon = icon
         self.icon_width = icon_width
         self.icon_height = icon_height
-        self.svg_path = Path(RUNTIME_DIR) / "svg" / self.icon
+        self.svg_path = asset_root() / "svg" / self.icon
 
         # connect to color scheme change signal
         self.app = _application()
