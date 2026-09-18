@@ -5,7 +5,6 @@
 ### Added
 
 - **Encode logs can travel from plugins into an NFO.** A plugin can set `context.shared_data.encode_logs` before the final review; Pre-upload shows that content in an editable text box, and the new `{{ encode_logs }}` NFO token renders the reviewed value. Saved and prepared jobs retain it.
-
 - **A configuration can leave the machine.** **Settings -> General** gained an export button beside the data folder, writing the profiles you pick -- and the NFO templates they name -- to one `.zip`. Until now the only way to move a setup to a second machine, keep a backup of one, or hand a working tracker configuration to someone else was to copy a profile out of the data folder by hand, and a profile copied on its own arrives broken: it names its templates by filename, and those live somewhere else. See [Sharing and Moving a Configuration](https://jesterr0.github.io/NfoForge/view/getting-started/sharing-configs.html).
 - **Credentials are removed from an export unless you ask for them.** Tracker API keys, RSS keys, passkeys, announce URLs, usernames, passwords, two-factor seeds, session cookies, torrent client logins and your TMDB key are blanked, and the summary lists every value that was removed. Your releaser name and group tag are not credentials and are kept -- they are usually the reason a setup is worth sharing. Ticking **Include credentials** keeps everything, for moving to another machine of your own.
 - **Importing a bundle shows what it would do before it does any of it**, and never overwrites. A name already in use is resolved by one choice for the whole import: keep both (the incoming copy lands as `name (2)`), skip, or replace -- and replace keeps a dated copy of what was there in an `old_configs` folder beside it. A template that is already present and identical is recognised rather than copied again, so importing the same bundle twice does not fill the templates folder with duplicates.
@@ -32,6 +31,7 @@
 
 - **Your settings and data now live in a folder of your own, outside the application.** Profiles, program preferences, plugin settings, tracker cookies, NFO templates, plugins, bundled tools, logs and saved jobs move to `%LOCALAPPDATA%\nfoforge` on Windows, `~/Library/Application Support/nfoforge` on macOS and `~/.local/share/nfoforge` on Linux. Every earlier version kept all of it inside the application folder, under `bundle/runtime`, which meant extracting a new release over an old one put your own files in the path of the ones being replaced. Upgrading is now a matter of replacing the release folder and nothing else. Running from source uses a separate folder, `nfoforge-dev`, so a source checkout and an installed release no longer share profiles, credentials or saved jobs. See [Upgrading](https://jesterr0.github.io/NfoForge/view/getting-started/upgrading.html).
 - Saved jobs and run output move into a `workspace` folder inside the data folder, keeping deliberately saved work and disposable output apart at the top level rather than side by side.
+- Updated platformdirs and pyside6.
 
 ### Fixed
 
