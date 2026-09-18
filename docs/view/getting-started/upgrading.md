@@ -68,6 +68,8 @@ NfoForge looks in the folder the application is running from for a previous inst
 
 Your profiles, program preferences, plugin settings, tracker cookies, NFO templates, plugins and bundled tools. Two settings are also corrected as they arrive:
 
+Plugin repositories are copied without disposable development content such as virtual environments, version-control data, Python bytecode, tool caches, coverage output and top-level build artifacts. Source, compiled plugin modules, tests, documentation and other plugin resources are preserved.
+
 - A **working directory** that was NfoForge's own data folder becomes the `workspace` folder inside it, so your saved jobs are still found.
 - A **dependency** stored in the old `apps` folder is repointed at its new home in `tools`.
 

@@ -23,6 +23,7 @@ from src.config.layout_apply import (
 )
 from src.config.layout_migration import (
     ActionKind,
+    CopyPolicy,
     LegacyInstall,
     MigrationPlan,
     PlannedAction,
@@ -145,6 +146,97 @@ def test_a_planned_copy_duplicates_a_directory_and_leaves_the_source(
     assert (source / "a.jinja").read_bytes() == b"t" * 9
 
 
+def test_a_plugin_copy_excludes_disposable_repository_content(
+    tmp_path: Path,
+) -> None:
+    """A development checkout arrives as a usable plugin, not a second dev tree."""
+    state_root = tmp_path / "user_data"
+    source = tmp_path / "install" / "plugins" / "repository"
+
+    def write(relative: str, content: bytes = b"x") -> None:
+        path = source / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(content)
+
+    write("nfoforge-plugin.toml")
+    write("plugin_package/__init__.py")
+    write("plugin_package/native.pyd")
+    write("plugin_package/build/runtime.json")
+    write("tests/test_plugin.py")
+    write("docs/usage.md")
+    write("manual_tools/tool.bin")
+    write(".git/objects/object")
+    write("__pycache__/module.pyc")
+    write(".venv/Lib/site-packages/dependency.py")
+    write("custom-environment/pyvenv.cfg")
+    write("custom-environment/lib/dependency.py")
+    write("build/generated.py")
+    write("dist/plugin.whl")
+    write("module.pyc")
+    destination = state_root / "plugins" / "repository"
+
+    apply_plan(
+        MigrationPlan(
+            actions=(
+                PlannedAction(
+                    kind=ActionKind.COPY,
+                    source=source,
+                    destination=destination,
+                    size=0,
+                    copy_policy=CopyPolicy.PLUGIN,
+                ),
+            ),
+            state_root=state_root,
+        )
+    )
+
+    for relative in (
+        "nfoforge-plugin.toml",
+        "plugin_package/__init__.py",
+        "plugin_package/native.pyd",
+        "plugin_package/build/runtime.json",
+        "tests/test_plugin.py",
+        "docs/usage.md",
+        "manual_tools/tool.bin",
+    ):
+        assert (destination / relative).is_file()
+    for relative in (
+        ".git",
+        "__pycache__",
+        ".venv",
+        "custom-environment",
+        "build",
+        "dist",
+        "module.pyc",
+    ):
+        assert not (destination / relative).exists()
+    assert (source / ".venv" / "Lib" / "site-packages" / "dependency.py").is_file()
+
+
+def test_the_plugin_filter_does_not_apply_to_an_ordinary_copy(tmp_path: Path) -> None:
+    """Templates, tools and configuration still copy their complete trees."""
+    source = tmp_path / "install" / "templates"
+    cached = source / "__pycache__" / "kept.pyc"
+    cached.parent.mkdir(parents=True)
+    cached.write_bytes(b"user data")
+    destination = tmp_path / "user_data" / "templates"
+
+    apply_plan(
+        MigrationPlan(
+            actions=(
+                PlannedAction(
+                    kind=ActionKind.COPY,
+                    source=source,
+                    destination=destination,
+                    size=9,
+                ),
+            )
+        )
+    )
+
+    assert (destination / "__pycache__" / "kept.pyc").read_bytes() == b"user data"
+
+
 def test_a_planned_copy_handles_a_single_file(tmp_path: Path) -> None:
     """Program preferences are one file, and they are renamed on the way."""
     state_root = tmp_path / "user_data"
@@ -189,7 +281,9 @@ def test_an_incomplete_copy_is_refused_rather_than_counted(
     (source / "two.txt").write_bytes(b"2" * 10)
     destination = state_root / "cookies"
 
-    def losing_copy(src: Path, dst: Path) -> None:
+    def losing_copy(
+        src: Path, dst: Path, _copy_policy: CopyPolicy = CopyPolicy.ALL
+    ) -> None:
         dst.mkdir(parents=True)
         (dst / "one.txt").write_bytes((Path(src) / "one.txt").read_bytes())
 

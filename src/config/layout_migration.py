@@ -16,6 +16,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import Enum
+import os
 from pathlib import Path
 import re
 
@@ -63,6 +64,20 @@ class ActionKind(Enum):
     """Repoints a setting. Touches a configuration value, not the filesystem."""
 
 
+class CopyPolicy(Enum):
+    """Which files a copy action carries across.
+
+    Most of the legacy tree is user data and must arrive byte for byte. A local
+    plugin is different: its directory is a repository, and can contain a
+    virtual environment, version-control data and generated caches alongside
+    the files the plugin actually needs. The policy lives on the planned action
+    so its displayed size, execution and verification cannot disagree.
+    """
+
+    ALL = "all"
+    PLUGIN = "plugin"
+
+
 @dataclass(frozen=True, slots=True)
 class PlannedAction:
     kind: ActionKind
@@ -76,6 +91,9 @@ class PlannedAction:
 
     detail: str = ""
     """Which setting, for a rewrite. Nothing else needs naming."""
+
+    copy_policy: CopyPolicy = CopyPolicy.ALL
+    """The source entries included by a copy; irrelevant to other actions."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -474,7 +492,13 @@ def plan_migration(
         for entry in _children(legacy.plugins):
             if not entry.is_dir() or _plugin_id(entry) in shipped_ids:
                 continue
-            actions.append(_copy(entry, state_root / PLUGINS_DIR_NAME / entry.name))
+            actions.append(
+                _copy(
+                    entry,
+                    state_root / PLUGINS_DIR_NAME / entry.name,
+                    copy_policy=CopyPolicy.PLUGIN,
+                )
+            )
 
         legacy_tools = legacy.state / LEGACY_TOOLS_DIR_NAME
         for profile, setting, configured in configured_paths:
@@ -528,12 +552,17 @@ def plan_migration(
     )
 
 
-def _copy(source: Path, destination: Path) -> PlannedAction:
+def _copy(
+    source: Path,
+    destination: Path,
+    copy_policy: CopyPolicy = CopyPolicy.ALL,
+) -> PlannedAction:
     return PlannedAction(
         kind=ActionKind.COPY,
         source=source,
         destination=destination,
-        size=_size(source),
+        size=copy_measure(source, copy_policy)[0],
+        copy_policy=copy_policy,
     )
 
 
@@ -619,6 +648,106 @@ def _plugin_id(directory: Path) -> str | None:
     except (OSError, tomllib.TOMLDecodeError, UnicodeDecodeError):
         return None
     return declared.strip() if isinstance(declared, str) and declared.strip() else None
+
+
+_PLUGIN_IGNORED_DIRECTORY_NAMES = frozenset(
+    {
+        ".cache",
+        ".git",
+        ".hg",
+        ".hypothesis",
+        ".mypy_cache",
+        ".nox",
+        ".pyright",
+        ".pytest_cache",
+        ".ruff_cache",
+        ".svn",
+        ".tox",
+        ".venv",
+        "__pycache__",
+        "__pypackages__",
+        "node_modules",
+        "venv",
+    }
+)
+"""Disposable directories excluded wherever they occur in a plugin tree."""
+
+_PLUGIN_IGNORED_ROOT_DIRECTORY_NAMES = frozenset({"build", "dist", "htmlcov"})
+"""Generated output excluded only at a plugin repository's root.
+
+Nested packages are allowed to use ordinary words such as ``build`` as module
+or resource names. Restricting these three to the repository root avoids
+silently removing such a package while still catching the conventional output
+directories produced by Python build and coverage tools.
+"""
+
+_PLUGIN_IGNORED_FILE_NAMES = frozenset(
+    {".coverage", ".ds_store", "desktop.ini", "thumbs.db"}
+)
+_PLUGIN_IGNORED_FILE_SUFFIXES = (".pyc", ".pyo")
+
+
+def copy_ignored_names(
+    policy: CopyPolicy,
+    source_root: Path,
+    directory: Path,
+    names: Iterable[str],
+) -> set[str]:
+    """Entries omitted from one directory under ``policy``.
+
+    This is shared by planning and applying. Keeping one predicate is the
+    important property: the size shown before migration, the files copied and
+    the source side of verification must describe exactly the same tree.
+
+    A virtual environment with an unconventional name is recognised by its
+    ``pyvenv.cfg`` marker. Common ``.venv`` and ``venv`` directories are also
+    excluded when incomplete, which is useful after an interrupted environment
+    creation.
+    """
+    if policy is CopyPolicy.ALL:
+        return set()
+
+    ignored: set[str] = set()
+    at_root = directory == source_root
+    for name in names:
+        entry = directory / name
+        folded = name.casefold()
+        if entry.is_dir():
+            if (
+                folded in _PLUGIN_IGNORED_DIRECTORY_NAMES
+                or (at_root and folded in _PLUGIN_IGNORED_ROOT_DIRECTORY_NAMES)
+                or (entry / "pyvenv.cfg").is_file()
+            ):
+                ignored.add(name)
+            continue
+        if (
+            folded in _PLUGIN_IGNORED_FILE_NAMES
+            or folded.startswith(".coverage.")
+            or folded.endswith(_PLUGIN_IGNORED_FILE_SUFFIXES)
+        ):
+            ignored.add(name)
+    return ignored
+
+
+def copy_measure(path: Path, policy: CopyPolicy) -> tuple[int, int]:
+    """Bytes and file count that a copy action will carry from ``path``."""
+    if path.is_file():
+        return path.stat().st_size, 1
+
+    total = 0
+    count = 0
+    for current, directories, files in os.walk(path):
+        directory = Path(current)
+        ignored = copy_ignored_names(policy, path, directory, (*directories, *files))
+        directories[:] = [name for name in directories if name not in ignored]
+        for name in files:
+            if name in ignored:
+                continue
+            entry = directory / name
+            if entry.is_file():
+                total += entry.stat().st_size
+                count += 1
+    return total, count
 
 
 def _is_inside(path: Path, root: Path) -> bool:

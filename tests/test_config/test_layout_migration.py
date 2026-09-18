@@ -12,6 +12,7 @@ import pytest
 
 from src.config.layout_migration import (
     ActionKind,
+    CopyPolicy,
     Finding,
     FindingKind,
     LegacyInstall,
@@ -246,9 +247,81 @@ def test_legacy_plugins_are_planned_one_directory_at_a_time(tmp_path: Path) -> N
             source=legacy.plugins / "a_plugin",
             destination=state_root / "plugins" / "a_plugin",
             size=6,
+            copy_policy=CopyPolicy.PLUGIN,
         )
         in plan.actions
     )
+
+
+def test_a_plugin_plan_counts_only_files_the_import_will_copy(tmp_path: Path) -> None:
+    """The size shown before an import must describe the filtered tree.
+
+    Repositories are valid plugin roots, but their environments, VCS data,
+    caches and generated build output are neither plugin code nor user data.
+    Tests, documentation and arbitrary resources remain because a plugin can
+    read any of them at runtime and the manifest has no resource allowlist.
+    """
+    state_root = tmp_path / "user_data"
+    state_root.mkdir()
+    legacy = _frozen_install(tmp_path)
+    plugin = _write_plugin(legacy.plugins / "repository", "their.plugin")
+
+    def write(relative: str) -> Path:
+        path = plugin / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"x")
+        return path
+
+    kept = [
+        plugin / "nfoforge-plugin.toml",
+        write("plugin_package/__init__.py"),
+        write("plugin_package/native.pyd"),
+        write("plugin_package/build/runtime.json"),
+        write("tests/test_plugin.py"),
+        write("docs/usage.md"),
+        write("scripts/helper.py"),
+        write("manual_tools/tool.bin"),
+    ]
+    for directory in (
+        ".cache",
+        ".git",
+        ".hg",
+        ".hypothesis",
+        ".mypy_cache",
+        ".nox",
+        ".pyright",
+        ".pytest_cache",
+        ".ruff_cache",
+        ".svn",
+        ".tox",
+        ".venv",
+        "__pycache__",
+        "__pypackages__",
+        "node_modules",
+        "venv",
+        "build",
+        "dist",
+        "htmlcov",
+    ):
+        write(f"{directory}/discarded.bin")
+    write("named-anything/pyvenv.cfg")
+    write("named-anything/lib/discarded.bin")
+    for filename in (
+        ".coverage",
+        ".coverage.worker",
+        ".DS_Store",
+        "desktop.ini",
+        "Thumbs.db",
+        "stale.pyc",
+        "stale.pyo",
+    ):
+        write(filename)
+
+    plan = plan_migration(state_root, legacy=legacy)
+    action = next(one for one in plan.actions if one.source == plugin)
+
+    assert action.copy_policy is CopyPolicy.PLUGIN
+    assert action.size == sum(path.stat().st_size for path in kept)
 
 
 def test_a_shipped_example_plugin_is_not_imported(tmp_path: Path) -> None:

@@ -29,11 +29,14 @@ from src.backend.utils.file_utilities import file_bytes_to_str
 from src.backend.utils.working_dir import CURRENT_DIR, normalise_path
 from src.config.layout_migration import (
     ActionKind,
+    CopyPolicy,
     FindingKind,
     LegacyInstall,
     LegacySettings,
     MigrationPlan,
     PlannedAction,
+    copy_ignored_names,
+    copy_measure,
     missing_active_profile,
     plan_migration,
     read_legacy_settings,
@@ -427,7 +430,7 @@ def apply_plan(
         if action.kind is ActionKind.MOVE:
             _move(action.source, destination)
         else:
-            _copy(action.source, destination)
+            _copy(action.source, destination, action.copy_policy)
 
     rewrites = tuple(
         action for action in plan.actions if action.kind is ActionKind.REWRITE
@@ -520,7 +523,11 @@ def _conflict_path(destination: Path, state_root: Path) -> Path:
     return state_root / CONFLICTS_DIR_NAME / relative
 
 
-def _copy(source: Path, destination: Path) -> None:
+def _copy(
+    source: Path,
+    destination: Path,
+    copy_policy: CopyPolicy = CopyPolicy.ALL,
+) -> None:
     """Duplicate `source` at `destination`, then check it arrived whole.
 
     Verified rather than trusted because nothing is deleted here, which makes a
@@ -530,46 +537,47 @@ def _copy(source: Path, destination: Path) -> None:
     """
     destination.parent.mkdir(parents=True, exist_ok=True)
     if source.is_dir():
-        _copy_tree(source, destination)
+        _copy_tree(source, destination, copy_policy)
     else:
         _copy_file(source, destination)
-    _verify(source, destination)
+    _verify(source, destination, copy_policy)
 
 
-def _copy_tree(source: Path, destination: Path) -> None:
-    shutil.copytree(source, destination, dirs_exist_ok=True)
+def _copy_tree(
+    source: Path, destination: Path, copy_policy: CopyPolicy = CopyPolicy.ALL
+) -> None:
+    ignore: Callable[[str, list[str]], set[str]] | None = None
+    if copy_policy is not CopyPolicy.ALL:
+
+        def ignored(directory: str, names: list[str]) -> set[str]:
+            return copy_ignored_names(copy_policy, source, Path(directory), names)
+
+        ignore = ignored
+    shutil.copytree(source, destination, dirs_exist_ok=True, ignore=ignore)
 
 
 def _copy_file(source: Path, destination: Path) -> None:
     shutil.copy2(source, destination)
 
 
-def _verify(source: Path, destination: Path) -> None:
+def _verify(
+    source: Path,
+    destination: Path,
+    copy_policy: CopyPolicy = CopyPolicy.ALL,
+) -> None:
     """Compare what was asked for against what is now there.
 
     Bytes and file count, which is enough to catch a copy that stopped part way
     without re-reading everything that was just written.
     """
-    expected = _measure(source)
-    actual = _measure(destination)
+    expected = copy_measure(source, copy_policy)
+    actual = copy_measure(destination, CopyPolicy.ALL)
     if expected != actual:
         raise MigrationError(
             f"copying {source} to {destination} did not arrive whole: "
             f"expected {expected[0]} bytes in {expected[1]} files, "
             f"found {actual[0]} in {actual[1]}"
         )
-
-
-def _measure(path: Path) -> tuple[int, int]:
-    if path.is_file():
-        return path.stat().st_size, 1
-    total = 0
-    count = 0
-    for item in path.rglob("*"):
-        if item.is_file():
-            total += item.stat().st_size
-            count += 1
-    return total, count
 
 
 def _move(source: Path, destination: Path) -> None:
