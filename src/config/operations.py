@@ -86,6 +86,7 @@ from src.payloads.trackers import (
     YuSceneInfo,
 )
 from src.payloads.watch_folder import WatchFolder
+from src.utils.announce_url import ensure_torrentleech_announce_url
 
 PayloadT = TypeVar("PayloadT", bound=CheveretoV3Payload | CheveretoV4Payload)
 
@@ -289,7 +290,13 @@ class TypedTomlOperations:
             tl_data["upload_enabled"] = (
                 self.settings.trackers.torrent_leech.upload_enabled
             )
-            tl_data["announce_url"] = self.settings.trackers.torrent_leech.announce_url
+            normalized_tl_announce_url = ensure_torrentleech_announce_url(
+                self.settings.trackers.torrent_leech.announce_url
+            )
+            self.settings.trackers.torrent_leech.announce_url = (
+                normalized_tl_announce_url
+            )
+            tl_data["announce_url"] = normalized_tl_announce_url
             tl_data["enabled"] = self.settings.trackers.torrent_leech.enabled
             tl_data["source"] = self.settings.trackers.torrent_leech.source
             tl_data["comments"] = self.settings.trackers.torrent_leech.comments

@@ -19,6 +19,7 @@ from src.enums.url_type import URLType
 from src.frontend.custom_widgets.combo_box import CustomComboBox
 from src.frontend.custom_widgets.masked_qline_edit import MaskedQLineEdit
 from src.frontend.custom_widgets.url_organizer import URLOrganizer
+from src.utils.announce_url import ensure_torrentleech_announce_url
 
 
 class TrackerEditBase(QFrame):
@@ -217,9 +218,11 @@ class TLTrackerEdit(TrackerEditBase):
         self.config.settings.trackers.torrent_leech.upload_enabled = (
             self.upload_enabled.isChecked()
         )
-        self.config.settings.trackers.torrent_leech.announce_url = (
+        announce_url = ensure_torrentleech_announce_url(
             self.announce_url.text().strip()
         )
+        self.announce_url.setText(announce_url or "")
+        self.config.settings.trackers.torrent_leech.announce_url = announce_url
         self.config.settings.trackers.torrent_leech.comments = (
             self.comments.text().strip()
         )
