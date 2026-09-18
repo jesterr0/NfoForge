@@ -674,6 +674,7 @@ class TemplateSelector(QWidget):
                     or self.context.shared_data.loaded_images
                     else True,
                     release_notes=self.context.shared_data.release_notes,
+                    encode_logs=self.context.shared_data.encode_logs,
                     edition_override=self.context.shared_data.dynamic_data.get(
                         "edition_override"
                     ),

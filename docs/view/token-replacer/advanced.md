@@ -64,6 +64,7 @@ class SharedPayload:
     is_comparison_images: bool = False
     dynamic_data: dict[str, Any] = field(default_factory=dict)
     release_notes: str | None = None
+    encode_logs: str | None = None
 
     def reset(self) -> None:
         self.url_data.clear()
@@ -73,6 +74,7 @@ class SharedPayload:
         self.is_comparison_images = False
         self.dynamic_data.clear()
         self.release_notes = None
+        self.encode_logs = None
 ```
 
 ###### {{ nf_media_search_payload }}

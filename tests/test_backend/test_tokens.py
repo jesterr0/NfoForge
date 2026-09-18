@@ -32,3 +32,11 @@ def test_plot_and_url_tokens_are_registered_as_nfo_only() -> None:
     assert not any(token is Tokens.PLOT for token in file_tokens)
     assert not any(token is Tokens.IMDB_URL for token in file_tokens)
     assert not any(token is Tokens.TMDB_URL for token in file_tokens)
+
+
+def test_encode_logs_is_registered_as_nfo_only() -> None:
+    file_tokens = Tokens.get_token_objects(FileToken)
+    nfo_tokens = Tokens.get_token_objects(NfoToken)
+
+    assert any(token is Tokens.ENCODE_LOGS for token in nfo_tokens)
+    assert not any(token is Tokens.ENCODE_LOGS for token in file_tokens)

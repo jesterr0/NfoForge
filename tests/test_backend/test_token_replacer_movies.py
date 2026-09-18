@@ -444,6 +444,29 @@ def test_plot_token_is_empty_when_unset() -> None:
     assert output == ""
 
 
+def test_encode_logs_token_renders_multiline_plugin_output() -> None:
+    output = TokenReplacer(
+        media_input_obj=EXAMPLE_MEDIA_INPUT_PAYLOAD,
+        token_string="{{ encode_logs }}",  # noqa: S106 - NFO template token string used as test fixture data, not a credential
+        media_search_obj=EXAMPLE_SEARCH_PAYLOAD,
+        jinja_engine=Jinja2TemplateEngine(),
+        encode_logs="encoded 1200 frames\nfinished successfully",
+    ).get_output()
+
+    assert output == "encoded 1200 frames\nfinished successfully"
+
+
+def test_encode_logs_token_is_empty_when_unset() -> None:
+    output = TokenReplacer(
+        media_input_obj=EXAMPLE_MEDIA_INPUT_PAYLOAD,
+        token_string="{{ encode_logs }}",  # noqa: S106 - NFO template token string used as test fixture data, not a credential
+        media_search_obj=EXAMPLE_SEARCH_PAYLOAD,
+        jinja_engine=Jinja2TemplateEngine(),
+    ).get_output()
+
+    assert output == ""
+
+
 def test_imdb_url_token_renders_the_full_imdb_url() -> None:
     output = TokenReplacer(
         media_input_obj=EXAMPLE_MEDIA_INPUT_PAYLOAD,

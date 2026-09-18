@@ -1229,6 +1229,7 @@ class ProcessBackEnd:
                     screen_shots_even_str=even_screens_str,
                     screen_shots_odd_str=odd_screens_str,
                     release_notes=context.shared_data.release_notes,
+                    encode_logs=context.shared_data.encode_logs,
                     edition_override=context.shared_data.dynamic_data.get(
                         "edition_override"
                     ),

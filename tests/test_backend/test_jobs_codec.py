@@ -95,6 +95,7 @@ def _populate(context: ProcessingContext, media: Path) -> None:
     shared.loaded_images = [media.parent / "img1.png"]
     shared.generated_images = True
     shared.release_notes = "notes"
+    shared.encode_logs = "x264 encode output"
     shared.dynamic_data["edition_override"] = "Director's Cut"
     shared.tracker_image_hosts[TrackerSelection.AITHER] = ImageUploadFromTo(
         ImageSource.IMAGES, ImageHostRef(ImageHost.CHEVERETO_V3)
@@ -161,6 +162,7 @@ def test_context_round_trip_preserves_payloads(sample_media: Path) -> None:
     assert shared.generated_images is True
     assert shared.is_comparison_images is False
     assert shared.release_notes == "notes"
+    assert shared.encode_logs == "x264 encode output"
     assert shared.dynamic_data == {"edition_override": "Director's Cut"}
     assert shared.tracker_image_hosts == source.shared_data.tracker_image_hosts
 
@@ -249,6 +251,7 @@ def test_restore_keeps_jinja_globals_pointing_at_live_payloads(
     assert globals_["nf_media_input_payload"] is restored.media_input
     assert globals_["nf_media_search_payload"].title == "Example"
     assert globals_["nf_shared_data"].release_notes == "notes"
+    assert globals_["nf_shared_data"].encode_logs == "x264 encode output"
 
 
 def test_restore_clears_state_left_over_from_a_previous_run(
@@ -260,11 +263,13 @@ def test_restore_clears_state_left_over_from_a_previous_run(
 
     restored = _new_context()
     restored.shared_data.release_notes = "stale"
+    restored.shared_data.encode_logs = "stale log"
     restored.shared_data.dynamic_data["stale"] = True
     restored.media_input.file_list.append(Path("stale.mkv"))
     context_from_dict(document, restored)
 
     assert restored.shared_data.release_notes == "notes"
+    assert restored.shared_data.encode_logs == "x264 encode output"
     assert "stale" not in restored.shared_data.dynamic_data
     assert Path("stale.mkv") not in restored.media_input.file_list
 

@@ -226,6 +226,37 @@ def test_pre_upload_page_applies_release_notes_and_hides_disabled_client(
     assert context.shared_data.release_notes == "A release note"
 
 
+def test_pre_upload_page_loads_and_applies_plugin_encode_logs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "src.config.config.FindDependencies.update_dependencies",
+        lambda self, dependencies: None,
+    )
+    config = ConfigManager("test", _paths(tmp_path))
+    config.settings.torrent_clients.qbittorrent.enabled = False
+    tracker = TrackerSelection.BEYOND_HD
+    config.settings.trackers.beyond_hd.nfo_template = "movie"
+
+    context = ProcessingContext(
+        media_input=MediaInputPayload(working_dir=tmp_path),
+    )
+    context.shared_data.selected_trackers = [tracker]
+    context.shared_data.encode_logs = "log supplied by a plugin"
+    parent = QWidget()
+    page = PreUploadPage(config, context, cast(MainWindow, parent))
+
+    page.initializePage()
+
+    assert page.encode_logs.text_box.toPlainText() == "log supplied by a plugin"
+
+    page.encode_logs.text_box.setPlainText("reviewed encode log")
+
+    assert page.validatePage() is True
+    assert context.shared_data.encode_logs == "reviewed encode log"
+
+
 def test_pre_upload_page_blocks_missing_template_assignment(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
