@@ -1,5 +1,4 @@
 from dataclasses import dataclass, field
-from typing import TypeAlias
 
 from src.enums.torrent_client import (
     QBittorrentAuthMode,
@@ -47,7 +46,7 @@ class TransmissionConfig(TorrentClient):
     path: str = ""
 
 
-NetworkTorrentClientConfig: TypeAlias = (
+type NetworkTorrentClientConfig = (
     QBittorrentConfig | DelugeConfig | RTorrentConfig | TransmissionConfig
 )
 

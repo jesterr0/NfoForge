@@ -22,15 +22,15 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, MutableMapping, Sequence
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
 from pathlib import Path, PurePosixPath
 import shutil
+import tomllib
 from typing import Any, Protocol
 import zipfile
 
 import tomlkit
-import tomllib
 
 from src.backend.template_selector import TEMPLATE_SUFFIX
 from src.config.codec import TomlConfigCodec
@@ -443,9 +443,7 @@ def export_bundle(
         export_version=EXPORT_VERSION,
         app_version=str(__version__),
         schema_version=TomlConfigCodec.SCHEMA_VERSION,
-        created=datetime.now(timezone.utc)
-        .isoformat(timespec="seconds")
-        .replace("+00:00", "Z"),
+        created=datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z"),
         credentials_included=include_credentials,
         profiles=tuple(documents),
         templates=tuple(templates),

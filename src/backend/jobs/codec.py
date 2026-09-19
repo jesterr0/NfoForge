@@ -28,7 +28,7 @@ from collections.abc import Callable, Iterable, Mapping
 from enum import Enum
 import json
 from pathlib import Path
-from typing import Any, TypeVar, cast
+from typing import Any, cast
 
 from pymediainfo import MediaInfo
 
@@ -60,8 +60,6 @@ from src.payloads.media_inputs import MediaInputPayload
 from src.payloads.media_search import MediaSearchPayload
 from src.plugins.api import MetadataMediaKind
 
-EnumT = TypeVar("EnumT", bound=Enum)
-
 AssetLoader = Callable[[str], "str | None"]
 """Reads one stored sidecar by filename, returning None when unavailable."""
 
@@ -85,7 +83,7 @@ def _enum_name(member: Enum | None) -> str | None:
     return member.name if member is not None else None
 
 
-def _enum_from_name(enum_cls: type[EnumT], name: Any) -> EnumT | None:
+def _enum_from_name[EnumT: Enum](enum_cls: type[EnumT], name: Any) -> EnumT | None:
     """Resolve an enum member by name, tolerating a member that has since gone."""
     return cast("EnumT | None", enum_from_name(enum_cls, name))
 

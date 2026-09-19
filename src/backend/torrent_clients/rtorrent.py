@@ -1,7 +1,7 @@
 import errno
 from pathlib import Path
 import ssl
-from typing import Any, TypeAlias
+from typing import Any
 from urllib.parse import urlsplit
 import xmlrpc
 import xmlrpc.client
@@ -13,7 +13,7 @@ from src.exceptions import TrackerClientError
 from src.payloads.clients import RTorrentConfig
 from src.utils.secret_redaction import scrub_secrets
 
-_HostType: TypeAlias = str | tuple[str, dict[str, str]]
+type _HostType = str | tuple[str, dict[str, str]]
 
 
 class Bunch(dict[str, Any]):

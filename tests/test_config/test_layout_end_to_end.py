@@ -12,9 +12,9 @@ user could see afterwards: the files on disk and the record kept beside them.
 """
 
 from pathlib import Path
+import tomllib
 
 import pytest
-import tomllib
 
 from src.config.layout_apply import import_legacy, render_summary
 from src.config.layout_migration import FindingKind, LegacyInstall

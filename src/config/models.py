@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal, TypeAlias, TypedDict, overload
+from typing import Literal, TypedDict, overload
 
 from src.backend.tokens import TokenSelection
 from src.enums.cropping import Cropping
@@ -59,8 +59,8 @@ from src.payloads.watch_folder import WatchFolder
 
 ReplacementRule = tuple[str, str]
 UserToken = tuple[str, TokenSelection]
-ResolutionKey: TypeAlias = Literal["720p", "1080p", "2160p"]
-HdrType: TypeAlias = Literal[
+type ResolutionKey = Literal["720p", "1080p", "2160p"]
+type HdrType = Literal[
     "SDR",
     "PQ",
     "HLG",

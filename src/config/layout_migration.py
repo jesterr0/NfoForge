@@ -19,7 +19,6 @@ from enum import Enum
 import os
 from pathlib import Path
 import re
-
 import tomllib
 
 from src.backend.utils.file_utilities import file_bytes_to_str, get_dir_size

@@ -1,4 +1,4 @@
-from typing import Any, cast
+from typing import Any, cast, override
 from uuid import uuid4
 
 from PySide6.QtCore import QPoint, Qt, QTimer, Signal, Slot
@@ -17,7 +17,6 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from typing_extensions import override
 
 from src.config.config import ConfigManager
 from src.enums.image_host import ImageHost

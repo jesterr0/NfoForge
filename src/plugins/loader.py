@@ -5,11 +5,11 @@ from dataclasses import dataclass
 from importlib import machinery, metadata, util
 from pathlib import Path
 import sys
+import tomllib
 import traceback
 from typing import Any
 
 import tomlkit
-import tomllib
 
 from src.config.paths import DEV_PLUGINS_ENV_VAR, default_paths, dev_plugin_dirs
 from src.exceptions import PluginError

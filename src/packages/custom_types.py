@@ -1,8 +1,6 @@
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import NamedTuple
-
-from typing_extensions import override
+from typing import NamedTuple, override
 
 from src.enums.image_host import ImageHost, ImageSource
 

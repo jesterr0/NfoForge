@@ -27,7 +27,7 @@ an arbitrary-code-execution path.
 from __future__ import annotations
 
 from collections.abc import Iterable
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 import json
 from pathlib import Path
 import shutil
@@ -122,7 +122,7 @@ def build_job(
     return SavedJob(
         job_id=shortuuid.uuid(),
         name=name.strip() or "Untitled job",
-        created_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        created_at=datetime.now(UTC).isoformat(timespec="seconds"),
         nfoforge_version=str(__version__),
         summary=summary,
         context=context,

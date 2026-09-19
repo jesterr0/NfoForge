@@ -1,10 +1,10 @@
 from enum import Enum, StrEnum
-from typing import Self, TypeVar
-
-EnumType = TypeVar("EnumType", bound=Enum)
+from typing import Self
 
 
-def _missing_func(cls: type[EnumType], value: object) -> EnumType | None:
+def _missing_func[EnumType: Enum](
+    cls: type[EnumType], value: object
+) -> EnumType | None:
     """Helper function to check member/value for a match."""
     if value is None:
         return None

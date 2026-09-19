@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
+import tomllib
 from typing import Any
 
 from PySide6.QtCore import Qt, Slot
@@ -33,7 +34,6 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-import tomllib
 
 from src.backend.template_selector import TEMPLATE_SUFFIX
 from src.backend.utils.file_utilities import open_explorer

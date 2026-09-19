@@ -1,8 +1,7 @@
-from typing import Any
+from typing import Any, override
 
 from PySide6.QtGui import Qt
 from PySide6.QtWidgets import QDialog, QWidget
-from typing_extensions import override
 
 
 class PluginPromptDialog(QDialog):

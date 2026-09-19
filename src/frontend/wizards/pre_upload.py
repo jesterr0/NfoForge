@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, override
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
@@ -8,7 +8,6 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from typing_extensions import override
 
 from src.config.config import ConfigManager
 from src.context.processing_context import ProcessingContext

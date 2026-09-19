@@ -9,9 +9,9 @@ fixing a bug later.
 import ast
 import json
 from pathlib import Path
+import tomllib
 
 import pytest
-import tomllib
 
 from src.config.layout_apply import (
     Diversion,

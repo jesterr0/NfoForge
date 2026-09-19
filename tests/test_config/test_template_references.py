@@ -12,9 +12,8 @@ possible one: a key called `layout` or `skin` that happened to name a file in
 `templates/` would go unnoticed, and nothing cheap can find that.
 """
 
-from typing import Any
-
 import tomllib
+from typing import Any
 
 from src.config.transfer import TEMPLATE_KEY
 from tests.repo_paths import DEFAULT_CONFIG_TOML

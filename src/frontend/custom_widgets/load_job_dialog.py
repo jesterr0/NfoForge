@@ -905,7 +905,7 @@ class LoadJobDialog(QDialog):
         return f"{len(selected)} prepared job(s) selected; ready to add to the queue."
 
     @contextmanager
-    def _programmatic_selection(self) -> Generator[None, None, None]:
+    def _programmatic_selection(self) -> Generator[None]:
         """Mark a block that changes tree or queue selection without the
         user having picked anything, so the source-setting slots below
         ignore whatever `itemSelectionChanged`/`currentRowChanged` it fires.

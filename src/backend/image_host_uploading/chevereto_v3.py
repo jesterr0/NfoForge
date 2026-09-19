@@ -50,7 +50,7 @@ def _generate_album_name(long_str: str | None) -> str:
         except IndexError:
             generated_album_name = long_str
     else:
-        generated_album_name = datetime.datetime.now(datetime.timezone.utc).strftime(
+        generated_album_name = datetime.datetime.now(datetime.UTC).strftime(
             "%Y-%m-%d %H.%M.%S.%m"
         )
 
