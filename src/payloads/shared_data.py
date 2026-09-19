@@ -21,6 +21,7 @@ class SharedPayload:
     is_comparison_images: bool = False
     dynamic_data: dict[str, Any] = field(default_factory=dict)
     release_notes: str | None = None
+    encode_logs: str | None = None
     # Where each tracker's images are coming from and going to for this run.
     # The process page's combo boxes are the UI for this, but the selection
     # lives here so it can be carried with the run (and saved to a job file)
@@ -104,6 +105,7 @@ class SharedPayload:
         self.is_comparison_images = False
         self.dynamic_data.clear()
         self.release_notes = None
+        self.encode_logs = None
         self.tracker_image_hosts.clear()
         self.uploaded_images.clear()
         self.uploaded_image_hosts.clear()

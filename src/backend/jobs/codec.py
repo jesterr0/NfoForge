@@ -28,7 +28,7 @@ from collections.abc import Callable, Iterable, Mapping
 from enum import Enum
 import json
 from pathlib import Path
-from typing import Any, TypeVar, cast
+from typing import Any, cast
 
 from pymediainfo import MediaInfo
 
@@ -60,8 +60,6 @@ from src.payloads.media_inputs import MediaInputPayload
 from src.payloads.media_search import MediaSearchPayload
 from src.plugins.api import MetadataMediaKind
 
-EnumT = TypeVar("EnumT", bound=Enum)
-
 AssetLoader = Callable[[str], "str | None"]
 """Reads one stored sidecar by filename, returning None when unavailable."""
 
@@ -85,7 +83,7 @@ def _enum_name(member: Enum | None) -> str | None:
     return member.name if member is not None else None
 
 
-def _enum_from_name(enum_cls: type[EnumT], name: Any) -> EnumT | None:
+def _enum_from_name[EnumT: Enum](enum_cls: type[EnumT], name: Any) -> EnumT | None:
     """Resolve an enum member by name, tolerating a member that has since gone."""
     return cast("EnumT | None", enum_from_name(enum_cls, name))
 
@@ -689,6 +687,7 @@ def _shared_data_to_dict(
         "is_comparison_images": payload.is_comparison_images,
         "dynamic_data": _json_safe_mapping(payload.dynamic_data, "dynamic_data", index),
         "release_notes": payload.release_notes,
+        "encode_logs": payload.encode_logs,
         "tracker_image_hosts": {
             tracker.name: _image_upload_from_to_to_dict(image_host_data)
             for tracker, image_host_data in payload.tracker_image_hosts.items()
@@ -788,6 +787,9 @@ def _shared_data_from_dict(
 
     release_notes = document.get("release_notes")
     payload.release_notes = release_notes if isinstance(release_notes, str) else None
+
+    encode_logs = document.get("encode_logs")
+    payload.encode_logs = encode_logs if isinstance(encode_logs, str) else None
 
     tracker_image_hosts = document.get("tracker_image_hosts")
     if isinstance(tracker_image_hosts, dict):

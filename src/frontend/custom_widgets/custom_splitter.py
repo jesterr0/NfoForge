@@ -1,7 +1,8 @@
+from typing import override
+
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPainter, QPaintEvent, QPen
 from PySide6.QtWidgets import QSplitter, QSplitterHandle, QWidget
-from typing_extensions import override
 
 
 class CustomSplitterHandle(QSplitterHandle):

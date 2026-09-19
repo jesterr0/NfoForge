@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 from src.enums.trackers.beyondhd import BHDLiveRelease, BHDPromo
 from src.enums.url_type import URLType
+from src.utils.announce_url import ensure_torrentleech_announce_url
 
 
 @dataclass(slots=True)
@@ -32,6 +33,9 @@ class TorrentLeechInfo(TrackerInfo):
 
     # override url type
     url_type: URLType = URLType.HTML
+
+    def __post_init__(self) -> None:
+        self.announce_url = ensure_torrentleech_announce_url(self.announce_url)
 
 
 @dataclass(slots=True)

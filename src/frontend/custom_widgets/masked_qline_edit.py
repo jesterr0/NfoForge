@@ -1,7 +1,8 @@
+from typing import override
+
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QMouseEvent
 from PySide6.QtWidgets import QLineEdit, QWidget
-from typing_extensions import override
 
 
 class MaskedQLineEdit(QLineEdit):

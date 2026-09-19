@@ -1,6 +1,5 @@
 import asyncio
 from collections.abc import Awaitable, Callable
-from typing import TypeVar
 
 import aiohttp
 from tenacity import AsyncRetrying, retry_if_exception_type, stop_after_attempt
@@ -8,8 +7,6 @@ from tenacity.wait import wait_exponential
 
 from src.backend.upload_retry import IMAGE_UPLOAD_ATTEMPTS
 from src.logger.nfo_forge_logger import LOG
-
-T = TypeVar("T")
 
 RETRYABLE_STATUS = frozenset({429, 500, 502, 503, 504})
 """Statuses that say "later", not "no": rate limiting and server-side faults."""
@@ -58,7 +55,7 @@ def image_client_timeout(timeout: int | None) -> aiohttp.ClientTimeout | None:
     return aiohttp.ClientTimeout(total=None, sock_connect=timeout, sock_read=timeout)
 
 
-async def retry_image_upload(
+async def retry_image_upload[T](
     operation: Callable[[], Awaitable[T]],
     *,
     host_name: str,

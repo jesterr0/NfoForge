@@ -4,6 +4,7 @@ from threading import Lock
 
 import pytest
 
+from src.config.paths import DATA_DIR_ENV_VAR, DEV_PLUGINS_ENV_VAR
 from src.exceptions import PluginError, PluginExecutionError
 from src.payloads.media_search import MediaSearchPayload
 from src.plugins.api import (
@@ -573,3 +574,411 @@ def test_token_replacer_uses_typed_request() -> None:
     )
 
     assert manager.replace_tokens("token.example", request) == "A value"
+
+
+def test_shipped_examples_load_alongside_the_users_own_plugins(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Two roots are scanned: the user's directory and the release's own.
+
+    The examples a release ships used to sit in the same folder the user
+    installs into, which meant they could not be updated without touching what
+    the user put there, and a migration could not tell them apart.
+    """
+    plugin_dir = tmp_path / "plugins"
+    shipped_dir = tmp_path / "assets" / "plugin_examples"
+    _write_plugin(
+        plugin_dir,
+        "mine",
+        "test.mine",
+        "nfoforge_test_mine",
+        "from src.plugins.api import PluginDefinition\n"
+        "def sample(value): return value\n"
+        "plugin = PluginDefinition(display_name='Mine', version='1.0.0', "
+        "jinja2_filters={'sample': sample})\n",
+    )
+    _write_plugin(
+        shipped_dir,
+        "example",
+        "test.example",
+        "nfoforge_test_example",
+        "from src.plugins.api import PluginDefinition\n"
+        "def sample(value): return value\n"
+        "plugin = PluginDefinition(display_name='Example', version='1.0.0', "
+        "jinja2_filters={'example_sample': sample})\n",
+    )
+    monkeypatch.setattr(PluginLoader, "_entry_points", staticmethod(lambda: ()))
+    manager = PluginManager()
+
+    PluginLoader(manager, plugin_dir=plugin_dir, shipped_dir=shipped_dir).load_plugins()
+
+    assert manager.plugin_ids == frozenset({"test.mine", "test.example"})
+
+
+def test_a_users_plugin_wins_a_collision_with_a_shipped_example(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The user's own copy takes precedence, matching existing precedence rules.
+
+    Local plugins already beat installed entry points for the same reason: what
+    the user put there must not be silently shadowed by something that arrived
+    with a release.
+    """
+    plugin_dir = tmp_path / "plugins"
+    shipped_dir = tmp_path / "assets" / "plugin_examples"
+    _write_plugin(
+        plugin_dir,
+        "theirs",
+        "test.shared",
+        "nfoforge_test_theirs",
+        "from src.plugins.api import PluginDefinition\n"
+        "def sample(value): return value\n"
+        "plugin = PluginDefinition(display_name='Theirs', version='9.9.9', "
+        "jinja2_filters={'sample': sample})\n",
+    )
+    _write_plugin(
+        shipped_dir,
+        "ours",
+        "test.shared",
+        "nfoforge_test_ours",
+        "from src.plugins.api import PluginDefinition\n"
+        "def sample(value): return value\n"
+        "plugin = PluginDefinition(display_name='Ours', version='1.0.0', "
+        "jinja2_filters={'sample': sample})\n",
+    )
+    monkeypatch.setattr(PluginLoader, "_entry_points", staticmethod(lambda: ()))
+    manager = PluginManager()
+
+    report = PluginLoader(
+        manager, plugin_dir=plugin_dir, shipped_dir=shipped_dir
+    ).load_plugins()
+
+    assert [record.definition.display_name for record in report.loaded] == ["Theirs"]
+    assert len(report.failures) == 1
+
+
+def test_a_missing_shipped_directory_is_not_created(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The shipped root lives inside the release, which is read-only territory.
+
+    Only the user's own directory is created on demand; writing into the
+    asset tree is the thing this whole refactor exists to stop.
+    """
+    plugin_dir = tmp_path / "plugins"
+    shipped_dir = tmp_path / "assets" / "plugin_examples"
+    monkeypatch.setattr(PluginLoader, "_entry_points", staticmethod(lambda: ()))
+
+    report = PluginLoader(
+        PluginManager(), plugin_dir=plugin_dir, shipped_dir=shipped_dir
+    ).load_plugins()
+
+    assert report.failures == ()
+    assert plugin_dir.is_dir()
+    assert not shipped_dir.exists()
+
+
+def test_the_plugin_directory_defaults_to_the_data_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Not beside the executable, which a release replaces.
+
+    Defaulting there would have a migrated installation load nothing: the
+    plugins were copied into the data directory and the loader would be looking
+    in the release folder it was extracted from.
+    """
+    monkeypatch.setenv(DATA_DIR_ENV_VAR, str(tmp_path / "data"))
+
+    loader = PluginLoader(PluginManager())
+
+    assert loader.plugin_dir == tmp_path / "data" / "plugins"
+
+
+def _where_plugin(where: str, name: str = "where") -> str:
+    """A definition that reports which copy of itself was loaded.
+
+    The exported name is a parameter because the manager refuses two plugins
+    contributing the same Jinja function name, so a test that loads two of
+    these at once has to keep them apart.
+    """
+    return (
+        "from src.plugins.api import PluginDefinition\n"
+        f"def {name}(): return {where!r}\n"
+        "plugin = PluginDefinition(display_name='Sample', version='1.0.0', "
+        f"jinja2_functions={{{name!r}: {name}}})\n"
+    )
+
+
+def test_a_development_directory_loads_every_plugin_in_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A folder of plugins, the same shape as the one it stands in for.
+
+    Not a list of individual plugins: a developer with two checkouts should not
+    have to name them one at a time, and the arrangement they are testing is
+    the one a real installation has.
+    """
+    checkouts = tmp_path / "checkouts"
+    _write_plugin(checkouts, "one", "test.one", "nfoforge_test_one", _where_plugin("a"))
+    _write_plugin(
+        checkouts, "two", "test.two", "nfoforge_test_two", _where_plugin("b", "there")
+    )
+    monkeypatch.setattr(PluginLoader, "_entry_points", staticmethod(lambda: ()))
+
+    report = PluginLoader(
+        PluginManager(), plugin_dir=tmp_path / "plugins", dev_dirs=(checkouts,)
+    ).load_plugins()
+
+    assert report.failures == ()
+    assert sorted(record.plugin_id for record in report.loaded) == [
+        "test.one",
+        "test.two",
+    ]
+
+
+def test_the_installed_plugins_folder_is_not_read_at_all(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Replaces rather than adds, which is what makes development ordinary.
+
+    Loading both would be an arrangement that exists on no user's machine:
+    collisions that happen only here, and a plugin that can be picked up from a
+    copy the developer has forgotten is there.
+    """
+    checkouts = tmp_path / "checkouts"
+    plugin_dir = tmp_path / "plugins"
+    _write_plugin(
+        checkouts, "mine", "test.dev", "nfoforge_test_dev", _where_plugin("checkout")
+    )
+    _write_plugin(
+        plugin_dir,
+        "installed",
+        "test.installed",
+        "nfoforge_test_installed",
+        _where_plugin("installed", "elsewhere"),
+    )
+    monkeypatch.setattr(PluginLoader, "_entry_points", staticmethod(lambda: ()))
+    manager = PluginManager()
+
+    report = PluginLoader(
+        manager, plugin_dir=plugin_dir, dev_dirs=(checkouts,)
+    ).load_plugins()
+
+    assert report.failures == ()
+    assert [record.plugin_id for record in report.loaded] == ["test.dev"]
+    assert manager.jinja2_functions(enabled=True)["where"]() == "checkout"
+
+
+def test_an_installed_copy_of_the_same_plugin_is_simply_absent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The copy installed from this very checkout is the normal case.
+
+    Because the real folder is not read, there is no collision to resolve and
+    nothing to report -- no duplicate-ID failure, and no `sys.modules` rejection
+    of the same module name from a different location, either of which would put
+    a permanent red row in the status table for a setup working as intended.
+    """
+    checkouts = tmp_path / "checkouts"
+    plugin_dir = tmp_path / "plugins"
+    _write_plugin(
+        checkouts, "mine", "test.both", "nfoforge_test_both", _where_plugin("checkout")
+    )
+    _write_plugin(
+        plugin_dir,
+        "mine",
+        "test.both",
+        "nfoforge_test_both",
+        _where_plugin("installed"),
+    )
+    monkeypatch.setattr(PluginLoader, "_entry_points", staticmethod(lambda: ()))
+    manager = PluginManager()
+
+    report = PluginLoader(
+        manager, plugin_dir=plugin_dir, dev_dirs=(checkouts,)
+    ).load_plugins()
+
+    assert report.failures == ()
+    assert [record.source for record in report.loaded] == [str(checkouts / "mine")]
+    assert manager.jinja2_functions(enabled=True)["where"]() == "checkout"
+
+
+def test_shipped_examples_still_load_beside_a_development_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Only the user's own folder is stood in for, not the release's.
+
+    A development run should be the same arrangement as a real one, and a real
+    one has the examples in it.
+    """
+    checkouts = tmp_path / "checkouts"
+    shipped_dir = tmp_path / "assets" / "plugin_examples"
+    _write_plugin(
+        checkouts, "mine", "test.dev", "nfoforge_test_devx", _where_plugin("checkout")
+    )
+    _write_plugin(
+        shipped_dir,
+        "example",
+        "test.example",
+        "nfoforge_test_examplex",
+        _where_plugin("shipped", "shipped"),
+    )
+    monkeypatch.setattr(PluginLoader, "_entry_points", staticmethod(lambda: ()))
+
+    report = PluginLoader(
+        PluginManager(),
+        plugin_dir=tmp_path / "plugins",
+        shipped_dir=shipped_dir,
+        dev_dirs=(checkouts,),
+    ).load_plugins()
+
+    assert report.failures == ()
+    assert sorted(record.plugin_id for record in report.loaded) == [
+        "test.dev",
+        "test.example",
+    ]
+
+
+def test_several_development_directories_are_read_in_the_order_written(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Checkouts are not always kept in one place.
+
+    Two folders holding the same plugin has to be resolved somehow, and the only
+    non-arbitrary answer is the one the developer wrote first -- the same
+    first-come-first-served rule everything else here follows.
+
+    The second copy is rejected for sharing the first's module name rather than
+    its id, because two checkouts of one plugin share both and the module is
+    checked first. Which guard catches it is not the point and is not asserted;
+    that the second copy loses and is reported is.
+    """
+    first, second = tmp_path / "first", tmp_path / "second"
+    _write_plugin(
+        first, "mine", "test.same", "nfoforge_test_same", _where_plugin("one")
+    )
+    _write_plugin(
+        second, "mine", "test.same", "nfoforge_test_same", _where_plugin("two")
+    )
+    monkeypatch.setattr(PluginLoader, "_entry_points", staticmethod(lambda: ()))
+    manager = PluginManager()
+
+    report = PluginLoader(
+        manager,
+        plugin_dir=tmp_path / "plugins",
+        dev_dirs=(first, second),
+    ).load_plugins()
+
+    assert [record.source for record in report.loaded] == [str(first / "mine")]
+    assert manager.jinja2_functions(enabled=True)["where"]() == "one"
+    assert len(report.failures) == 1
+    assert report.failures[0].source == str(second / "mine")
+
+
+def test_a_development_directory_that_does_not_exist_is_reported(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A path someone typed, which has taken the real folder out of the run.
+
+    An empty or missing plugins folder is normal for a real installation and is
+    passed over in silence. Here the same silence would leave a developer with
+    no plugins at all and nothing anywhere saying why.
+    """
+    missing = tmp_path / "not-here"
+    monkeypatch.setattr(PluginLoader, "_entry_points", staticmethod(lambda: ()))
+
+    report = PluginLoader(
+        PluginManager(), plugin_dir=tmp_path / "plugins", dev_dirs=(missing,)
+    ).load_plugins()
+
+    assert report.loaded == ()
+    assert len(report.failures) == 1
+    assert report.failures[0].source == str(missing)
+    assert "not a directory" in report.failures[0].reason
+
+
+def test_naming_a_plugin_instead_of_a_folder_of_plugins_is_recognised(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The easy mistake, because the plugin is the thing being worked on.
+
+    It is recognisable rather than merely wrong: the directory holds the
+    manifest that should have been one level further down, so the message can
+    say what to do instead of only that nothing loaded.
+    """
+    checkouts = tmp_path / "checkouts"
+    _write_plugin(
+        checkouts, "mine", "test.dev", "nfoforge_test_named", _where_plugin("here")
+    )
+    monkeypatch.setattr(PluginLoader, "_entry_points", staticmethod(lambda: ()))
+
+    report = PluginLoader(
+        PluginManager(),
+        plugin_dir=tmp_path / "plugins",
+        dev_dirs=(checkouts / "mine",),
+    ).load_plugins()
+
+    assert report.loaded == ()
+    assert len(report.failures) == 1
+    assert "folder that contains it instead" in report.failures[0].reason
+
+
+def test_a_development_directory_holding_no_plugins_is_reported(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Nothing loading is the symptom; this is the only place it gets explained."""
+    empty = tmp_path / "empty"
+    (empty / "notes").mkdir(parents=True)
+    monkeypatch.setattr(PluginLoader, "_entry_points", staticmethod(lambda: ()))
+
+    report = PluginLoader(
+        PluginManager(), plugin_dir=tmp_path / "plugins", dev_dirs=(empty,)
+    ).load_plugins()
+
+    assert report.loaded == ()
+    assert len(report.failures) == 1
+    assert "holding no plugins" in report.failures[0].reason
+
+
+def test_the_installed_plugins_folder_is_not_created_while_standing_in_for_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A folder is not created in order to be ignored."""
+    checkouts = tmp_path / "checkouts"
+    plugin_dir = tmp_path / "plugins"
+    _write_plugin(
+        checkouts, "mine", "test.dev", "nfoforge_test_nomk", _where_plugin("a")
+    )
+    monkeypatch.setattr(PluginLoader, "_entry_points", staticmethod(lambda: ()))
+
+    PluginLoader(
+        PluginManager(), plugin_dir=plugin_dir, dev_dirs=(checkouts,)
+    ).load_plugins()
+
+    assert not plugin_dir.exists()
+
+
+def test_development_directories_default_to_the_environment(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv(DEV_PLUGINS_ENV_VAR, str(tmp_path / "checkouts"))
+
+    loader = PluginLoader(PluginManager())
+
+    assert loader.dev_dirs == (tmp_path / "checkouts",)
+
+
+def test_an_empty_development_directory_sequence_is_not_the_environment(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Passing none means none, which is not the same as not passing any.
+
+    Everything that builds a loader for one specific pair of directories needs
+    to be able to say "these and nothing else" while a developer's variable is
+    set in the environment around it.
+    """
+    monkeypatch.setenv(DEV_PLUGINS_ENV_VAR, str(tmp_path / "checkouts"))
+
+    loader = PluginLoader(PluginManager(), dev_dirs=())
+
+    assert loader.dev_dirs == ()

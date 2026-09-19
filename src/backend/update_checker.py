@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 import platform
 from typing import Any
 
@@ -91,14 +91,14 @@ def check_for_updates_job(config: ConfigManager) -> UpdateCheckResult | None:
     if not config.settings.general.check_for_updates:
         return None
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     due = True
     last_checked_raw = config.program.last_update_check
     if last_checked_raw:
         try:
             last_checked = datetime.fromisoformat(last_checked_raw)
             if last_checked.tzinfo is None:
-                last_checked = last_checked.replace(tzinfo=timezone.utc)
+                last_checked = last_checked.replace(tzinfo=UTC)
             elapsed_hours = (now - last_checked).total_seconds() / 3600
             due = elapsed_hours >= MIN_CHECK_INTERVAL_HOURS
         except ValueError:

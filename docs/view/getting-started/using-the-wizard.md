@@ -72,7 +72,7 @@ Select **Next** to continue.
 
 ### Pre-upload Page
 
-The Pre-upload page combines the smaller final review steps so you can check template assignments, release notes, and torrent-client options without moving through several separate wizard pages.
+The Pre-upload page combines the smaller final review steps so you can check template assignments, release notes, encode logs, and torrent-client options without moving through several separate wizard pages.
 
 #### NFO Templates
 
@@ -100,6 +100,10 @@ Close the editor after saving the template and assigning it to the desired track
 #### Release Notes
 
 Enable **Release Notes** to create, save, or select a note to inject into the NFO. It replaces the **{{ release_notes }}** token when that token exists in the assigned template. Leave the section disabled to omit release notes.
+
+#### Encode Logs
+
+Plugins can supply encode logs at any point earlier in the wizard by setting `context.shared_data.encode_logs`. The **Encode Logs** box shows any supplied content for final review and lets you add, replace, or remove it. Its contents replace the **{{ encode_logs }}** token in the assigned NFO template for this run.
 
 #### qBittorrent
 

@@ -265,6 +265,10 @@ class Tokens:
         "{release_notes}",
         "Special token that is optionally applied for each job process",
     )
+    ENCODE_LOGS = NfoToken(
+        "{encode_logs}",
+        "Encode logs supplied by plugins or edited during pre-upload review",
+    )
     REPACK = NfoToken("{repack}", "Returns 'REPACK' if repack was detected")
     REPACK_N = NfoToken("{repack_n}", "Repack and repack number if exists (REPACK2)")
     REPACK_REASON = NfoToken("{repack_reason}", "Reason for REPACK if provided")

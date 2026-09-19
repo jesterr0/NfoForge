@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 import re
 from tempfile import mkstemp
-from typing import Any, BinaryIO, TypeAlias
+from typing import Any, BinaryIO
 from urllib.parse import urlparse
 
 import niquests
@@ -79,7 +79,7 @@ from src.exceptions import TrackerError
 from src.logger.nfo_forge_logger import LOG
 from src.payloads.tracker_search_result import TrackerSearchResult
 
-CategoryEnums: TypeAlias = (
+type CategoryEnums = (
     ReelFlixCategory
     | AitherCategory
     | HunoCategory
@@ -94,7 +94,7 @@ CategoryEnums: TypeAlias = (
     | YuSceneCategory
     | FearNoPeerCategory
 )
-ResolutionEnums: TypeAlias = (
+type ResolutionEnums = (
     ReelFlixResolution
     | AitherResolution
     | HunoResolution
@@ -109,7 +109,7 @@ ResolutionEnums: TypeAlias = (
     | YuSceneResolution
     | FearNoPeerResolution
 )
-TypeEnums: TypeAlias = (
+type TypeEnums = (
     ReelFlixType
     | AitherType
     | HunoType

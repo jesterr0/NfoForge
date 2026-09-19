@@ -1,6 +1,5 @@
 from enum import Enum
-
-from typing_extensions import override
+from typing import override
 
 
 class DebugDataType(Enum):

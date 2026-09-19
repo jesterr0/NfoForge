@@ -32,7 +32,22 @@ if TYPE_CHECKING:
     from src.payloads.tracker_search_result import TrackerSearchResult
 
 
-_PLUGIN_ID_PATTERN = re.compile(r"^[a-z0-9]+(?:[._-][a-z0-9]+)*$")
+PLUGIN_ID_PATTERN = re.compile(r"^[a-z0-9]+(?:[._-][a-z0-9]+)*$")
+
+
+def validate_plugin_id(plugin_id: str) -> None:
+    """Refuse an ID the registry would refuse, wherever it is first seen.
+
+    Public because installing a plugin has to answer this before anything is
+    copied. Left until registration, a badly-formed ID is only reported on the
+    next launch, in the discovered-plugins table, with the folder already sat
+    in the user's data directory.
+    """
+    if not PLUGIN_ID_PATTERN.fullmatch(plugin_id):
+        raise PluginError(
+            "Plugin id must be lowercase and contain only letters, numbers, "
+            "dots, underscores, or hyphens"
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -387,11 +402,7 @@ class PluginManager:
 
     @staticmethod
     def _validate(plugin_id: str, definition: PluginDefinition) -> None:
-        if not _PLUGIN_ID_PATTERN.fullmatch(plugin_id):
-            raise PluginError(
-                "Plugin id must be lowercase and contain only letters, numbers, "
-                "dots, underscores, or hyphens"
-            )
+        validate_plugin_id(plugin_id)
         if not isinstance(definition, PluginDefinition):
             raise PluginError("Plugin export must be a PluginDefinition")
         if not definition.display_name.strip():

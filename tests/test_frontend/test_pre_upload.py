@@ -35,30 +35,11 @@ from src.payloads.clients import (
 )
 from src.payloads.media_inputs import MediaInputPayload
 from src.payloads.watch_folder import WatchFolder
-from tests.repo_paths import DEFAULT_CONFIG_DIR
+from tests.repo_paths import build_app_paths
 
 
 def _paths(tmp_path: Path) -> ConfigPaths:
-    defaults = tmp_path / "defaults"
-    defaults.mkdir()
-    source_defaults = DEFAULT_CONFIG_DIR
-    default_config = defaults / "default_config.toml"
-    default_program = defaults / "default_program_conf.toml"
-    default_config.write_text(
-        (source_defaults / "default_config.toml").read_text(encoding="utf-8"),
-        encoding="utf-8",
-    )
-    default_program.write_text(
-        (source_defaults / "default_program_conf.toml").read_text(encoding="utf-8"),
-        encoding="utf-8",
-    )
-    return ConfigPaths(
-        default_config=default_config,
-        default_program=default_program,
-        program=tmp_path / "program/conf.toml",
-        user_configs=tmp_path / "user",
-        tracker_cookies=tmp_path / "cookies",
-    )
+    return build_app_paths(tmp_path)
 
 
 def test_client_options_section_tracks_and_resets_run_override(
@@ -243,6 +224,37 @@ def test_pre_upload_page_applies_release_notes_and_hides_disabled_client(
     assert page.client_options.isVisible() is False
     assert page.validatePage() is True
     assert context.shared_data.release_notes == "A release note"
+
+
+def test_pre_upload_page_loads_and_applies_plugin_encode_logs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "src.config.config.FindDependencies.update_dependencies",
+        lambda self, dependencies: None,
+    )
+    config = ConfigManager("test", _paths(tmp_path))
+    config.settings.torrent_clients.qbittorrent.enabled = False
+    tracker = TrackerSelection.BEYOND_HD
+    config.settings.trackers.beyond_hd.nfo_template = "movie"
+
+    context = ProcessingContext(
+        media_input=MediaInputPayload(working_dir=tmp_path),
+    )
+    context.shared_data.selected_trackers = [tracker]
+    context.shared_data.encode_logs = "log supplied by a plugin"
+    parent = QWidget()
+    page = PreUploadPage(config, context, cast(MainWindow, parent))
+
+    page.initializePage()
+
+    assert page.encode_logs.text_box.toPlainText() == "log supplied by a plugin"
+
+    page.encode_logs.text_box.setPlainText("reviewed encode log")
+
+    assert page.validatePage() is True
+    assert context.shared_data.encode_logs == "reviewed encode log"
 
 
 def test_pre_upload_page_blocks_missing_template_assignment(

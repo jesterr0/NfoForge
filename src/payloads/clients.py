@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
-from typing import TypeAlias
 
 from src.enums.torrent_client import (
+    QBittorrentAuthMode,
     QBittorrentSavePathMode,
     TorrentClientSelection,
 )
@@ -22,6 +22,8 @@ class QBittorrentConfig(TorrentClient):
     super_seeding: bool = False
     save_path_mode: QBittorrentSavePathMode = QBittorrentSavePathMode.CLIENT_DEFAULT
     save_path_template: str = ""
+    auth_mode: QBittorrentAuthMode = QBittorrentAuthMode.USER_PASS
+    api_key: str = ""
 
 
 @dataclass(slots=True)
@@ -44,7 +46,7 @@ class TransmissionConfig(TorrentClient):
     path: str = ""
 
 
-NetworkTorrentClientConfig: TypeAlias = (
+type NetworkTorrentClientConfig = (
     QBittorrentConfig | DelugeConfig | RTorrentConfig | TransmissionConfig
 )
 

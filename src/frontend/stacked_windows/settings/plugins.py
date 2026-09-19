@@ -1,22 +1,37 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import Qt, Slot
+from PySide6.QtCore import QSize, Qt, Slot
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QCheckBox,
+    QHBoxLayout,
     QHeaderView,
     QLabel,
+    QLineEdit,
+    QMenu,
+    QMessageBox,
+    QToolButton,
     QTreeWidget,
     QTreeWidgetItem,
+    QWidget,
 )
 
+from src.backend.main_window import restart_application
+from src.backend.utils.file_utilities import open_explorer
 from src.config.config import ConfigManager
 from src.config.models import PluginSettings as PluginSettingsPayload
+from src.config.paths import DEV_PLUGINS_ENV_VAR, dev_plugin_dirs
 from src.frontend.custom_widgets.combo_box import CustomComboBox
 from src.frontend.stacked_windows.settings.base import BaseSettings
 from src.frontend.utils import build_h_line, create_form_layout
+from src.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
+from src.frontend.windows.plugin_install import (
+    install_from_archive,
+    install_from_folder,
+)
 from src.plugins.api import PluginRecord
 
 if TYPE_CHECKING:
@@ -108,6 +123,67 @@ class PluginsSettings(BaseSettings):
         )
         self._selection_widgets = tuple(combo for _, _, combo in selectors)
 
+        self.plugin_dir_entry = QLineEdit(self)
+        self.plugin_dir_entry.setReadOnly(True)
+        self.plugin_dir_entry.setText(str(self.config.paths.plugins))
+        self.plugin_dir_entry.setToolTip(str(self.config.paths.plugins))
+
+        self.plugin_dir_open_btn = QToolButton(self)
+        QTAThemeSwap().register(
+            self.plugin_dir_open_btn, "ph.folder-open-light", icon_size=QSize(20, 20)
+        )
+        self.plugin_dir_open_btn.setToolTip("Open plugins folder")
+        self.plugin_dir_open_btn.clicked.connect(self._handle_open_plugin_dir_click)
+
+        # A popup rather than two buttons: both entries do the same thing and
+        # differ only in what is pointed at, so they belong under one verb.
+        self.install_plugin_btn = QToolButton(self)
+        QTAThemeSwap().register(
+            self.install_plugin_btn, "ph.package-light", icon_size=QSize(20, 20)
+        )
+        self.install_plugin_btn.setToolTip("Install a plugin")
+        self.install_plugin_btn.setPopupMode(
+            QToolButton.ToolButtonPopupMode.InstantPopup
+        )
+        self.install_menu = QMenu(self.install_plugin_btn)
+        self.install_folder_action = self.install_menu.addAction("From folder...")
+        self.install_archive_action = self.install_menu.addAction("From archive...")
+        self.install_folder_action.triggered.connect(
+            self._handle_install_from_folder_click
+        )
+        self.install_archive_action.triggered.connect(
+            self._handle_install_from_archive_click
+        )
+        self.install_plugin_btn.setMenu(self.install_menu)
+
+        plugin_dir_widget = QWidget()
+        plugin_dir_layout = QHBoxLayout(plugin_dir_widget)
+        plugin_dir_layout.setContentsMargins(0, 0, 0, 0)
+        plugin_dir_layout.addWidget(self.plugin_dir_entry, stretch=1)
+        plugin_dir_layout.addWidget(self.plugin_dir_open_btn)
+        plugin_dir_layout.addWidget(self.install_plugin_btn)
+
+        # Shown only while the override is set, so a user who is not developing
+        # a plugin never sees it. Saying nothing would be the worse default: the
+        # field above still names the folder plugins are installed into and is
+        # still right about that, but nothing is being loaded from it, and a
+        # developer who left the variable set in a shell profile would have
+        # nothing on screen to explain why what they installed is not there.
+        # Both facts are stated, because the Install button beside it still
+        # writes to the folder above.
+        dev_dirs = dev_plugin_dirs()
+        self.dev_plugin_dirs_label = QLabel(self)
+        self.dev_plugin_dirs_label.setWordWrap(True)
+        self.dev_plugin_dirs_label.setVisible(bool(dev_dirs))
+        if dev_dirs:
+            listed = "\n".join(str(directory) for directory in dev_dirs)
+            self.dev_plugin_dirs_label.setText(
+                f"{DEV_PLUGINS_ENV_VAR} is set, so plugins are loaded from here "
+                "instead. The folder above is not read while it is set, though "
+                f"Install still writes to it:\n{listed}"
+            )
+            self.dev_plugin_dirs_label.setToolTip(listed)
+
         self.plugin_status = QTreeWidget(self)
         self.plugin_status.setObjectName("pluginStatus")
         self.plugin_status.setColumnCount(4)
@@ -132,6 +208,14 @@ class PluginsSettings(BaseSettings):
             combo.setToolTip(tooltip)
             self.add_layout(create_form_layout(label, combo))
         self.add_widget(build_h_line((10, 1, 10, 1)))
+        plugin_dir_label = QLabel("Plugins Folder", self)
+        plugin_dir_label.setToolTip(
+            "Each plugin is one folder here, holding an nfoforge-plugin.toml. "
+            "Copying a folder in by hand works and is still the documented way; "
+            "Install does the same thing with the manifest checked first."
+        )
+        self.add_layout(create_form_layout(plugin_dir_label, plugin_dir_widget))
+        self.add_widget(self.dev_plugin_dirs_label)
         status_label = QLabel("Discovered Plugins", self)
         status_label.setToolTip(
             "Plugins loaded at startup, load failures, and configured plugins that "
@@ -144,6 +228,47 @@ class PluginsSettings(BaseSettings):
         self.load_saved_settings.connect(self._load_saved_settings)
         self.update_saved_settings.connect(self._save_settings)
         self._load_saved_settings()
+
+    @Slot()
+    def _handle_open_plugin_dir_click(self) -> None:
+        # Created on the way out rather than assumed: nothing creates it until
+        # a load runs, so on a fresh installation with plugins disabled there
+        # is no folder to open and the click would do nothing at all.
+        self.config.paths.plugins.mkdir(parents=True, exist_ok=True)
+        open_explorer(self.config.paths.plugins)
+
+    @Slot()
+    def _handle_install_from_folder_click(self) -> None:
+        self._after_install(install_from_folder(self, self.config.paths))
+
+    @Slot()
+    def _handle_install_from_archive_click(self) -> None:
+        self._after_install(install_from_archive(self, self.config.paths))
+
+    def _after_install(self, destination: Path | None) -> None:
+        """Offer the restart a newly installed plugin needs to be loaded.
+
+        Plugins are imported once, at startup, so one that arrives afterwards
+        is on disk and inert. Left unsaid, that reads as an install that did
+        not work, and the discovered-plugins table below agrees -- it is built
+        from what was loaded, which does not include this.
+        """
+        if destination is None:
+            return
+        self._load_plugin_status()
+        if (
+            QMessageBox.question(
+                self,
+                "Restart Required",
+                "The plugin was installed. NfoForge loads plugins at startup, "
+                "so it has to be restarted before this one is available. "
+                "Restart now?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            is QMessageBox.StandardButton.Yes
+        ):
+            restart_application(self.main_window)
 
     def _create_combo(self) -> CustomComboBox:
         return CustomComboBox(

@@ -37,7 +37,7 @@ from src.backend.utils.rename_normalizations import (
 from src.backend.utils.resolution import VideoResolutionAnalyzer
 from src.backend.utils.streaming_services import abbreviate_streaming_service
 from src.backend.utils.tvdb_episodes import tvdb_episode_list
-from src.backend.utils.working_dir import RUNTIME_DIR
+from src.backend.utils.working_dir import asset_root
 from src.config.models import DynamicRangeSettings, HdrType, ResolutionKey
 from src.enums.media_type import MediaType
 from src.enums.multi_episode_style import MultiEpisodeStyle
@@ -147,6 +147,7 @@ class TokenReplacer:
         "screen_shots_even_str",
         "screen_shots_odd_str",
         "release_notes",
+        "encode_logs",
         "dummy_screen_shots",
         "preserve_literal_formatting",
         # series exclusive args
@@ -204,6 +205,7 @@ class TokenReplacer:
         screen_shots_even_str: Sequence[str] | None = None,
         screen_shots_odd_str: Sequence[str] | None = None,
         release_notes: str | None = "",
+        encode_logs: str | None = "",
         dummy_screen_shots: bool = False,
         preserve_literal_formatting: bool = False,
         season_number: int | None = None,
@@ -257,6 +259,7 @@ class TokenReplacer:
             screen_shots_odd_str (Optional[Sequence[str]]): Odd screenshot URLs as strings
               (medium_url if available, else url).
             release_notes (Optional[str]): Release notes.
+            encode_logs (Optional[str]): Encode logs supplied for this run.
             dummy_screen_shots (Optional[bool]): If set to True will generate some dummy screenshot data for the
               screenshot token (This overrides screen_shots if used, so only use when you have screenshot data).
             preserve_literal_formatting: Return flattened title-mode output
@@ -315,6 +318,7 @@ class TokenReplacer:
         self.screen_shots_even_str = screen_shots_even_str
         self.screen_shots_odd_str = screen_shots_odd_str
         self.release_notes = release_notes
+        self.encode_logs = encode_logs
         self.dummy_screen_shots = dummy_screen_shots
         self.preserve_literal_formatting = preserve_literal_formatting
         # series exclusive args
@@ -1106,6 +1110,9 @@ class TokenReplacer:
         elif token_data.bracket_token == Tokens.RELEASE_NOTES.token:
             return self._release_notes(token_data)
 
+        elif token_data.bracket_token == Tokens.ENCODE_LOGS.token:
+            return self._encode_logs(token_data)
+
         elif token_data.bracket_token == Tokens.FILE_SIZE_BYTES.token:
             return self._file_size_bytes(token_data)
 
@@ -1460,7 +1467,7 @@ class TokenReplacer:
                 audio_codecs = AudioCodecs()
                 # The bundled conventions file is a runtime asset in both source and frozen builds.
                 audio_convention_path = Path(
-                    RUNTIME_DIR / "config" / "audio_conventions" / "default.json"
+                    asset_root() / "config" / "audio_conventions" / "default.json"
                 )
                 codec = audio_codecs.get_codec(
                     self.media_info_obj.audio_tracks[0],
@@ -2880,6 +2887,11 @@ class TokenReplacer:
     def _release_notes(self, token_data: TokenData) -> str:
         return self._optional_user_input(
             self.release_notes if self.release_notes else "", token_data
+        )
+
+    def _encode_logs(self, token_data: TokenData) -> str:
+        return self._optional_user_input(
+            self.encode_logs if self.encode_logs else "", token_data
         )
 
     def _file_size_bytes(self, token_data: TokenData) -> str:

@@ -78,9 +78,10 @@ class ClientsSettings(BaseSettings):
         never the live config.
         """
         self.client_widget.save_editor_settings()
+        settings = self._working_config.settings
         return TomlConfigCodec.qbittorrent_save_path_error(
-            self._working_config.settings
-        )
+            settings
+        ) or TomlConfigCodec.qbittorrent_auth_error(settings)
 
     def _apply_working_client_changes(self) -> None:
         live_clients = self.config.settings.torrent_clients.by_selection()

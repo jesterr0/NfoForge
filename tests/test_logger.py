@@ -2,8 +2,9 @@ from datetime import datetime
 from pathlib import Path
 from unittest.mock import MagicMock
 
+from src.config.paths import default_paths
 from src.enums.logging_settings import LogSource
-from src.logger.nfo_forge_logger import Logger
+from src.logger.nfo_forge_logger import Logger, default_log_file
 
 
 def _session_log(log_dir: Path, timestamp: str, suffix: str) -> Path:
@@ -66,3 +67,57 @@ def test_logger_redacts_credentials_before_writing(tmp_path: Path, monkeypatch) 
     assert "QUERYSECRET" not in message
     assert "/api/upload/[redacted]" in message
     assert "api_token=[redacted]" in message
+
+
+def test_this_run_logs_into_the_per_user_data_directory() -> None:
+    """Logs are user state, so they belong with the rest of it.
+
+    They used to live inside the installation, which meant replacing a release
+    discarded the logs describing whatever went wrong with the one before it --
+    exactly when someone wants them.
+    """
+    assert default_log_file().parent == default_paths().logs
+
+
+def test_a_logger_whose_directory_cannot_be_created_still_works(
+    tmp_path: Path,
+) -> None:
+    """Logging is the thing that reports failures, so it must not be one.
+
+    The log directory is created while this module is imported, before any
+    handler or dialog exists to report a problem. An exception there does not
+    produce a logging error, it produces an application that will not start, and
+    the one thing that could have explained why is the thing that failed.
+    """
+    blocker = tmp_path / "not-a-directory"
+    blocker.write_text("in the way", encoding="utf-8")
+
+    logger = Logger(blocker / "logs" / "nfoforge.log")
+    logger.info(LogSource.BE, "this must not raise")
+
+    assert logger.file_logging is False
+
+
+def test_a_logger_whose_file_cannot_be_opened_still_works(tmp_path: Path) -> None:
+    """The directory existing is not the same as the file being writable.
+
+    A name already taken by a directory, a file held open by something else, a
+    quota refusal: the handler is built on first use, so this fails later than
+    the directory does and needs its own guard.
+    """
+    occupied = tmp_path / "logs" / "nfoforge.log"
+    occupied.mkdir(parents=True)
+
+    logger = Logger(occupied)
+    logger.info(LogSource.BE, "this must not raise either")
+
+    assert logger.file_logging is False
+
+
+def test_a_logger_with_a_usable_directory_logs_to_its_file(tmp_path: Path) -> None:
+    """The guard must not be a quiet opt-out of logging altogether."""
+    logger = Logger(tmp_path / "logs" / "nfoforge.log")
+    logger.info(LogSource.BE, "recorded")
+
+    assert logger.file_logging is True
+    assert (tmp_path / "logs" / "nfoforge.log").read_text(encoding="utf-8").strip()

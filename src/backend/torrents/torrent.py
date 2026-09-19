@@ -9,9 +9,11 @@ import urllib.parse
 from torf import Torrent
 
 from src.backend.utils.subprocess_flags import get_subprocess_creation_flags
+from src.enums.tracker_selection import TrackerSelection
 from src.exceptions import MkbrrTorrentError, ProcessError
 from src.logger.nfo_forge_logger import LOG
-from src.payloads.trackers import TrackerInfo
+from src.payloads.trackers import TorrentLeechInfo, TrackerInfo
+from src.utils.announce_url import ensure_torrentleech_announce_url
 from src.version import __version__, program_name
 
 INDEX_SIDECAR_SUFFIXES = frozenset({".lwi", ".ffindex"})
@@ -157,16 +159,23 @@ def clone_torrent(
     if not base_torrent_file or not base_torrent_file.exists():
         raise FileNotFoundError(f"Cannot find file: {base_torrent_file}")
 
+    announce_url = tracker_info.announce_url
+    if (
+        isinstance(tracker_info, TorrentLeechInfo)
+        or str(tracker_name) == TrackerSelection.TORRENT_LEECH.value
+    ):
+        announce_url = ensure_torrentleech_announce_url(announce_url)
+
     # Checked before any file work, and before torf gets the chance to fail on
     # it with a MetainfoError that names neither the tracker nor the setting --
     # and that quotes the offending value in full, which is unreadable when
     # what landed in the field is something like an NFO template.
-    if tracker_info.announce_url and not _is_announce_url(tracker_info.announce_url):
+    if announce_url and not _is_announce_url(announce_url):
         who = f"{tracker_name}: t" if tracker_name else "T"
         where = f" ({tracker_name} -> Announce URL)" if tracker_name else ""
         raise ProcessError(
             f"{who}he configured announce URL is not a valid URL: "
-            f"'{_shorten(tracker_info.announce_url)}'. "
+            f"'{_shorten(announce_url)}'. "
             f"Check Settings -> Trackers{where}."
         )
 
@@ -181,8 +190,8 @@ def clone_torrent(
     # a stale source tag changes the infohash; both would advertise the wrong
     # tracker. A tracker with no announce URL wants no announce at all --
     # UNIT3D stamps its own in server-side and returns that torrent on upload.
-    if tracker_info.announce_url:
-        torrent.metainfo["announce"] = tracker_info.announce_url
+    if announce_url:
+        torrent.metainfo["announce"] = announce_url
     else:
         torrent.metainfo.pop("announce", None)
         torrent.metainfo.pop("announce-list", None)

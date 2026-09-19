@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, override
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
@@ -8,12 +8,14 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from typing_extensions import override
 
 from src.config.config import ConfigManager
 from src.context.processing_context import ProcessingContext
 from src.frontend.custom_widgets.pre_upload_widgets.client_options import (
     ClientOptionsSection,
+)
+from src.frontend.custom_widgets.pre_upload_widgets.encode_logs import (
+    EncodeLogsSection,
 )
 from src.frontend.custom_widgets.pre_upload_widgets.nfo_template import (
     NfoTemplateSection,
@@ -59,6 +61,7 @@ class PreUploadPage(BaseWizardPage):
             parent=self,
         )
         self.release_notes = ReleaseNotesSection(config, context, parent=self)
+        self.encode_logs = EncodeLogsSection(context, parent=self)
         self.client_options = ClientOptionsSection(config, context, parent=self)
 
         # inner layout/widget
@@ -67,6 +70,7 @@ class PreUploadPage(BaseWizardPage):
         self.content_layout.setContentsMargins(0, 0, 0, 0)
         self.content_layout.addWidget(self.nfo_templates)
         self.content_layout.addWidget(self.release_notes)
+        self.content_layout.addWidget(self.encode_logs)
         self.content_layout.addWidget(self.client_options)
         self.content_layout.addStretch()
 
@@ -85,6 +89,7 @@ class PreUploadPage(BaseWizardPage):
         self._clear_error()
         self.nfo_templates.load()
         self.release_notes.load()
+        self.encode_logs.load()
 
         qbit_enabled = self.config.settings.torrent_clients.qbittorrent.enabled
         self.client_options.setVisible(qbit_enabled)
@@ -107,6 +112,7 @@ class PreUploadPage(BaseWizardPage):
                 return False
 
         self.release_notes.apply()
+        self.encode_logs.apply()
         self.config.save()
         self.nfo_templates.close_auxiliary_windows()
         self._clear_error()

@@ -1,7 +1,6 @@
 from collections.abc import Mapping
 from types import MappingProxyType
-
-from typing_extensions import override
+from typing import override
 
 from src.enums import CaseInsensitiveEnum
 

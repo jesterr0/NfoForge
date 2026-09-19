@@ -15,6 +15,7 @@ import os
 # offscreen for CI/headless runs.
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from collections.abc import Iterator
 from pathlib import Path
 import struct
 import wave
@@ -44,10 +45,12 @@ from src.backend.utils.example_parsed_series_data import (
     EXAMPLE_MEDIA_INPUT_PAYLOAD as SERIES_EXAMPLE_PAYLOAD,
 )
 from src.backend.utils.media_info_utils import clear_restored_mediainfo
+from src.config.paths import DATA_DIR_ENV_VAR, DEV_PLUGINS_ENV_VAR
 from src.context.processing_context import ProcessingContext
 from src.enums.image_host import ImageHost, ImageSource
 from src.enums.media_type import MediaType
 from src.enums.tracker_selection import TrackerSelection
+from src.frontend.global_signals import GlobalSignals
 from src.packages.custom_types import ImageUploadData, ImageUploadFromTo
 
 
@@ -104,6 +107,33 @@ def _no_blocking_modals(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture(autouse=True)
+def _sandbox_every_data_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Point every root at a throwaway directory, for every test.
+
+    Path resolution is not read-only: ``ConfigOperations._load`` calls
+    ``default_working_dir(ensure_exists=True)`` for any configuration with no
+    explicit working directory, which creates whatever it resolves to. Left
+    alone that is the directory a real installation keeps its saved jobs, index
+    cache and run output in, and ``default_paths`` would resolve the state root
+    to the checkout's own ``runtime`` tree -- a developer's live configuration.
+    Neither is somewhere a test may write.
+
+    Setting the override rather than patching ``data_root`` means the real
+    resolution runs, so this sandboxes through the same code path a rehearsal
+    uses instead of replacing it. A test that needs different resolution sets
+    its own value or deletes this one, and several do.
+
+    The development plugin roots are cleared for the same reason, in the other
+    direction. Whoever is running the suite may well have that variable set --
+    it is what a plugin developer sets and leaves set -- and the loader would
+    then import their working tree into the test process, which is neither the
+    plugin the test wrote nor code the suite has any business executing.
+    """
+    monkeypatch.setenv(DATA_DIR_ENV_VAR, str(tmp_path / "user_data"))
+    monkeypatch.delenv(DEV_PLUGINS_ENV_VAR, raising=False)
+
+
+@pytest.fixture(autouse=True)
 def _clear_example_payload_analysis_caches() -> None:
     """Reset the shared example payloads' derived-value caches.
 
@@ -113,6 +143,33 @@ def _clear_example_payload_analysis_caches() -> None:
     """
     MOVIE_EXAMPLE_PAYLOAD.analysis_cache.clear()
     SERIES_EXAMPLE_PAYLOAD.analysis_cache.clear()
+
+
+@pytest.fixture(autouse=True)
+def _fresh_global_signals() -> Iterator[None]:
+    """Give every test its own `GlobalSignals`, so listeners cannot pile up.
+
+    The singleton lives for the whole process, and every settings page
+    connects itself to it in ``__init__`` without ever disconnecting. Widgets
+    a test builds are seldom destroyed, so each one kept listening for the
+    rest of the session.
+
+    That turns into a timeout rather than a wrong answer.
+    ``global_management_state_changed`` makes `SeriesManagement` and
+    `MoviesManagement` re-render their examples, and each render runs
+    ``guessit`` over a filename. By the end of the frontend suite the signal
+    had 33 listeners and one emit took about three seconds. A test that only
+    pumps the event queue then pays for all of them, which is what pushed
+    ``test_wizard.py`` past the 60 second limit on CI while passing in
+    isolation.
+
+    Replacing the instance rather than disconnecting its signals one by one
+    keeps this to the one line a new signal cannot forget to update. Widgets
+    from an earlier test stay attached to the instance they were built with,
+    which nothing emits on again.
+    """
+    yield
+    GlobalSignals._instance = None  # pyright: ignore[reportPrivateUsage]
 
 
 # --------------------------------------------------------------------------

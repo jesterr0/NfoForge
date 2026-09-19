@@ -1,14 +1,14 @@
 from pathlib import Path
 
 from PySide6.QtCore import Signal
-from PySide6.QtWidgets import QWidget
+from PySide6.QtWidgets import QMessageBox, QWidget
 import pytest
 
 from src.config.config import ConfigManager
-from src.config.paths import ConfigPaths
+from src.config.paths import DEV_PLUGINS_ENV_VAR, ConfigPaths
 from src.frontend.stacked_windows.settings.plugins import PluginsSettings
 from src.plugins.api import PluginDefinition, TokenReplaceRequest
-from tests.repo_paths import DEFAULT_CONFIG_DIR
+from tests.repo_paths import build_app_paths
 
 
 class _FakeSettingsWindow(QWidget):
@@ -16,26 +16,7 @@ class _FakeSettingsWindow(QWidget):
 
 
 def _paths(tmp_path: Path) -> ConfigPaths:
-    defaults = tmp_path / "defaults"
-    defaults.mkdir()
-    source_defaults = DEFAULT_CONFIG_DIR
-    default_config = defaults / "default_config.toml"
-    default_program = defaults / "default_program_conf.toml"
-    default_config.write_text(
-        (source_defaults / "default_config.toml").read_text(encoding="utf-8"),
-        encoding="utf-8",
-    )
-    default_program.write_text(
-        (source_defaults / "default_program_conf.toml").read_text(encoding="utf-8"),
-        encoding="utf-8",
-    )
-    return ConfigPaths(
-        default_config=default_config,
-        default_program=default_program,
-        program=tmp_path / "program/conf.toml",
-        user_configs=tmp_path / "user",
-        tracker_cookies=tmp_path / "cookies",
-    )
+    return build_app_paths(tmp_path)
 
 
 def _make_plugin_settings(
@@ -131,3 +112,106 @@ def test_plugin_status_explains_that_disabled_plugins_were_not_loaded(
     assert item is not None
     assert item.text(0) == "External plugins disabled"
     assert item.text(3) == "Not loaded"
+
+
+def test_the_plugins_folder_is_named_on_the_page(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Drop-in installation is the documented route, so the folder it needs
+    has to be findable without reading the documentation."""
+    widget, manager = _make_plugin_settings(tmp_path, monkeypatch)
+
+    assert widget.plugin_dir_entry.text() == str(manager.paths.plugins)
+
+
+def test_opening_the_plugins_folder_creates_it_first(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Nothing creates it until a load runs, so on a fresh installation with
+    plugins disabled there would be nothing to open."""
+    widget, manager = _make_plugin_settings(tmp_path, monkeypatch)
+    opened: list[Path] = []
+    monkeypatch.setattr(
+        "src.frontend.stacked_windows.settings.plugins.open_explorer",
+        opened.append,
+    )
+
+    widget._handle_open_plugin_dir_click()
+
+    assert manager.paths.plugins.is_dir()
+    assert opened == [manager.paths.plugins]
+
+
+def test_installing_a_plugin_offers_the_restart_it_needs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Plugins are imported at startup, so one that arrives afterwards is on
+    disk and inert until NfoForge is restarted."""
+    widget, manager = _make_plugin_settings(tmp_path, monkeypatch)
+    installed = manager.paths.plugins / "my-plugin"
+    monkeypatch.setattr(
+        "src.frontend.stacked_windows.settings.plugins.install_from_folder",
+        lambda parent, paths: installed,
+    )
+    asked: list[str] = []
+    monkeypatch.setattr(
+        QMessageBox,
+        "question",
+        staticmethod(
+            lambda parent, title, text, *args, **kwargs: (
+                asked.append(text) or QMessageBox.StandardButton.No
+            )
+        ),
+    )
+
+    widget._handle_install_from_folder_click()
+
+    assert asked and "restarted" in asked[0]
+
+
+def test_declining_the_folder_dialog_asks_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    widget, _ = _make_plugin_settings(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        "src.frontend.stacked_windows.settings.plugins.install_from_archive",
+        lambda parent, paths: None,
+    )
+
+    def refuse(*args: object, **kwargs: object) -> None:
+        raise AssertionError("nothing was installed, so nothing should be asked")
+
+    monkeypatch.setattr(QMessageBox, "question", staticmethod(refuse))
+
+    widget._handle_install_from_archive_click()
+
+
+def test_the_development_folders_are_named_when_the_override_is_set(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The field above still names where Install writes, and nothing loads there.
+
+    Both facts have to be on screen: a developer who left the variable set in a
+    shell profile would otherwise have nothing explaining why the plugin they
+    just installed is absent, and the Install button beside the folder still
+    writes to it.
+    """
+    checkouts = tmp_path / "checkouts"
+    monkeypatch.setenv(DEV_PLUGINS_ENV_VAR, str(checkouts))
+
+    widget, manager = _make_plugin_settings(tmp_path, monkeypatch)
+
+    assert widget.dev_plugin_dirs_label.isVisibleTo(widget)
+    assert str(checkouts) in widget.dev_plugin_dirs_label.text()
+    assert DEV_PLUGINS_ENV_VAR in widget.dev_plugin_dirs_label.text()
+    assert widget.plugin_dir_entry.text() == str(manager.paths.plugins)
+
+
+def test_nothing_about_development_folders_is_shown_without_the_override(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Most users are not developing a plugin and should never see this."""
+    widget, _ = _make_plugin_settings(tmp_path, monkeypatch)
+
+    assert not widget.dev_plugin_dirs_label.isVisibleTo(widget)
+    assert widget.dev_plugin_dirs_label.text() == ""

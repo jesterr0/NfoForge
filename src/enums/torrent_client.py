@@ -1,6 +1,5 @@
 from enum import auto as auto_enum
-
-from typing_extensions import override
+from typing import override
 
 from src.enums import CaseInsensitiveEnum, CaseInsensitiveStrEnum
 
@@ -30,3 +29,15 @@ class QBittorrentSavePathMode(CaseInsensitiveStrEnum):
     CLIENT_DEFAULT = "Client default"
     SOURCE = "Source location"
     TEMPLATE = "Template"
+
+
+class QBittorrentAuthMode(CaseInsensitiveStrEnum):
+    """Which credential NfoForge authenticates the qBittorrent Web API with.
+
+    The two are alternatives, not a pair: an API key is sent as a bearer
+    token on every request and makes the `auth/` endpoints answer 403, so a
+    username and password alongside it would never be used.
+    """
+
+    USER_PASS = "Username & password"  # noqa: S105 - a mode label shown in the UI and stored in the profile, not a credential
+    API_KEY = "API key"

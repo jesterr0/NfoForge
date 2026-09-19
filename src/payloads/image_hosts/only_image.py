@@ -1,6 +1,5 @@
 from dataclasses import dataclass
-
-from typing_extensions import override
+from typing import override
 
 from src.payloads.image_hosts import ImagePayloadBase
 

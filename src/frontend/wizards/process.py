@@ -5,7 +5,7 @@ from html import escape
 from pathlib import Path
 import shutil
 import traceback
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, cast, override
 
 from PySide6.QtCore import QEventLoop, QObject, QThread, QTimer, Signal, Slot
 from PySide6.QtGui import Qt, QTextCursor
@@ -23,7 +23,6 @@ from PySide6.QtWidgets import (
     QTextBrowser,
     QVBoxLayout,
 )
-from typing_extensions import override
 
 from src.backend.jobs import (
     JobAssetError,

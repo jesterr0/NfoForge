@@ -17,6 +17,7 @@ from src.backend.torrents.torrent import (
     neutralize_base,
     write_torrent,
 )
+from src.enums.tracker_selection import TrackerSelection
 from src.exceptions import ProcessError
 from src.payloads.trackers import TrackerInfo
 
@@ -291,6 +292,39 @@ def test_clone_still_overwrites_the_announce_when_the_tracker_has_one(
     )
 
     assert clone.trackers == [["https://second.invalid/OTHERKEY/announce"]]
+
+
+@pytest.mark.parametrize(
+    ("announce_url", "expected"),
+    [
+        (
+            "https://tracker.invalid/OTHERKEY",
+            "https://tracker.invalid/OTHERKEY/announce",
+        ),
+        (
+            "https://tracker.invalid/OTHERKEY/announce",
+            "https://tracker.invalid/OTHERKEY/announce",
+        ),
+        (
+            "https://tracker.invalid/OTHERKEY?format=compact",
+            "https://tracker.invalid/OTHERKEY/announce?format=compact",
+        ),
+    ],
+)
+def test_torrentleech_adds_missing_announce_path(
+    announce_url: str, expected: str, tmp_path: Path
+) -> None:
+    _, media = _release_with_indexes(tmp_path)
+    base_path = _base_torrent(tmp_path, media)
+
+    clone = torrent_module.clone_torrent(
+        tracker_info=TrackerInfo(announce_url=announce_url),
+        torrent_path=tmp_path / "torrentleech.torrent",
+        base_torrent_file=base_path,
+        tracker_name=TrackerSelection.TORRENT_LEECH.value,
+    )
+
+    assert clone.trackers == [[expected]]
 
 
 # an announce URL that is not a URL

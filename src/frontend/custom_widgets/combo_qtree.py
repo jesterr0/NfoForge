@@ -1,5 +1,5 @@
 from collections.abc import Sequence
-from typing import Any
+from typing import Any, override
 
 from PySide6.QtCore import QPoint, Signal
 from PySide6.QtGui import QAction, Qt
@@ -14,7 +14,6 @@ from PySide6.QtWidgets import (
     QTreeWidgetItem,
     QWidget,
 )
-from typing_extensions import override
 
 
 class _UserData:

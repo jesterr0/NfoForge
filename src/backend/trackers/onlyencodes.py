@@ -1,7 +1,7 @@
 from pathlib import Path
+from typing import override
 
 from pymediainfo import MediaInfo
-from typing_extensions import override
 
 from src.backend.trackers.unit3d_base import Unit3dBaseSearch, Unit3dBaseUploader
 from src.backend.utils.file_utilities import release_stem

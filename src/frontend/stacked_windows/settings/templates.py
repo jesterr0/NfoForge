@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from src.backend.utils.working_dir import RUNTIME_DIR
+from src.backend.utils.working_dir import asset_root
 from src.config.config import ConfigManager
 from src.context.factory import create_processing_context
 from src.frontend.custom_widgets.basic_code_editor import HighlightKeywords
@@ -59,7 +59,7 @@ class TemplatesSettings(BaseSettings):
         self.jinja_lbl.setOpenExternalLinks(True)
 
         self.jinja_icon = build_auto_theme_svg_widget(
-            str(RUNTIME_DIR / "svg" / "jinja.svg"), 20, 20, self
+            str(asset_root() / "svg" / "jinja.svg"), 20, 20, self
         )
         self.jinja_icon.setFixedSize(20, 20)
 

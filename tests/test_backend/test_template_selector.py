@@ -7,6 +7,7 @@ from src.backend.template_selector import (
     DEF_SERIES_TEMPLATE,
     TemplateSelectorBackEnd,
 )
+from src.config.paths import DATA_DIR_ENV_VAR
 from src.enums.media_type import MediaType
 
 
@@ -24,9 +25,8 @@ def test_create_template_uses_new_default_tokens(
     template_name: str,
     expected: str,
 ) -> None:
-    monkeypatch.setattr("src.backend.template_selector.RUNTIME_DIR", tmp_path)
 
-    backend = TemplateSelectorBackEnd()
+    backend = TemplateSelectorBackEnd(tmp_path / "templates")
     template_path = tmp_path / "templates" / template_name
 
     created_path = backend.create_template(template_path, media_type)
@@ -47,8 +47,7 @@ def test_read_template_returns_none_when_file_missing_on_disk(
     # a template can be deleted from disk (or by another open template editor
     # pointed at the same directory) after being listed but before being read;
     # this used to let FileNotFoundError escape instead of degrading to None
-    monkeypatch.setattr("src.backend.template_selector.RUNTIME_DIR", tmp_path)
-    backend = TemplateSelectorBackEnd()
+    backend = TemplateSelectorBackEnd(tmp_path / "templates")
     template_path = backend.create_template(
         tmp_path / "templates" / "ghost.txt", MediaType.MOVIE
     )
@@ -61,8 +60,7 @@ def test_read_template_returns_none_when_file_missing_on_disk(
 def test_read_template_by_idx_returns_none_when_file_missing_on_disk(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr("src.backend.template_selector.RUNTIME_DIR", tmp_path)
-    backend = TemplateSelectorBackEnd()
+    backend = TemplateSelectorBackEnd(tmp_path / "templates")
     template_path = backend.create_template(
         tmp_path / "templates" / "ghost.txt", MediaType.MOVIE
     )
@@ -77,8 +75,7 @@ def test_read_template_by_idx_out_of_range_returns_none(
 ) -> None:
     # a stale index from a combo box that outgrew this cache (e.g. another
     # editor deleted entries) must degrade to None rather than IndexError
-    monkeypatch.setattr("src.backend.template_selector.RUNTIME_DIR", tmp_path)
-    backend = TemplateSelectorBackEnd()
+    backend = TemplateSelectorBackEnd(tmp_path / "templates")
 
     assert backend.read_template(idx=3) is None
 
@@ -88,8 +85,7 @@ def test_delete_template_is_idempotent_when_already_missing(
 ) -> None:
     # deleting through one template editor while another has the same
     # template queued for deletion must not raise on the second attempt
-    monkeypatch.setattr("src.backend.template_selector.RUNTIME_DIR", tmp_path)
-    backend = TemplateSelectorBackEnd()
+    backend = TemplateSelectorBackEnd(tmp_path / "templates")
     template_path = backend.create_template(
         tmp_path / "templates" / "gone.txt", MediaType.MOVIE
     )
@@ -105,8 +101,30 @@ def test_load_templates_tolerates_a_missing_directory(
 ) -> None:
     # the whole templates directory could be removed out from under the app
     # while it is running; listing it again must not raise
-    monkeypatch.setattr("src.backend.template_selector.RUNTIME_DIR", tmp_path)
-    backend = TemplateSelectorBackEnd()
+    backend = TemplateSelectorBackEnd(tmp_path / "templates")
     backend.template_dir.rmdir()
 
     assert backend.load_templates() == {}
+
+
+def test_templates_come_from_the_data_directory_by_default(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Templates are the user's work, so they live with the user's own files.
+
+    Read from the installation instead and two things go wrong at once: the
+    templates the migration just moved are invisible, and the directory being
+    read is inside a release folder the user is told they may replace wholesale.
+    """
+    monkeypatch.setenv(DATA_DIR_ENV_VAR, str(tmp_path / "data"))
+
+    backend = TemplateSelectorBackEnd()
+
+    assert backend.template_dir == tmp_path / "data" / "templates"
+
+
+def test_a_template_directory_can_be_given_explicitly(tmp_path: Path) -> None:
+    """So a caller -- or a test -- can work somewhere other than the default."""
+    chosen = tmp_path / "somewhere else"
+
+    assert TemplateSelectorBackEnd(chosen).template_dir == chosen

@@ -96,7 +96,7 @@ def test_a_hosts_session_is_given_the_requested_timeout(tmp_path: Path) -> None:
 # --------------------------------------------------------------------------
 def test_a_retryable_status_and_a_dropped_connection_share_one_budget() -> None:
     """They used to be two paths through the same counter."""
-    for error in (RetryableStatus(503), aiohttp.ClientError(), asyncio.TimeoutError()):
+    for error in (RetryableStatus(503), aiohttp.ClientError(), TimeoutError()):
         calls = 0
 
         async def always_fails(exc: BaseException = error) -> str:

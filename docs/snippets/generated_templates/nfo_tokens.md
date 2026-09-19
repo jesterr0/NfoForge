@@ -6,6 +6,7 @@
 | `{{ duration_long }}` | Duration (2 h 14 min 34 s 65 ms) |
 | `{{ duration_milliseconds }}` | Duration in milliseconds (8469985859) |
 | `{{ duration_short }}` | Duration (2 h 14 min) |
+| `{{ encode_logs }}` | Encode logs supplied by plugins or edited during pre-upload review |
 | `{{ episode_mediainfo }}` | Synopsis of all episodes mediainfo |
 | `{{ episode_metadata }}` | Synopsis of all episodes metadata |
 | `{{ episode_metadata_mediainfo }}` | Synopsis of all episodes metadata + mediainfo |

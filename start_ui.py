@@ -6,7 +6,11 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from src.backend.utils.working_dir import CURRENT_DIR, IS_FROZEN, RUNTIME_DIR
+from src.backend.utils.working_dir import (
+    CURRENT_DIR,
+    IS_FROZEN,
+    asset_root,
+)
 
 # The portable/frozen build must not trust an arbitrary `.env` placed beside
 # the executable.  Development installs may still use the convenience file,
@@ -15,6 +19,7 @@ if not IS_FROZEN:
     load_dotenv(CURRENT_DIR / ".env", override=False)
 
 # remaining imports
+from collections.abc import Callable
 from datetime import datetime
 import faulthandler
 from multiprocessing import freeze_support as mp_freeze_support
@@ -41,10 +46,19 @@ from src.backend.utils.template_token_migration import (
     scan_template_dir,
 )
 from src.config.config import ConfigManager
-from src.config.paths import ConfigPaths
+from src.config.layout_apply import (
+    MigrationError,
+    MigrationRun,
+    startup_migration,
+)
+from src.config.layout_migration import LegacyInstall
+from src.config.layout_version import LayoutRecordError, migration_pending
+from src.config.paths import AppPaths, default_paths
 from src.exceptions import ConfigError, ConfigSchemaError
 from src.frontend.custom_widgets.scrollable_error_dialog import ScrollableErrorDialog
 from src.frontend.windows.main_window import MainWindow
+from src.frontend.windows.migration_prompt_dialog import MigrationPromptDialog
+from src.frontend.windows.migration_summary_dialog import MigrationSummaryDialog
 from src.frontend.windows.splash_screen import SplashScreen, SplashScreenLoader
 from src.frontend.windows.template_migration_dialog import TemplateMigrationDialog
 from src.logger.nfo_forge_logger import LOG
@@ -68,12 +82,88 @@ class _GuiThreadRelay(QObject):
     show_error = Signal(str, str, str)  # title, message, traceback
 
 
+class _MigrationDecisionRelay(QObject):
+    """Ask the GUI thread where to import from, and block until it answers.
+
+    The migration runs on a worker because the copying can take long enough that
+    a frozen window looks like a hang, but the one question it asks has to be a
+    real dialog on the GUI thread. Parented to the application for the same
+    reason `_GuiThreadRelay` is: the queued connection then delivers on the
+    thread that owns this object.
+
+    The worker waits on an event rather than polling, and the answer is always
+    delivered -- see `NfoForge._ask_where_to_import`, which sets it in a
+    `finally`. A lost answer would leave startup stopped on a splash screen.
+    """
+
+    requested = Signal(object)  # LegacyInstall | None
+
+    def __init__(self, parent: QObject | None = None) -> None:
+        super().__init__(parent)
+        self._answered = threading.Event()
+        self._answer: LegacyInstall | None = None
+
+    def ask(self, found: LegacyInstall | None) -> LegacyInstall | None:
+        """Called on the worker thread. Returns what the user chose."""
+        self._answer = None
+        self._answered.clear()
+        self.requested.emit(found)
+        self._answered.wait()
+        return self._answer
+
+    def answer(self, chosen: LegacyInstall | None) -> None:
+        """Called on the GUI thread, once, however the dialog ended."""
+        self._answer = chosen
+        self._answered.set()
+
+
+class _LayoutMigrationWorker(QThread):
+    """Runs the layout migration, reporting each step as it goes."""
+
+    progressed = Signal(str)
+    completed = Signal(object)  # MigrationRun | None
+    failed = Signal(str)
+
+    def __init__(
+        self,
+        paths: AppPaths,
+        decide: Callable[[LegacyInstall | None], LegacyInstall | None],
+        parent: QObject | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self.paths = paths
+        self.decide = decide
+
+    def run(self) -> None:
+        try:
+            self.completed.emit(
+                startup_migration(
+                    self.paths, decide=self.decide, progress=self.progressed.emit
+                )
+            )
+        except MigrationError as error:
+            # Nothing was deleted, so the data is intact, but some step did not
+            # do what it claimed. Startup stops rather than loading a half
+            # assembled configuration and letting the user work against it.
+            self.failed.emit(
+                "NfoForge could not finish moving your settings and data, so it "
+                "has stopped rather than start with some of them missing. "
+                "Nothing was deleted.\n\n"
+                f"{error}"
+            )
+        except Exception as error:
+            self.failed.emit(
+                f"Unhandled error while preparing your data folder: {error}\n"
+                f"{traceback.format_exc()}"
+            )
+
+
 class NfoForge:
     def __init__(self, arg_parse: tuple[str | None, str | None]) -> None:
         self.app = QApplication(sys.argv)
 
         self.app.setWindowIcon(
-            QIcon(str(Path(RUNTIME_DIR / "images" / "hammer_merged.png")))
+            QIcon(str(Path(asset_root() / "images" / "hammer_merged.png")))
         )
         self.app.setStyle("Fusion")
 
@@ -169,7 +259,7 @@ class NfoForge:
         faulthandler.enable(file=handle)
 
     def _setup_font(self) -> None:
-        font_folder = RUNTIME_DIR / "fonts"
+        font_folder = asset_root() / "fonts"
 
         for font_file in font_folder.rglob("*.ttf"):
             QFontDatabase.addApplicationFont(str(font_file))
@@ -186,6 +276,92 @@ class NfoForge:
         self.app.setFont(font)
 
     def _init_app(self) -> None:
+        """Bring the data folder up to date, then carry on as before.
+
+        The layout migration has to run before anything reads configuration,
+        because configuration comes out of the folder it is still assembling. In
+        particular it runs before the profile selector below: that lists the
+        profiles in the data folder, and on a migrating launch they have not
+        arrived yet, so a user with several would be offered none of them.
+
+        Asked once per machine and silent forever after. The check is a single
+        record read, so the common launch pays one file open for it.
+        """
+        if self.splash_screen is None:
+            raise RuntimeError("Splash screen is not initialized")
+
+        try:
+            pending = migration_pending(default_paths().state_root)
+        except LayoutRecordError as error:
+            # The record exists and cannot be read, so the shape of the folder is
+            # unknown. Guessing would risk running a migration over a tree that
+            # already had one, so the launch stops here instead.
+            self._error_on_splash(
+                "NfoForge could not read the record describing its data folder, "
+                "so it cannot tell whether your settings have been migrated "
+                f"yet.\n\n{error}"
+            )
+            return
+
+        if pending:
+            self._start_layout_migration()
+            return
+
+        self._select_config()
+
+    def _start_layout_migration(self) -> None:
+        """Run the migration on a worker, asking the question on the GUI thread.
+
+        The copying is why this is threaded: a large tools folder takes long
+        enough that a frozen window would look like a hang. The question cannot
+        be asked from a worker, though -- building a dialog off the GUI thread is
+        undefined behaviour -- so it is relayed, and the worker blocks until the
+        answer comes back.
+        """
+        if self.splash_screen is None:
+            raise RuntimeError("Splash screen is not initialized")
+
+        self._migration_relay = _MigrationDecisionRelay(self.app)
+        self._migration_relay.requested.connect(
+            self._ask_where_to_import, Qt.ConnectionType.QueuedConnection
+        )
+        self._migration_worker = _LayoutMigrationWorker(
+            default_paths(), self._migration_relay.ask, self.app
+        )
+        self._migration_worker.progressed.connect(self.splash_screen.update_message_box)
+        self._migration_worker.completed.connect(self._on_migration_finished)
+        self._migration_worker.failed.connect(self._error_on_splash)
+
+        self.splash_screen.updateMessageBox("Preparing your data folder")
+        self._migration_worker.start()
+
+    def _ask_where_to_import(self, found: LegacyInstall | None) -> None:
+        """Put the question to the user and hand the answer back to the worker.
+
+        The answer is delivered in a `finally`, because the worker is blocked
+        waiting for it. Anything that goes wrong while building or showing the
+        dialog has to still produce an answer, or startup stops forever on a
+        splash screen with no error and no window.
+        """
+        chosen: LegacyInstall | None = None
+        try:
+            dialog = MigrationPromptDialog(found, parent=self.splash_screen)
+            dialog.exec()
+            chosen = dialog.chosen
+            dialog.deleteLater()
+        finally:
+            self._migration_relay.answer(chosen)
+
+    def _on_migration_finished(self, run: MigrationRun | None) -> None:
+        """Show what happened, then continue the launch that was interrupted."""
+        if run is not None:
+            summary = MigrationSummaryDialog(run, parent=self.splash_screen)
+            summary.exec()
+            summary.deleteLater()
+
+        self._select_config()
+
+    def _select_config(self) -> None:
         if self.splash_screen is None:
             raise RuntimeError("Splash screen is not initialized")
 
@@ -295,7 +471,7 @@ class NfoForge:
         attribute) is raised without a fully constructed `ConfigManager` to
         ask instead."""
         try:
-            paths = ConfigPaths()
+            paths = default_paths()
             config_file = self.config_file
             # `ConfigManager.load_program` parses `paths.program` on every
             # init regardless of whether a profile name was already
@@ -351,7 +527,7 @@ class NfoForge:
         # requesting it.
         self.program_config_malformed = False
 
-        paths = ConfigPaths()
+        paths = default_paths()
         response = QMessageBox.question(
             self.splash_screen,
             "Invalid Program Config",
@@ -480,7 +656,7 @@ class NfoForge:
             return
 
         try:
-            reports = scan_template_dir(RUNTIME_DIR / "templates")
+            reports = scan_template_dir(default_paths().templates)
             if not reports:
                 return
 
@@ -531,7 +707,7 @@ class NfoForge:
     def _get_available_configs(self) -> list[str] | None:
         """Get list of available config file names (without .toml extension)"""
         try:
-            config_dir = ConfigPaths().user_configs
+            config_dir = default_paths().user_configs
             if not config_dir.exists():
                 return
             return sorted([x.stem for x in config_dir.glob("*.toml")])
@@ -550,7 +726,7 @@ class NfoForge:
         selected by the combo box.
         """
         try:
-            program_path = ConfigPaths().program
+            program_path = default_paths().program
             if not program_path.exists():
                 return None
             program_document = tomlkit.parse(program_path.read_text(encoding="utf-8"))

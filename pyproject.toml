@@ -1,10 +1,10 @@
 [project]
 name = "NfoForge"
-version = "1.1.17"
+version = "1.2.0"
 description = "NFO generator and upload assistant"
 license = "GPL-3.0-or-later"
 readme = "README.md"
-requires-python = ">=3.10,<3.14"
+requires-python = ">=3.13.15,<3.14"
 dependencies = [
     "flatbencode",
     "pymediainfo>=7.0.1",
@@ -17,8 +17,8 @@ dependencies = [
     "shortuuid>=1.0.13",
     "torf>=4.3.0",
     "pillow>=12.3.0",
-    "platformdirs>=4.11.9",
-    "pyside6-essentials==6.11.1",
+    "platformdirs>=4.11.11",
+    "pyside6-essentials==6.11.2",
     "psutil>=7.2.0",
     "pyimgbox>=1.0.7",
     "aiohttp>=3.13.3",
@@ -74,6 +74,7 @@ include = [
     "pyproject.toml",
     "src/**/*.py",
     "plugins/**/*.py",
+    "assets/plugin_examples/**/*.py",
     "scripts/**/*.py",
     "tests/**/*.py",
     "typings/**/*.py",
@@ -81,9 +82,11 @@ include = [
 
 [tool.uv]
 constraint-dependencies = ["requests>=2.32.4"]
-# urllib3-future intentionally shares urllib3's import namespace when its
-# wheel is installed. Build it from source so Niquests can use its separate
-# urllib3_future namespace alongside the upstream urllib3 used by Requests.
+# urllib3-future intentionally overlaps urllib3's import namespace by default.
+# Build it from source and set URLLIB3_NO_OVERRIDE=1 before sync/install so
+# Niquests uses urllib3_future alongside upstream urllib3 for Requests clients.
+# Keep uv.lock on urllib3-future >=2.14.900; older releases can mix files from
+# the two distributions when they are installed concurrently.
 no-binary-package = ["urllib3-future"]
 
 [tool.ruff.lint]
@@ -129,8 +132,8 @@ include = [
     "src",
     "start_ui.py",
     "build.py",
-    "plugins/jinja2_plugin_example",
-    "plugins/metadata_plugin_example",
+    "assets/plugin_examples/jinja2_plugin_example",
+    "assets/plugin_examples/metadata_plugin_example",
 ]
 typeCheckingMode = "standard"
 

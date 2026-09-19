@@ -12,13 +12,14 @@ from src.enums.tracker_selection import TrackerSelection
 from src.frontend.custom_widgets.tracker_management import (
     BHDTrackerEdit,
     LSTTrackerEdit,
+    TLTrackerEdit,
 )
 from src.frontend.custom_widgets.tracker_settings import (
     TrackerListDelegate,
     TrackerSettingsWidget,
 )
 from src.frontend.stacked_windows.settings.trackers import TrackersSettings
-from tests.repo_paths import DEFAULT_CONFIG_DIR
+from tests.repo_paths import build_app_paths
 
 # Qt's QWIDGETSIZE_MAX: the `maximumWidth` of a widget nobody has capped.
 # PySide6 does not re-export the constant, so it is spelled out here.
@@ -26,26 +27,7 @@ _UNBOUNDED_WIDTH = 16777215
 
 
 def _paths(tmp_path: Path) -> ConfigPaths:
-    defaults = tmp_path / "defaults"
-    defaults.mkdir()
-    source_defaults = DEFAULT_CONFIG_DIR
-    default_config = defaults / "default_config.toml"
-    default_program = defaults / "default_program_conf.toml"
-    default_config.write_text(
-        (source_defaults / "default_config.toml").read_text(encoding="utf-8"),
-        encoding="utf-8",
-    )
-    default_program.write_text(
-        (source_defaults / "default_program_conf.toml").read_text(encoding="utf-8"),
-        encoding="utf-8",
-    )
-    return ConfigPaths(
-        default_config=default_config,
-        default_program=default_program,
-        program=tmp_path / "program/conf.toml",
-        user_configs=tmp_path / "user",
-        tracker_cookies=tmp_path / "cookies",
-    )
+    return build_app_paths(tmp_path)
 
 
 def _make_tracker_settings(
@@ -356,3 +338,17 @@ def test_lst_freeleech_percentage_loads_and_saves(
     editor.free.setValue(75)
     editor.save_settings()
     assert manager.settings.trackers.lst.free == 75
+
+
+def test_torrentleech_announce_url_gets_missing_path_on_save(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, manager = _make_tracker_settings(tmp_path, monkeypatch)
+    editor = TLTrackerEdit(manager)
+    editor.announce_url.setText("https://tracker.invalid/passkey")
+
+    editor.save_settings()
+
+    expected = "https://tracker.invalid/passkey/announce"
+    assert manager.settings.trackers.torrent_leech.announce_url == expected
+    assert editor.announce_url.text() == expected

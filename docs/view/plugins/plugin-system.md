@@ -2,9 +2,32 @@
 
 NfoForge plugins are trusted Python code loaded into the application process. Install only plugins whose source and author you trust. Enabled plugins are loaded once at startup; changing the enabled setting prompts you to restart NfoForge, and a restart is still required afterward for a new or changed plugin to actually be picked up.
 
+## Installing a plugin
+
+**Settings → Plugins** names your `plugins` folder, opens it, and offers **Install** with two entries: **From folder...** and **From archive...**. Both do the same thing a manual copy does, with the manifest read first, so a plugin that could never load is refused now rather than reported as a load failure on the next launch.
+
+Before copying anything, NfoForge checks that the folder or archive holds one `nfoforge-plugin.toml`, that the manifest is valid, and that the module it names is actually there. It then shows what it found -- the ID, the module and where it came from -- and asks. **The plugin is never imported during any of this**: a plugin is trusted code that runs inside NfoForge, and nothing runs it before you have said yes.
+
+### Updating a plugin
+
+Choosing a plugin whose ID is already installed is an **update**, not an error. The dialog says what it is replacing, and installing moves the copy you have into `old_plugins` inside your plugins folder, timestamped. Nothing is deleted, so an update that turns out worse than what it replaced can be put back by hand. Archived copies sit a level too deep for NfoForge to load, so they are kept without being seen.
+
+NfoForge cannot tell you which of the two is newer. A plugin's version lives in the `PluginDefinition` its module exports, and reading it would mean running the code you are being asked to approve -- so the dialog names the path being replaced and leaves the judgement to you.
+
+Two clashes cannot be resolved by replacing and are refused outright:
+
+- An ID that **ships with NfoForge**. A release's own example cannot be replaced; your copy would register first and the example would be reported as broken on every launch.
+- A **module name** another installed plugin declares. The loader resolves a module by name and refuses a second one from a different location, so the two cannot coexist whichever is installed second. Plugins built from the same example start out sharing the example's module name, which makes this the likelier clash of the two -- and left to startup it reads as an install that silently did nothing.
+
+An archive is accepted whether the manifest sits at its root or inside a single wrapping folder, which is the shape a downloaded repository unpacks into. Disposable development content -- virtual environments, `.git`, bytecode, build and coverage output -- is left behind; source, tests, documentation and resources come across.
+
+A newly installed plugin is on disk but inert. Plugins are imported once, at startup, so **NfoForge has to be restarted** before it is available, and external plugins have to be enabled.
+
+Copying a folder in by hand still works and is described below.
+
 ## Local plugins
 
-Place each plugin repository directly inside NfoForge's `plugins` directory and add `nfoforge-plugin.toml` at the repository root:
+Place each plugin repository directly inside the `plugins` folder of [your NfoForge data folder](../getting-started/upgrading.md#where-your-data-lives-now) and add `nfoforge-plugin.toml` at the repository root:
 
 ```toml
 schema_version = 1
@@ -35,6 +58,38 @@ Plugin code should import its public contracts from `src.plugins.api`. Assigning
 
 The current runtime contract is plugin API version 2. Version 2 replaces the live `ProcessingContext` previously exposed to metadata transformers with the isolated `MetadataTransformContext` snapshot documented under Metadata Transformers.
 
+## Working from a checkout
+
+Plugins load from your data folder, not from wherever you keep the source. Without help that makes the development loop "edit, copy into the data folder, restart", and the copy is a snapshot: the moment you forget to make it, you are testing the previous version.
+
+`NFOFORGE_DEV_PLUGINS` points NfoForge at a different plugins folder. Set it to a folder of checkouts -- the same shape as the plugins folder it stands in for, one directory per plugin -- and everything in it loads in place:
+
+```powershell
+$env:NFOFORGE_DEV_PLUGINS = "D:\src\nfoforge-plugins"
+uv run start_ui.py
+```
+
+```
+D:\src\nfoforge-plugins\
+    my-plugin\            <- a checkout, with nfoforge-plugin.toml at its root
+    another-plugin\       <- and another, worked on at the same time
+```
+
+Name more than one folder by separating them with your platform's path separator, the same way `PATH` does: `;` on Windows, `:` elsewhere. They are read in the order written, so if two of them hold the same plugin the first one wins.
+
+**It replaces your plugins folder rather than adding to it.** While the variable is set, the folder in your data directory is not read at all. That is deliberate: it makes a development run the same arrangement a real installation has, rather than a fourth thing that exists nowhere else, and it means a plugin can never be quietly picked up from a copy you had forgotten was installed. Everything below that point -- load order against the shipped examples, ID collisions, the status table -- behaves exactly as it does in production.
+
+Two mistakes are reported rather than passed over, in **Settings -> Plugins**, because the path was typed on purpose and it has taken the real folder out of the run:
+
+- naming a path that does not exist, or a folder with no plugins in it
+- naming **a plugin** where a folder *of* plugins belongs -- that is, a directory with `nfoforge-plugin.toml` at its own root. NfoForge recognises this one and tells you to name the folder containing it.
+
+While the variable is set, **Settings -> Plugins** names the folders in force, and each loaded plugin's row shows the directory it came from. The plugins folder is still named there, and **Install** still writes to it, because that is where a plugin belongs once the variable is gone.
+
+A restart is still required. Plugins are imported once, at startup; nothing here reloads them while NfoForge is running.
+
+Released builds ignore the variable. A plugin is trusted Python executed inside NfoForge's process, so an environment variable must not be able to decide what a release imports. It is honoured when running from source and by the debug executable shipped beside the main one, which is the same rule `NFOFORGE_DATA_DIR` follows.
+
 ## Installed packages
 
 A Python distribution may expose the same `PluginDefinition` through the `nfoforge.plugins` entry-point group. The entry-point name is its stable ID:
@@ -49,6 +104,8 @@ Local repositories remain the recommended installation method for packaged NfoFo
 ### ID collision precedence
 
 Local plugin directories are loaded before installed entry points. If a local plugin and an entry point share the same ID, the local plugin registers first and wins; the entry point's registration then fails with a duplicate-ID error and is reported as a load failure rather than applied silently. This is deliberate: local plugins are the recommended installation method, so an installed package can never silently shadow one.
+
+The full order is your plugins folder, then the examples shipped with the release, then installed entry points. `NFOFORGE_DEV_PLUGINS` substitutes for the first of those rather than adding a fourth, so none of this changes while it is set -- only where the first group is read from.
 
 ## Capabilities and failures
 

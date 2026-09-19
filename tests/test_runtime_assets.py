@@ -1,6 +1,17 @@
-from src.backend.utils.working_dir import RUNTIME_DIR
+"""Inventory of the files a release ships.
 
-EXPECTED_RUNTIME_FONTS = {
+A bulk move is the moment an asset goes missing, and a missing font or icon is
+invisible at runtime: Qt returns a null pixmap and renders nothing rather than
+raising. Asserting the set exactly, rather than just that each expected file
+exists, also catches an asset added to the tree without anyone deciding to ship
+it.
+"""
+
+from pathlib import Path
+
+from tests.repo_paths import ASSET_DIR
+
+EXPECTED_FONTS = {
     "Fira_Mono/FiraMono-Bold.ttf",
     "Fira_Mono/FiraMono-Regular.ttf",
     "Fira_Mono/OFL.txt",
@@ -15,13 +26,63 @@ EXPECTED_RUNTIME_FONTS = {
     "Roboto/Roboto-Regular.ttf",
 }
 
+EXPECTED_PACKAGED_DEFAULTS = {
+    "audio_conventions/default.json",
+    "defaults/default_config.toml",
+    "defaults/default_program_conf.toml",
+}
 
-def test_runtime_font_inventory_contains_only_required_assets() -> None:
-    font_root = RUNTIME_DIR / "fonts"
-    actual = {
-        path.relative_to(font_root).as_posix()
-        for path in font_root.rglob("*")
-        if path.is_file()
+
+def _inventory(subdirectory: str) -> set[str]:
+    root = ASSET_DIR / subdirectory
+    return {
+        path.relative_to(root).as_posix() for path in root.rglob("*") if path.is_file()
     }
 
-    assert actual == EXPECTED_RUNTIME_FONTS
+
+def test_font_inventory_contains_only_required_assets() -> None:
+    assert _inventory("fonts") == EXPECTED_FONTS
+
+
+def test_packaged_configuration_documents_are_present() -> None:
+    """The defaults and the audio conventions are read at runtime.
+
+    They sit under the asset root rather than beside the user's own
+    configuration, which is the split that lets a release folder be replaced
+    without taking someone's profiles with it.
+    """
+    assert _inventory("config") == EXPECTED_PACKAGED_DEFAULTS
+
+
+def test_no_user_state_is_shipped_with_the_assets() -> None:
+    """Nothing under the asset root may be a file the user owns.
+
+    The build used to copy the whole mutable tree and then delete the user's
+    own data back out of it, which meant a release shipped whatever the build
+    machine happened to hold if that pass ever missed something. The asset tree
+    is now only ever populated deliberately, and this is the assertion that
+    keeps it that way.
+
+    Checked as locations rather than as names appearing anywhere. A name alone
+    cannot tell plugin credentials from a documentation page about plugins, and
+    the build generates documentation into this tree -- so the name-matching
+    version failed only after a local build, on `docs/view/plugins`.
+    """
+    forbidden = (
+        Path("config") / "user",
+        Path("config") / "program",
+        Path("config") / "plugins",
+        Path("cookies"),
+        Path("logs"),
+        Path("templates"),
+        Path("apps"),
+        Path("plugins"),
+    )
+    present = [
+        str(relative) for relative in forbidden if (ASSET_DIR / relative).exists()
+    ]
+
+    assert not present, (
+        f"{present} under the asset root holds files the user owns, which a "
+        "release must not ship"
+    )

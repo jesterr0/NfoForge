@@ -1,5 +1,4 @@
 from collections.abc import Callable, Mapping
-from typing import TypeAlias
 
 from PySide6.QtWidgets import QWidget
 
@@ -21,8 +20,8 @@ from src.payloads.clients import (
 )
 from src.payloads.watch_folder import WatchFolder
 
-ClientConfig: TypeAlias = NetworkTorrentClientConfig | WatchFolder
-ClientEditorFactory: TypeAlias = Callable[[ClientConfig, QWidget], ClientEditBase]
+type ClientConfig = NetworkTorrentClientConfig | WatchFolder
+type ClientEditorFactory = Callable[[ClientConfig, QWidget], ClientEditBase]
 
 
 def _qbit_editor(config: ClientConfig, parent: QWidget) -> ClientEditBase:

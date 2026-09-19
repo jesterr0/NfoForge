@@ -27,7 +27,7 @@ an arbitrary-code-execution path.
 from __future__ import annotations
 
 from collections.abc import Iterable
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 import json
 from pathlib import Path
 import shutil
@@ -122,7 +122,7 @@ def build_job(
     return SavedJob(
         job_id=shortuuid.uuid(),
         name=name.strip() or "Untitled job",
-        created_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        created_at=datetime.now(UTC).isoformat(timespec="seconds"),
         nfoforge_version=str(__version__),
         summary=summary,
         context=context,
@@ -243,7 +243,48 @@ def load_job(directory: Path) -> SavedJob:
         document = migrate_document(document)
     except JobMigrationError as error:
         raise JobStoreError(str(error)) from error
+    _reanchor_owned_images(document, directory)
     return SavedJob.from_dict(document)
+
+
+def _reanchor_owned_images(document: dict, directory: Path) -> None:
+    """Resolve screenshots the job owns against where the job actually is.
+
+    A recorded image path is where that screenshot was when the job was saved,
+    which goes stale for reasons that have nothing to do with the screenshot:
+    the working directory moves, a backup is restored somewhere else, the jobs
+    folder is carried to another machine. The file is still inside the job one
+    directory along, so the directory being loaded is the better authority.
+
+    Only a recorded path that has gone missing is reconsidered, and only when a
+    file of that name sits in this job's own images directory. A path that still
+    resolves is left alone, and so is one pointing outside the job: when a
+    screenshot is already missing at save time `copy_images` records its
+    original path deliberately, to keep `uploaded_images` correctly numbered by
+    position, and inventing a file for that entry would be worse than leaving it.
+    """
+    context = document.get("context")
+    if not isinstance(context, dict):
+        return
+    shared = context.get("shared_data")
+    if not isinstance(shared, dict):
+        return
+    recorded = shared.get("loaded_images")
+    if not isinstance(recorded, list):
+        return
+
+    images = directory / JOB_IMAGES_DIR_NAME
+    resolved: list[str] = []
+    for entry in recorded:
+        if not isinstance(entry, str):
+            continue
+        path = Path(entry)
+        candidate = images / path.name
+        if not path.is_file() and candidate.is_file():
+            resolved.append(str(candidate))
+            continue
+        resolved.append(entry)
+    shared["loaded_images"] = resolved
 
 
 def _document_is_prepared(document: dict) -> bool:

@@ -12,7 +12,7 @@ from src.config.dependencies import FindDependencies
 from src.config.migrations import document_version, migrate_document
 from src.config.models import AppConfig, ProgramConfig
 from src.config.operations import TypedTomlOperations
-from src.config.paths import ConfigPaths
+from src.config.paths import ConfigPaths, default_paths
 from src.config.persistence import atomic_write_text
 from src.exceptions import ConfigError, ConfigSchemaError
 from src.logger.nfo_forge_logger import LOG
@@ -30,7 +30,7 @@ class ConfigManager(TypedTomlOperations):
         config_file: str | None,
         paths: ConfigPaths | None = None,
     ):
-        self.paths = paths or ConfigPaths()
+        self.paths = paths or default_paths()
         self.codec = TomlConfigCodec()
         self._program_snapshot: str | None = None
         self._config_snapshot: str | None = None
@@ -260,6 +260,28 @@ class ConfigManager(TypedTomlOperations):
         self.decode(merged, dry_run=dry_run)
         return merged
 
+    def validate_profile_document(
+        self,
+        document: MutableMapping[str, Any],
+        dry_run: bool = True,
+    ) -> MutableMapping[str, Any]:
+        """Prove a profile document would load, without loading it.
+
+        The public form of the sequence `load_profile` applies, for code that
+        holds a document from somewhere other than this manager's own profile
+        directory -- an imported bundle, most of all. Importing has to answer
+        "would this load?" *before* it writes, because the alternative is a
+        file that lands successfully and takes the next launch down with a
+        schema error naming a profile the user has never opened.
+
+        Defaults to a dry run: the trial must not leave `self.settings`
+        describing a document the user did not ask to load.
+        """
+        default_toml, _ = self._read_toml(
+            self.paths.default_config, "default configuration"
+        )
+        return self._validate_document(document, default_toml, dry_run=dry_run)
+
     def _try_migrate_profile(
         self,
         loaded_document: MutableMapping[str, Any],
@@ -373,7 +395,7 @@ class ConfigManager(TypedTomlOperations):
         paths: ConfigPaths | None = None,
     ) -> Path:
         """Archive an incompatible profile and replace it with the default config."""
-        config_paths = paths or ConfigPaths()
+        config_paths = paths or default_paths()
         if not config_path.exists():
             atomic_write_text(
                 config_path,
@@ -391,4 +413,6 @@ class ConfigManager(TypedTomlOperations):
 
     def _init_dependencies(self) -> None:
         """Initialize dependencies and updates the config if needed"""
-        FindDependencies().update_dependencies(self.settings.dependencies)
+        FindDependencies(self.paths.tools).update_dependencies(
+            self.settings.dependencies
+        )
