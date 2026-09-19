@@ -69,9 +69,6 @@ image_width = 350
 add_localization_to_custom_edition = false
 stream_optimized = false
 
-# The series rule: "Series Name / Series Year / Season Number(+Episode Number for
-# Single Episodes) / Edition / Relevant Information / Group Tag". No episode
-# title is called for, so none is emitted.
 [tracker.pass_the_popcorn]
 upload_enabled = true
 announce_url = ""
@@ -123,9 +120,6 @@ url_type = 1
 column_s = 1
 column_space = 1
 row_space = 0
-# Aither publishes a different component order per release type. Encodes and
-# web releases run "... Source AudioCodec Channels Metadata HDR VideoCodec";
-# remuxes run "... Source REMUX HDR VideoCodec AudioCodec Channels Metadata".
 api_key = ""
 anonymous = false
 internal = false
@@ -166,9 +160,6 @@ url_type = 1
 column_s = 1
 column_space = 1
 row_space = 0
-# LST publishes two templates. Full discs and remuxes run
-# "... SOURCE TYPE Hi10P HDR Vcodec Dub Acodec Channels Object"; encodes, WEB-DLs,
-# WEBRips and HDTV run "... SOURCE TYPE Dub Acodec Channels Object Hi10P HDR Vcodec".
 api_key = ""
 anonymous = false
 internal = false
@@ -181,9 +172,6 @@ double_up = false
 sticky = false
 image_width = 500
 
-# LST's series template carries no episode-title slot and none of its published
-# examples include one ("The Agency 2024 S01E10 2160p PMTP WEB-DL DD+ 5.1
-# DV HDR10+ H.265-NTb"), so -- unlike Aither -- these omit {episode_title_exact}.
 [tracker.dark_peers]
 upload_enabled = true
 announce_url = ""
@@ -524,6 +512,9 @@ optimize_dl_url_images_percentage = 0.25
 indexer = 1
 image_plugin = 1
 
+[image_hosts.chevereto_v3]
+
+[image_hosts.chevereto_v4]
 # Chevereto sites are user-managed: each configured instance is added here as
 # its own sub-table, keyed by a generated id, e.g.
 #   [image_hosts.chevereto_v4.5f2c9a1e]
@@ -531,9 +522,6 @@ image_plugin = 1
 #   enabled = true
 #   base_url = "https://ptscreens.com/"
 #   api_key = ""
-[image_hosts.chevereto_v3]
-
-[image_hosts.chevereto_v4]
 
 [image_hosts.image_bb]
 enabled = false
