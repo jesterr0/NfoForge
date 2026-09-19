@@ -7,9 +7,16 @@ from torf import Torrent
 from src.backend.torrent_clients.qbittorrent.save_path import (
     get_qbittorrent_save_path_warning,
 )
+from src.enums.torrent_client import QBittorrentAuthMode
 from src.exceptions import TrackerClientError
 from src.logger.nfo_forge_logger import LOG
 from src.payloads.clients import QBittorrentConfig
+
+# Web API 2.14.1 -- qBittorrent 5.2.0 -- added `app/rotateAPIKey` and bearer
+# token authentication. Compared as a tuple of ints because qBittorrent
+# publishes both two- and three-part versions, and "2.15" sorts below
+# "2.14.1" as a string.
+_API_KEY_MIN_WEB_API_VERSION = (2, 14, 1)
 
 
 class QBittorrentClient:
@@ -23,18 +30,40 @@ class QBittorrentClient:
         if not host:
             raise TrackerClientError("Hostname must be defined")
 
-        self.client = QBitClient(
-            host=host,
-            port=self._get_port(),
-            username=str(self.qbit_config.user),
-            password=str(self.qbit_config.password),
-        )
+        if self._uses_api_key():
+            api_key = self.qbit_config.api_key.strip()
+            if not api_key:
+                raise TrackerClientError("API key must be defined")
+            # The key is sent as a bearer token on every request, and
+            # qBittorrent answers the `auth/` endpoints with 403 once one is
+            # in play. qbittorrent-api knows this: it validates the key with
+            # an ordinary call instead of logging in, and makes logout a
+            # no-op. So `login`/`logout` below need no second path.
+            self.client = QBitClient(
+                host=host,
+                port=self._get_port(),
+                api_key=api_key,
+            )
+        else:
+            self.client = QBitClient(
+                host=host,
+                port=self._get_port(),
+                username=str(self.qbit_config.user),
+                password=str(self.qbit_config.password),
+            )
 
     def login(self) -> tuple[bool, str]:
         try:
             self.client.auth_log_in(requests_args={"timeout": self.timeout})
-            return True, "Login successful"
         except qbittorrentapi.LoginFailed as error:
+            if self._uses_api_key():
+                # The version endpoint needs a session of its own, so a
+                # refused login cannot tell a wrong key from a client with no
+                # key support at all. Name both rather than pick one.
+                return False, (
+                    "Login failed. Check the API key, and that qBittorrent "
+                    f"is 5.2.0 or above: {error}"
+                )
             return False, f"Login failed. Check username and password: {error}"
         except qbittorrentapi.exceptions.APIConnectionError:
             return False, (
@@ -46,6 +75,41 @@ class QBittorrentClient:
                 f"Unexpected error during login: {error}"
             ) from error
 
+        if self._uses_api_key():
+            too_old = self._api_key_unsupported_message()
+            if too_old:
+                return False, too_old
+        return True, "Login successful"
+
+    def _api_key_unsupported_message(self) -> str | None:
+        """Why an accepted key was not really accepted, if it was not.
+
+        qBittorrent below 5.2.0 has no bearer-token support and ignores the
+        header. When authentication is switched off for the calling address
+        it then answers every request as though the key had been accepted,
+        and the connection is anonymous with nothing on screen saying so.
+        Reading the version is the only way to tell the two apart, and it
+        needs the session the login just established.
+        """
+        try:
+            reported = str(
+                self.client.app_web_api_version(requests_args={"timeout": self.timeout})
+            )
+            version = tuple(int(part) for part in reported.split("."))
+        except Exception:
+            # A diagnostic, not the job. A client that will not report its
+            # version must not be refused on that alone.
+            return None
+        if version >= _API_KEY_MIN_WEB_API_VERSION:
+            return None
+        return (
+            f"qBittorrent's Web API is version {reported}, which has no API "
+            "key support. Keys need Web API 2.14.1 or above, which is "
+            "qBittorrent 5.2.0. This client ignored the key and accepted the "
+            "connection only because authentication is off for this address. "
+            "Use a username and password instead."
+        )
+
     def logout(self) -> None:
         try:
             self.client.auth_log_out(requests_args={"timeout": self.timeout})
@@ -53,13 +117,16 @@ class QBittorrentClient:
             raise TrackerClientError(f"Failed to logout: {error}") from error
 
     def test(self) -> tuple[bool, str]:
-        if self.login()[0]:
+        success, message = self.login()
+        if success:
             return (
                 True,
                 "Login successful! If your category is setup correctly "
                 "injection should work.",
             )
-        return False, "Failed"
+        # `login` is the only thing that knows why, and a bare "Failed" left
+        # that reason in a return value nothing read.
+        return False, message
 
     def inject_torrent(
         self,
@@ -127,6 +194,9 @@ class QBittorrentClient:
                 "You must supply your category in the configuration"
             )
         return category
+
+    def _uses_api_key(self) -> bool:
+        return self.qbit_config.auth_mode is QBittorrentAuthMode.API_KEY
 
     def _get_port(self) -> int | None:
         port = int(self.qbit_config.port or 0)
