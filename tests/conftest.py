@@ -44,7 +44,7 @@ from src.backend.utils.example_parsed_series_data import (
     EXAMPLE_MEDIA_INPUT_PAYLOAD as SERIES_EXAMPLE_PAYLOAD,
 )
 from src.backend.utils.media_info_utils import clear_restored_mediainfo
-from src.config.paths import DATA_DIR_ENV_VAR
+from src.config.paths import DATA_DIR_ENV_VAR, DEV_PLUGINS_ENV_VAR
 from src.context.processing_context import ProcessingContext
 from src.enums.image_host import ImageHost, ImageSource
 from src.enums.media_type import MediaType
@@ -120,8 +120,15 @@ def _sandbox_every_data_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) ->
     resolution runs, so this sandboxes through the same code path a rehearsal
     uses instead of replacing it. A test that needs different resolution sets
     its own value or deletes this one, and several do.
+
+    The development plugin roots are cleared for the same reason, in the other
+    direction. Whoever is running the suite may well have that variable set --
+    it is what a plugin developer sets and leaves set -- and the loader would
+    then import their working tree into the test process, which is neither the
+    plugin the test wrote nor code the suite has any business executing.
     """
     monkeypatch.setenv(DATA_DIR_ENV_VAR, str(tmp_path / "user_data"))
+    monkeypatch.delenv(DEV_PLUGINS_ENV_VAR, raising=False)
 
 
 @pytest.fixture(autouse=True)

@@ -19,9 +19,9 @@ if not IS_FROZEN:
     load_dotenv(CURRENT_DIR / ".env", override=False)
 
 # remaining imports
+from collections.abc import Callable
 from datetime import datetime
 import faulthandler
-from collections.abc import Callable
 from multiprocessing import freeze_support as mp_freeze_support
 import sys
 import threading
@@ -328,9 +328,7 @@ class NfoForge:
         self._migration_worker = _LayoutMigrationWorker(
             default_paths(), self._migration_relay.ask, self.app
         )
-        self._migration_worker.progressed.connect(
-            self.splash_screen.update_message_box
-        )
+        self._migration_worker.progressed.connect(self.splash_screen.update_message_box)
         self._migration_worker.completed.connect(self._on_migration_finished)
         self._migration_worker.failed.connect(self._error_on_splash)
 

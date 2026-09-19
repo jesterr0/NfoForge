@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from importlib import machinery, metadata, util
 from pathlib import Path
@@ -11,7 +11,7 @@ from typing import Any
 import tomlkit
 import tomllib
 
-from src.config.paths import default_paths
+from src.config.paths import DEV_PLUGINS_ENV_VAR, default_paths, dev_plugin_dirs
 from src.exceptions import PluginError
 from src.logger.nfo_forge_logger import LOG
 from src.plugins.api import PluginDefinition, PluginRecord
@@ -167,11 +167,18 @@ class PluginLoader:
         update_status: Callable[[str], None] | None = None,
         plugin_dir: Path | None = None,
         shipped_dir: Path | None = None,
+        dev_dirs: Sequence[Path] | None = None,
     ) -> None:
         self.manager = manager
         self.update_status = update_status
         self.plugin_dir = plugin_dir or default_paths().plugins
         self.shipped_dir = shipped_dir
+        # `is None` rather than falsy: an explicitly empty sequence means "no
+        # development folders", which is not the same request as "work out
+        # whether there are any", and anything constructing a loader for one
+        # specific pair of directories has to be able to ask for the first while
+        # a developer's variable is set in the environment around it.
+        self.dev_dirs = tuple(dev_plugin_dirs() if dev_dirs is None else dev_dirs)
         self.failures: list[PluginLoadFailure] = []
 
     def load_plugins(self) -> PluginLoadReport:
@@ -192,17 +199,29 @@ class PluginLoader:
         put there must not be silently shadowed by something that arrived with a
         release.
 
-        Only the user's directory is created when missing. The shipped
-        directory lives inside the release, which is read-only territory.
+        `dev_dirs` substitutes for the user's directory rather than adding to
+        it, so none of the above changes when it is set -- only where the first
+        group is read from. That is the point of replacing rather than layering:
+        a development run resolves plugins by the rules a real installation
+        uses, which is not true of an arrangement where two folders are live at
+        once and a plugin can be picked up from a copy nobody remembered was
+        there.
+
+        Only the user's directory is created when missing, and not even that
+        while development directories stand in for it -- a folder is not created
+        to be ignored. The shipped directory lives inside the release, which is
+        read-only territory, and a development directory either exists or is a
+        mistake worth reporting.
         """
 
         self.failures.clear()
         self.manager.clear_load_issues()
-        try:
-            self.plugin_dir.mkdir(exist_ok=True, parents=True)
-        except OSError as error:
-            self._record_failure(str(self.plugin_dir), error)
-            return PluginLoadReport(self.manager.records, tuple(self.failures))
+        if not self.dev_dirs:
+            try:
+                self.plugin_dir.mkdir(exist_ok=True, parents=True)
+            except OSError as error:
+                self._record_failure(str(self.plugin_dir), error)
+                return PluginLoadReport(self.manager.records, tuple(self.failures))
 
         for root in self._local_roots():
             manifest = root / LOCAL_MANIFEST
@@ -248,16 +267,70 @@ class PluginLoader:
             LOG.debug(LOG.LOG_SOURCE.FE, f"Detected plugins: {loaded}")
         return PluginLoadReport(self.manager.records, tuple(self.failures))
 
+    def _checked_dev_dirs(self) -> list[Path]:
+        """The development directories that are plugins folders, reporting the rest.
+
+        A plugins folder that is empty, or missing, is a normal thing for a real
+        installation to have and is passed over in silence. A development
+        directory is a path someone typed into an environment variable, and it
+        has taken the real folder out of the run, so the same silence would
+        leave them with no plugins at all and nothing anywhere saying why.
+
+        Both likely mistakes are named rather than left to be inferred. One is a
+        path that is simply wrong. The other is naming a plugin where a folder
+        of plugins belongs -- easy to do, since the plugin is the thing being
+        worked on -- and it is recognisable, because that directory holds the
+        manifest that should have been one level further down.
+        """
+        directories: list[Path] = []
+        for directory in self.dev_dirs:
+            if not directory.is_dir():
+                self._record_failure(
+                    str(directory),
+                    PluginError(
+                        f"{DEV_PLUGINS_ENV_VAR} names a path that is not a directory"
+                    ),
+                )
+                continue
+            if (directory / LOCAL_MANIFEST).is_file():
+                self._record_failure(
+                    str(directory),
+                    PluginError(
+                        f"{DEV_PLUGINS_ENV_VAR} entries are each a folder *of* "
+                        f"plugins, not a plugin. This one holds {LOCAL_MANIFEST} "
+                        "itself, so name the folder that contains it instead."
+                    ),
+                )
+                continue
+            if not declared_plugins(directory):
+                self._record_failure(
+                    str(directory),
+                    PluginError(
+                        f"{DEV_PLUGINS_ENV_VAR} names a directory holding no "
+                        f"plugins. Each plugin is one folder inside it, holding "
+                        f"{LOCAL_MANIFEST}."
+                    ),
+                )
+                continue
+            directories.append(directory)
+        return directories
+
     def _local_roots(self) -> list[Path]:
         """Candidate plugin directories, the user's own first.
 
         Each directory is sorted by casefolded name so load order does not
-        depend on the filesystem, and the two are concatenated rather than
+        depend on the filesystem, and the groups are concatenated rather than
         merged and re-sorted, which is what makes the user's copy win a
         collision.
+
+        Development directories stand in for the user's own rather than joining
+        it, so the shape of this list does not change when they are set. Several
+        of them are read in the order they were written, which is the only
+        non-arbitrary answer available when two of them hold the same plugin id.
         """
+        user_dirs = self._checked_dev_dirs() if self.dev_dirs else [self.plugin_dir]
         roots: list[Path] = []
-        for directory in (self.plugin_dir, self.shipped_dir):
+        for directory in (*user_dirs, self.shipped_dir):
             if directory is None or not directory.is_dir():
                 continue
             roots.extend(

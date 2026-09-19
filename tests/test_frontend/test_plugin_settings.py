@@ -5,7 +5,7 @@ from PySide6.QtWidgets import QMessageBox, QWidget
 import pytest
 
 from src.config.config import ConfigManager
-from src.config.paths import ConfigPaths
+from src.config.paths import DEV_PLUGINS_ENV_VAR, ConfigPaths
 from src.frontend.stacked_windows.settings.plugins import PluginsSettings
 from src.plugins.api import PluginDefinition, TokenReplaceRequest
 from tests.repo_paths import build_app_paths
@@ -184,3 +184,34 @@ def test_declining_the_folder_dialog_asks_nothing(
     monkeypatch.setattr(QMessageBox, "question", staticmethod(refuse))
 
     widget._handle_install_from_archive_click()
+
+
+def test_the_development_folders_are_named_when_the_override_is_set(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The field above still names where Install writes, and nothing loads there.
+
+    Both facts have to be on screen: a developer who left the variable set in a
+    shell profile would otherwise have nothing explaining why the plugin they
+    just installed is absent, and the Install button beside the folder still
+    writes to it.
+    """
+    checkouts = tmp_path / "checkouts"
+    monkeypatch.setenv(DEV_PLUGINS_ENV_VAR, str(checkouts))
+
+    widget, manager = _make_plugin_settings(tmp_path, monkeypatch)
+
+    assert widget.dev_plugin_dirs_label.isVisibleTo(widget)
+    assert str(checkouts) in widget.dev_plugin_dirs_label.text()
+    assert DEV_PLUGINS_ENV_VAR in widget.dev_plugin_dirs_label.text()
+    assert widget.plugin_dir_entry.text() == str(manager.paths.plugins)
+
+
+def test_nothing_about_development_folders_is_shown_without_the_override(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Most users are not developing a plugin and should never see this."""
+    widget, _ = _make_plugin_settings(tmp_path, monkeypatch)
+
+    assert not widget.dev_plugin_dirs_label.isVisibleTo(widget)
+    assert widget.dev_plugin_dirs_label.text() == ""

@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from os import environ
+from os import environ, pathsep
 from pathlib import Path
 import sys
 
@@ -17,6 +17,28 @@ DATA_DIR_ENV_VAR = "NFOFORGE_DATA_DIR"
 Honoured from source and by the debug executable, refused by a released build.
 Point it at a *copy* of an installation to rehearse a migration against real
 data; pointing it at the original defeats the purpose of rehearsing.
+"""
+
+DEV_PLUGINS_ENV_VAR = "NFOFORGE_DEV_PLUGINS"
+"""Plugins folders to use *instead of* the one in the data directory.
+
+Each entry is a folder of plugins, the same shape as the plugins folder it
+replaces, so everything below it behaves as it does in a real installation --
+one folder per plugin, each holding `nfoforge-plugin.toml`. Several are
+separated by `os.pathsep`, the way `PATH` separates its own, for checkouts kept
+in more than one place.
+
+Replaces rather than adds, which is the rule `DATA_DIR_ENV_VAR` follows and for
+the same reason. An override that left the real folder loading too would make
+development a configuration that exists nowhere else: collisions that only
+happen here, and a plugin that can be picked up from a copy the developer has
+forgotten about. Pointed somewhere else, the loader is doing exactly what it
+does in production.
+
+Honoured from source and by the debug executable, refused by a released build,
+which matters more here than it does for the data directory: a plugin is trusted
+Python executed inside NfoForge's process, so an environment variable must not be
+able to decide what a release imports.
 """
 
 
@@ -108,6 +130,11 @@ class AppPaths:
         They used to sit beside the executable, which is why replacing a release
         meant reinstalling them, and why the shipped examples and the user's own
         plugins shared one directory with nothing to tell them apart.
+
+        Still the answer to "where do installed plugins live" even while
+        `DEV_PLUGINS_ENV_VAR` has the loader reading somewhere else. Installing
+        writes here, and Settings names this folder, because this is where a
+        plugin goes when the development variable is gone.
         """
         return self.state_root / "plugins"
 
@@ -178,14 +205,19 @@ ConfigPaths = AppPaths
 """The name plugins and existing tests hold. Same class, so neither can drift."""
 
 
-def _override_allowed() -> bool:
-    """Whether `NFOFORGE_DATA_DIR` is honoured in this process.
+def overrides_allowed() -> bool:
+    """Whether this process honours the development environment variables.
 
     Honoured from source and in the debug executable, so the migration can be
     rehearsed against a copy of a real install rather than only against
-    synthesised fixtures. Refused by a released build, where an environment
-    variable must not be able to decide where someone's profiles and
-    credentials are read from and written to.
+    synthesised fixtures, and so a plugin can be run from its working tree.
+    Refused by a released build, where an environment variable must not be able
+    to decide where someone's profiles and credentials are read from and written
+    to, nor what Python the application imports.
+
+    One gate for both variables rather than one each. They are the same question
+    -- is this a development process -- and a release that refused one while
+    honouring the other would be a release with a hole in it.
     """
     if not IS_FROZEN:
         return True
@@ -201,9 +233,32 @@ def _override() -> Path | None:
     the original.
     """
     value = environ.get(DATA_DIR_ENV_VAR, "").strip()
-    if not value or not _override_allowed():
+    if not value or not overrides_allowed():
         return None
     return Path(value)
+
+
+def dev_plugin_dirs() -> tuple[Path, ...]:
+    """The plugins folders `NFOFORGE_DEV_PLUGINS` names, in order.
+
+    Non-empty means the plugins folder in the data directory is not read at all.
+    That is the whole point: development should be the same arrangement as a
+    real installation, sited somewhere else.
+
+    Order is kept rather than sorted, because the variable is written by hand
+    and two folders holding the same plugin id have to be resolved somehow --
+    the one written first is the one meant.
+
+    Empty segments are dropped so that a trailing separator, or a variable set to
+    nothing at all, reads as "no development folders" rather than as the current
+    directory, which is what `Path("")` would otherwise give. Nothing here checks
+    that an entry exists or holds anything: that is the loader's to report,
+    because it is the loader that can put the answer in front of the user.
+    """
+    if not overrides_allowed():
+        return ()
+    value = environ.get(DEV_PLUGINS_ENV_VAR, "")
+    return tuple(Path(entry) for entry in value.split(pathsep) if entry.strip())
 
 
 def resolve_data_root() -> Path:

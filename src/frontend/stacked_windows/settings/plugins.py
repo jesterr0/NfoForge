@@ -23,6 +23,7 @@ from src.backend.main_window import restart_application
 from src.backend.utils.file_utilities import open_explorer
 from src.config.config import ConfigManager
 from src.config.models import PluginSettings as PluginSettingsPayload
+from src.config.paths import DEV_PLUGINS_ENV_VAR, dev_plugin_dirs
 from src.frontend.custom_widgets.combo_box import CustomComboBox
 from src.frontend.stacked_windows.settings.base import BaseSettings
 from src.frontend.utils import build_h_line, create_form_layout
@@ -162,6 +163,27 @@ class PluginsSettings(BaseSettings):
         plugin_dir_layout.addWidget(self.plugin_dir_open_btn)
         plugin_dir_layout.addWidget(self.install_plugin_btn)
 
+        # Shown only while the override is set, so a user who is not developing
+        # a plugin never sees it. Saying nothing would be the worse default: the
+        # field above still names the folder plugins are installed into and is
+        # still right about that, but nothing is being loaded from it, and a
+        # developer who left the variable set in a shell profile would have
+        # nothing on screen to explain why what they installed is not there.
+        # Both facts are stated, because the Install button beside it still
+        # writes to the folder above.
+        dev_dirs = dev_plugin_dirs()
+        self.dev_plugin_dirs_label = QLabel(self)
+        self.dev_plugin_dirs_label.setWordWrap(True)
+        self.dev_plugin_dirs_label.setVisible(bool(dev_dirs))
+        if dev_dirs:
+            listed = "\n".join(str(directory) for directory in dev_dirs)
+            self.dev_plugin_dirs_label.setText(
+                f"{DEV_PLUGINS_ENV_VAR} is set, so plugins are loaded from here "
+                "instead. The folder above is not read while it is set, though "
+                f"Install still writes to it:\n{listed}"
+            )
+            self.dev_plugin_dirs_label.setToolTip(listed)
+
         self.plugin_status = QTreeWidget(self)
         self.plugin_status.setObjectName("pluginStatus")
         self.plugin_status.setColumnCount(4)
@@ -193,6 +215,7 @@ class PluginsSettings(BaseSettings):
             "Install does the same thing with the manifest checked first."
         )
         self.add_layout(create_form_layout(plugin_dir_label, plugin_dir_widget))
+        self.add_widget(self.dev_plugin_dirs_label)
         status_label = QLabel("Discovered Plugins", self)
         status_label.setToolTip(
             "Plugins loaded at startup, load failures, and configured plugins that "

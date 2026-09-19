@@ -6,6 +6,7 @@ why a test that wanted a throwaway tree had to name five paths by hand and why
 nothing could be reconfigured afterwards.
 """
 
+from os import pathsep
 from pathlib import Path
 import sys
 
@@ -14,9 +15,11 @@ import pytest
 
 from src.config.paths import (
     DATA_DIR_ENV_VAR,
+    DEV_PLUGINS_ENV_VAR,
     AppPaths,
     ConfigPaths,
     default_paths,
+    dev_plugin_dirs,
     resolve_data_root,
 )
 
@@ -321,3 +324,84 @@ def test_the_user_plugin_directory_sits_in_the_data_directory(tmp_path: Path) ->
     paths = AppPaths(state_root=state, asset_root=tmp_path / "assets")
 
     assert paths.plugins == state / "plugins"
+
+
+def test_a_development_plugins_folder_is_read_from_the_environment(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The folder a developer keeps checkouts in, used in place of the real one."""
+    monkeypatch.setattr("src.config.paths.IS_FROZEN", False)
+    monkeypatch.setenv(DEV_PLUGINS_ENV_VAR, str(tmp_path / "checkouts"))
+
+    assert dev_plugin_dirs() == (tmp_path / "checkouts",)
+
+
+def test_several_development_folders_keep_the_order_they_were_written_in(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Not sorted: the variable is written by hand, so first means first.
+
+    Two folders holding one plugin id is a state the loader has to resolve, and
+    the only answer that is not arbitrary is the one the developer typed first.
+    """
+    monkeypatch.setattr("src.config.paths.IS_FROZEN", False)
+    first, second = tmp_path / "zeta", tmp_path / "alpha"
+    monkeypatch.setenv(DEV_PLUGINS_ENV_VAR, pathsep.join((str(first), str(second))))
+
+    assert dev_plugin_dirs() == (first, second)
+
+
+def test_empty_segments_in_the_development_folders_are_dropped(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A trailing separator must not read as the current directory.
+
+    `Path("")` is `Path(".")`, so keeping an empty segment would have the
+    loader treat wherever the process was launched from as a plugin root.
+    """
+    monkeypatch.setattr("src.config.paths.IS_FROZEN", False)
+    monkeypatch.setenv(
+        DEV_PLUGINS_ENV_VAR, str(tmp_path / "checkout") + pathsep + pathsep + "  "
+    )
+
+    assert dev_plugin_dirs() == (tmp_path / "checkout",)
+
+
+def test_no_development_folders_when_the_variable_is_unset(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("src.config.paths.IS_FROZEN", False)
+    monkeypatch.delenv(DEV_PLUGINS_ENV_VAR, raising=False)
+
+    assert dev_plugin_dirs() == ()
+
+
+def test_development_folders_are_refused_by_a_released_build(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A plugin is trusted Python run inside the process.
+
+    Moving where user data lives is bad; deciding what a release imports is
+    worse, so the same gate covers both and this is the half that must not be
+    allowed to rot.
+    """
+    monkeypatch.setattr("src.config.paths.IS_FROZEN", True)
+    monkeypatch.setattr(sys, "executable", str(tmp_path / "NfoForge.exe"))
+    monkeypatch.setenv(DEV_PLUGINS_ENV_VAR, str(tmp_path / "checkout"))
+
+    assert dev_plugin_dirs() == ()
+
+
+def test_development_folders_are_honoured_by_the_debug_build(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The same executable a migration rehearsal runs on.
+
+    A plugin developer testing against the artefact that ships needs the
+    override there too, and the debug executable is where that is allowed.
+    """
+    monkeypatch.setattr("src.config.paths.IS_FROZEN", True)
+    monkeypatch.setattr(sys, "executable", str(tmp_path / "NfoForge-debug.exe"))
+    monkeypatch.setenv(DEV_PLUGINS_ENV_VAR, str(tmp_path / "checkout"))
+
+    assert dev_plugin_dirs() == (tmp_path / "checkout",)
