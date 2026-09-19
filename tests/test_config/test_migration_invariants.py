@@ -190,3 +190,29 @@ def test_packaged_default_declares_the_current_schema_version() -> None:
     document = tomlkit.parse(DEFAULT_CONFIG_TOML.read_text(encoding="utf-8"))
 
     assert document["schema_version"] == TomlConfigCodec.SCHEMA_VERSION
+
+
+def test_no_comment_is_written_directly_above_a_table_header() -> None:
+    """tomlkit hands such a comment to the *previous* table, not the next one.
+
+    `merge_defaults` backfills a missing table by copying the tomlkit item
+    whole, comments included. A note written directly above `[tracker.x]`
+    therefore reaches a profile attached to whatever table happens to precede
+    it, and never reaches a profile that is only missing `tracker.x`.
+
+    Put the note inside the table it documents. A note that closes a table
+    (the Chevereto sub-table example) is deliberate and keeps a blank line
+    before the next header, which is what separates the two cases here.
+    """
+    misplaced: list[str] = []
+    previous = ""
+    for line in DEFAULT_CONFIG_TOML.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if re.fullmatch(r"\[\[?[^\]]+\]\]?", stripped) and previous.startswith("#"):
+            misplaced.append(stripped)
+        previous = stripped
+
+    assert not misplaced, (
+        "comment(s) written directly above a table header, which tomlkit "
+        f"attributes to the preceding table instead: {misplaced}"
+    )
