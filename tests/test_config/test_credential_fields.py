@@ -57,6 +57,7 @@ KNOWN_NON_CREDENTIAL_FIELDS = frozenset(
         "verify_tls",
         "ca_bundle",
         # Torrent client bookkeeping
+        "auth_mode",
         "category",
         "label",
         "path",

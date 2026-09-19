@@ -45,7 +45,7 @@ from src.enums.screen_shot_mode import ScreenShotMode
 from src.enums.subtitles import SubtitleAlignment
 from src.enums.theme import NfoForgeTheme
 from src.enums.token_replacer import ColonReplace
-from src.enums.torrent_client import QBittorrentSavePathMode
+from src.enums.torrent_client import QBittorrentAuthMode, QBittorrentSavePathMode
 from src.enums.tracker_selection import TrackerSelection
 from src.enums.trackers.beyondhd import BHDLiveRelease, BHDPromo
 from src.enums.url_type import URLType
@@ -810,6 +810,12 @@ class TypedTomlOperations:
             )
             qbittorrent_specific["save_path_template"] = (
                 self.settings.torrent_clients.qbittorrent.save_path_template
+            )
+            qbittorrent_specific["auth_mode"] = (
+                self.settings.torrent_clients.qbittorrent.auth_mode.value
+            )
+            qbittorrent_specific["api_key"] = (
+                self.settings.torrent_clients.qbittorrent.api_key
             )
 
             # deluge
@@ -1630,6 +1636,13 @@ class TypedTomlOperations:
                     "Invalid configuration value at "
                     "torrent_client.qbittorrent.specific_params.save_path_mode"
                 ) from error
+            try:
+                qbit_auth_mode = QBittorrentAuthMode(qbit_specific["auth_mode"])
+            except ValueError as error:
+                raise ConfigError(
+                    "Invalid configuration value at "
+                    "torrent_client.qbittorrent.specific_params.auth_mode"
+                ) from error
             qbittorrent = QBittorrentConfig(
                 enabled=bool(qbittorrent_data["enabled"]),
                 host=str(qbittorrent_data["host"]),
@@ -1640,6 +1653,8 @@ class TypedTomlOperations:
                 super_seeding=bool(qbit_specific["super_seeding"]),
                 save_path_mode=qbit_save_path_mode,
                 save_path_template=str(qbit_specific["save_path_template"]),
+                auth_mode=qbit_auth_mode,
+                api_key=str(qbit_specific["api_key"]),
             )
 
             # deluge

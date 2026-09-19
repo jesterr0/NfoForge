@@ -12,7 +12,7 @@ from src.config.config import ConfigManager
 from src.config.paths import ConfigPaths
 from src.config.persistence import atomic_write_text
 from src.enums.media_search_mode import MediaSearchMode
-from src.enums.torrent_client import QBittorrentSavePathMode
+from src.enums.torrent_client import QBittorrentAuthMode, QBittorrentSavePathMode
 from src.enums.tracker_selection import TrackerSelection
 from src.exceptions import ConfigError, ConfigSchemaError
 from src.payloads.clients import (
@@ -1151,6 +1151,59 @@ def test_warning_syntax_color_backfills_when_a_profile_lacks_it(
     manager.load_profile("test")
 
     assert manager.settings.templates.warning_syntax_color == "#E1401D"
+
+
+def test_qbittorrent_auth_keys_backfill_when_a_profile_lacks_them(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Every profile written before API key support lacks both keys.
+
+    They live in an inline table rather than a section of their own, so this
+    also pins that `merge_defaults` recurses into one. If it did not, the
+    decoder would raise `KeyError` on the first load of any existing profile.
+    """
+    monkeypatch.setattr(
+        "src.config.config.FindDependencies.update_dependencies",
+        lambda self, dependencies: None,
+    )
+    paths = _paths(tmp_path)
+    manager = ConfigManager("test", paths)
+    profile = paths.user_configs / "test.toml"
+    document = tomlkit.parse(profile.read_text(encoding="utf-8"))
+    specific = document["torrent_client"]["qbittorrent"]["specific_params"]  # type: ignore[reportIndexIssue]
+    del specific["auth_mode"]
+    del specific["api_key"]
+    profile.write_text(tomlkit.dumps(document), encoding="utf-8")
+
+    manager.load_profile("test")
+    qbittorrent = manager.settings.torrent_clients.qbittorrent
+
+    assert qbittorrent.auth_mode is QBittorrentAuthMode.USER_PASS
+    assert qbittorrent.api_key == ""
+
+
+def test_qbittorrent_auth_keys_are_written_on_save(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "src.config.config.FindDependencies.update_dependencies",
+        lambda self, dependencies: None,
+    )
+    paths = _paths(tmp_path)
+    manager = ConfigManager("test", paths)
+
+    manager.settings.torrent_clients.qbittorrent.auth_mode = QBittorrentAuthMode.API_KEY
+    manager.settings.torrent_clients.qbittorrent.api_key = "qbt_" + "x" * 28
+    manager.save()
+
+    saved = tomlkit.parse(
+        (paths.user_configs / "test.toml").read_text(encoding="utf-8")
+    )
+    torrent_client = cast(MutableMapping[str, Any], saved["torrent_client"])
+    qbittorrent = cast(MutableMapping[str, Any], torrent_client["qbittorrent"])
+    specific = cast(MutableMapping[str, Any], qbittorrent["specific_params"])
+    assert specific["auth_mode"] == "API key"
+    assert specific["api_key"] == "qbt_" + "x" * 28
 
 
 def test_warning_syntax_color_is_written_on_save(

@@ -2,6 +2,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+import qbittorrentapi
 from qbittorrentapi.exceptions import Conflict409Error
 from qbittorrentapi.torrents import TorrentsAddedMetadata
 
@@ -9,7 +10,7 @@ from src.backend.torrent_clients.qbittorrent import QBittorrentClient
 from src.backend.torrent_clients.qbittorrent.save_path import (
     get_qbittorrent_save_path_warning,
 )
-from src.enums.torrent_client import QBittorrentSavePathMode
+from src.enums.torrent_client import QBittorrentAuthMode, QBittorrentSavePathMode
 from src.exceptions import TrackerClientError
 from src.payloads.clients import QBittorrentConfig
 
@@ -23,6 +24,18 @@ def _config(super_seeding: bool = False) -> QBittorrentConfig:
         category="Movies",
         super_seeding=super_seeding,
         save_path_mode=QBittorrentSavePathMode.CLIENT_DEFAULT,
+    )
+
+
+def _api_key_config() -> QBittorrentConfig:
+    return QBittorrentConfig(
+        host="http://127.0.0.1",
+        port=8080,
+        category="Movies",
+        save_path_mode=QBittorrentSavePathMode.CLIENT_DEFAULT,
+        auth_mode=QBittorrentAuthMode.API_KEY,
+        # qBittorrent generates `qbt_` plus 28 characters.
+        api_key="qbt_" + "x" * 28,
     )
 
 
@@ -184,6 +197,138 @@ def test_qbittorrent_rejects_blank_host(qbit_api: MagicMock) -> None:
         QBittorrentClient(config)
 
     qbit_api.assert_not_called()
+
+
+@patch("src.backend.torrent_clients.qbittorrent.client.QBitClient")
+def test_user_pass_mode_sends_credentials_and_no_api_key(qbit_api: MagicMock) -> None:
+    QBittorrentClient(_config())
+
+    qbit_api.assert_called_once_with(
+        host="http://127.0.0.1",
+        port=8080,
+        username="user",
+        password="password",  # noqa: S106 - mirrors the dummy fixture credential
+    )
+
+
+@patch("src.backend.torrent_clients.qbittorrent.client.QBitClient")
+def test_api_key_mode_sends_the_key_and_no_credentials(qbit_api: MagicMock) -> None:
+    # The two are alternatives. A username sent alongside the key would be
+    # dead weight at best; qBittorrent answers `auth/login` with 403 once a
+    # bearer token is in play, so the library skips the login entirely.
+    QBittorrentClient(_api_key_config())
+
+    qbit_api.assert_called_once_with(
+        host="http://127.0.0.1",
+        port=8080,
+        api_key="qbt_" + "x" * 28,
+    )
+
+
+@patch("src.backend.torrent_clients.qbittorrent.client.QBitClient")
+def test_api_key_mode_rejects_a_blank_key(qbit_api: MagicMock) -> None:
+    config = _api_key_config()
+    config.api_key = "  "
+
+    with pytest.raises(TrackerClientError, match="API key must be defined"):
+        QBittorrentClient(config)
+
+    qbit_api.assert_not_called()
+
+
+@patch("src.backend.torrent_clients.qbittorrent.client.QBitClient")
+def test_api_key_login_failure_names_the_api_key(qbit_api: MagicMock) -> None:
+    api = qbit_api.return_value
+    api.auth_log_in.side_effect = qbittorrentapi.LoginFailed("nope")
+    client = QBittorrentClient(_api_key_config())
+
+    success, message = client.login()
+
+    assert not success
+    assert "API key" in message
+    assert "username" not in message
+    # The version endpoint needs a session, so a failed login cannot tell a
+    # wrong key from a client too old to have keys. Name both.
+    assert "5.2.0" in message
+
+
+@patch("src.backend.torrent_clients.qbittorrent.client.QBitClient")
+def test_an_api_key_accepted_by_a_client_too_old_for_keys_is_refused(
+    qbit_api: MagicMock,
+) -> None:
+    # qBittorrent below 5.2.0 ignores the bearer header. With authentication
+    # switched off for the calling address it then answers as though the key
+    # were accepted, and nothing on screen says the connection is anonymous.
+    api = qbit_api.return_value
+    api.app_web_api_version.return_value = "2.13.1"
+    client = QBittorrentClient(_api_key_config())
+
+    success, message = client.login()
+
+    assert not success
+    assert "2.13.1" in message
+    assert "2.14.1" in message
+    assert "5.2.0" in message
+
+
+@patch("src.backend.torrent_clients.qbittorrent.client.QBitClient")
+def test_the_first_web_api_version_with_key_support_is_accepted(
+    qbit_api: MagicMock,
+) -> None:
+    api = qbit_api.return_value
+    api.app_web_api_version.return_value = "2.14.1"
+    client = QBittorrentClient(_api_key_config())
+
+    assert client.login() == (True, "Login successful")
+
+
+@patch("src.backend.torrent_clients.qbittorrent.client.QBitClient")
+def test_a_two_part_web_api_version_compares_correctly(qbit_api: MagicMock) -> None:
+    # qBittorrent publishes both "2.15" and "2.14.1"; a string compare would
+    # read the shorter one as the older.
+    api = qbit_api.return_value
+    api.app_web_api_version.return_value = "2.15"
+    client = QBittorrentClient(_api_key_config())
+
+    assert client.login() == (True, "Login successful")
+
+
+@patch("src.backend.torrent_clients.qbittorrent.client.QBitClient")
+def test_an_unreadable_web_api_version_does_not_block_a_login(
+    qbit_api: MagicMock,
+) -> None:
+    # The version is a diagnostic, not the job. A client that will not report
+    # it must not be refused on that alone.
+    api = qbit_api.return_value
+    api.app_web_api_version.side_effect = RuntimeError("no answer")
+    client = QBittorrentClient(_api_key_config())
+
+    assert client.login() == (True, "Login successful")
+
+
+@patch("src.backend.torrent_clients.qbittorrent.client.QBitClient")
+def test_user_pass_login_does_not_read_the_web_api_version(
+    qbit_api: MagicMock,
+) -> None:
+    api = qbit_api.return_value
+    client = QBittorrentClient(_config())
+
+    assert client.login() == (True, "Login successful")
+    api.app_web_api_version.assert_not_called()
+
+
+@patch("src.backend.torrent_clients.qbittorrent.client.QBitClient")
+def test_test_reports_why_the_login_failed(qbit_api: MagicMock) -> None:
+    # `test` is wired to the Test button, and reporting a bare "Failed" left
+    # the reason in a return value nothing read.
+    api = qbit_api.return_value
+    api.auth_log_in.side_effect = qbittorrentapi.LoginFailed("nope")
+    client = QBittorrentClient(_config())
+
+    success, message = client.test()
+
+    assert not success
+    assert "Check username and password" in message
 
 
 def test_remote_qbittorrent_warns_for_windows_drive_path() -> None:
