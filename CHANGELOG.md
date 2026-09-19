@@ -32,6 +32,7 @@
 
 ### Changed
 
+- Python version 3.13.15 is now the pinned version, there was some path fixes that was backported to this version.
 - **Your settings and data now live in a folder of your own, outside the application.** Profiles, program preferences, plugin settings, tracker cookies, NFO templates, plugins, bundled tools, logs and saved jobs move to `%LOCALAPPDATA%\nfoforge` on Windows, `~/Library/Application Support/nfoforge` on macOS and `~/.local/share/nfoforge` on Linux. Every earlier version kept all of it inside the application folder, under `bundle/runtime`, which meant extracting a new release over an old one put your own files in the path of the ones being replaced. Upgrading is now a matter of replacing the release folder and nothing else. Running from source uses a separate folder, `nfoforge-dev`, so a source checkout and an installed release no longer share profiles, credentials or saved jobs. See [Upgrading](https://jesterr0.github.io/NfoForge/view/getting-started/upgrading.html).
 - Saved jobs and run output move into a `workspace` folder inside the data folder, keeping deliberately saved work and disposable output apart at the top level rather than side by side.
 - Updated platformdirs and pyside6.
