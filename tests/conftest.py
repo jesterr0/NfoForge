@@ -15,6 +15,7 @@ import os
 # offscreen for CI/headless runs.
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from collections.abc import Iterator
 from pathlib import Path
 import struct
 import wave
@@ -49,6 +50,7 @@ from src.context.processing_context import ProcessingContext
 from src.enums.image_host import ImageHost, ImageSource
 from src.enums.media_type import MediaType
 from src.enums.tracker_selection import TrackerSelection
+from src.frontend.global_signals import GlobalSignals
 from src.packages.custom_types import ImageUploadData, ImageUploadFromTo
 
 
@@ -141,6 +143,33 @@ def _clear_example_payload_analysis_caches() -> None:
     """
     MOVIE_EXAMPLE_PAYLOAD.analysis_cache.clear()
     SERIES_EXAMPLE_PAYLOAD.analysis_cache.clear()
+
+
+@pytest.fixture(autouse=True)
+def _fresh_global_signals() -> Iterator[None]:
+    """Give every test its own `GlobalSignals`, so listeners cannot pile up.
+
+    The singleton lives for the whole process, and every settings page
+    connects itself to it in ``__init__`` without ever disconnecting. Widgets
+    a test builds are seldom destroyed, so each one kept listening for the
+    rest of the session.
+
+    That turns into a timeout rather than a wrong answer.
+    ``global_management_state_changed`` makes `SeriesManagement` and
+    `MoviesManagement` re-render their examples, and each render runs
+    ``guessit`` over a filename. By the end of the frontend suite the signal
+    had 33 listeners and one emit took about three seconds. A test that only
+    pumps the event queue then pays for all of them, which is what pushed
+    ``test_wizard.py`` past the 60 second limit on CI while passing in
+    isolation.
+
+    Replacing the instance rather than disconnecting its signals one by one
+    keeps this to the one line a new signal cannot forget to update. Widgets
+    from an earlier test stay attached to the instance they were built with,
+    which nothing emits on again.
+    """
+    yield
+    GlobalSignals._instance = None  # pyright: ignore[reportPrivateUsage]
 
 
 # --------------------------------------------------------------------------
