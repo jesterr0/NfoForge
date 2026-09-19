@@ -22,7 +22,7 @@ from src.backend.torrent_clients.deluge import DelugeClient
 from src.backend.torrent_clients.qbittorrent import QBittorrentClient
 from src.backend.torrent_clients.rtorrent import RTorrentClient
 from src.backend.torrent_clients.transmission import TransmissionClient
-from src.enums.torrent_client import QBittorrentSavePathMode
+from src.enums.torrent_client import QBittorrentAuthMode, QBittorrentSavePathMode
 from src.frontend.custom_widgets.masked_qline_edit import MaskedQLineEdit
 from src.payloads.clients import (
     DelugeConfig,
@@ -212,6 +212,23 @@ class QBittorrentClientEdit(FullConnectionClientEditBase):
         super().__init__(parent)
         self.config = config
 
+        self.auth_mode = QComboBox(self)
+        for auth_mode in QBittorrentAuthMode:
+            self.auth_mode.addItem(str(auth_mode), auth_mode.value)
+        self.auth_mode.setToolTip(
+            "Choose which credential authenticates the Web API. qBittorrent "
+            "takes one or the other, never both; API keys need qBittorrent "
+            "5.2.0 or above."
+        )
+        self.auth_mode.currentIndexChanged.connect(self._sync_auth_mode_state)
+
+        self.api_key = MaskedQLineEdit(parent=self, masked=True)
+        self.api_key.setPlaceholderText("qbt_...")
+        self.api_key.setToolTip(
+            "API key from qBittorrent: Options -> Web UI -> API key. "
+            "Saving in this mode clears the stored user and password."
+        )
+
         self.category = QLineEdit(self)
         self.super_seeding = QCheckBox(self)
         self.save_path_mode = QComboBox(self)
@@ -237,8 +254,16 @@ class QBittorrentClientEdit(FullConnectionClientEditBase):
         self.test_button = QPushButton("Test", self)
         self.test_button.clicked.connect(self._test)
 
+        # The connection rows are spelled out rather than taken from
+        # `add_connection_fields` so the mode sits above the fields it
+        # governs.
         settings_layout = self.build_form_layout()
-        self.add_connection_fields(settings_layout)
+        self.add_form_row(settings_layout, "Host", self.host)
+        self.add_form_row(settings_layout, "Port", self.port)
+        self.add_form_row(settings_layout, "Authentication", self.auth_mode)
+        self.add_form_row(settings_layout, "User", self.user)
+        self.add_form_row(settings_layout, "Password", self.password)
+        self.add_form_row(settings_layout, "API key", self.api_key)
         self.add_form_row(settings_layout, "Category", self.category)
         self.add_form_row(
             settings_layout,
@@ -257,6 +282,10 @@ class QBittorrentClientEdit(FullConnectionClientEditBase):
     def load(self) -> None:
         config = cast(QBittorrentConfig, self.config)
         self.load_connection(config)
+        auth_index = self.auth_mode.findData(config.auth_mode.value)
+        self.auth_mode.setCurrentIndex(max(auth_index, 0))
+        self.api_key.setText(config.api_key)
+        self._sync_auth_mode_state()
         self.category.setText(config.category)
         self.super_seeding.setChecked(config.super_seeding)
         mode_index = self.save_path_mode.findData(config.save_path_mode.value)
@@ -267,12 +296,32 @@ class QBittorrentClientEdit(FullConnectionClientEditBase):
     def save(self) -> None:
         config = cast(QBittorrentConfig, self.config)
         self.save_connection(config)
+        config.auth_mode = self._selected_auth_mode()
+        config.api_key = self.api_key.text().strip()
+        # Only the selected mode is kept, so a profile can never hold both.
+        # The cost is real: switching to an API key and saving drops the
+        # stored password, and it has to be typed again to switch back.
+        if config.auth_mode is QBittorrentAuthMode.API_KEY:
+            config.user = ""
+            config.password = ""
+        else:
+            config.api_key = ""
         config.category = self.category.text().strip()
         config.super_seeding = self.super_seeding.isChecked()
         config.save_path_mode = QBittorrentSavePathMode(
             str(self.save_path_mode.currentData())
         )
         config.save_path_template = self.save_path_template.text().strip()
+
+    def _selected_auth_mode(self) -> QBittorrentAuthMode:
+        return QBittorrentAuthMode(str(self.auth_mode.currentData()))
+
+    @Slot()
+    def _sync_auth_mode_state(self) -> None:
+        uses_api_key = self._selected_auth_mode() is QBittorrentAuthMode.API_KEY
+        self.user.setEnabled(not uses_api_key)
+        self.password.setEnabled(not uses_api_key)
+        self.api_key.setEnabled(uses_api_key)
 
     @Slot()
     def _sync_save_path_template_state(self) -> None:
@@ -282,14 +331,18 @@ class QBittorrentClientEdit(FullConnectionClientEditBase):
 
     @Slot()
     def _test(self) -> None:
+        auth_mode = self._selected_auth_mode()
+        uses_api_key = auth_mode is QBittorrentAuthMode.API_KEY
         payload = QBittorrentConfig(
             enabled=True,
             host=self.host.text().strip(),
             port=self.port.value(),
-            user=self.user.text().strip(),
-            password=self.password.text().strip(),
+            user="" if uses_api_key else self.user.text().strip(),
+            password="" if uses_api_key else self.password.text().strip(),
             category=self.category.text().strip(),
             super_seeding=self.super_seeding.isChecked(),
+            auth_mode=auth_mode,
+            api_key=self.api_key.text().strip() if uses_api_key else "",
         )
         self._start_test(lambda: QBittorrentClient(payload))
 

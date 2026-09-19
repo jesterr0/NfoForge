@@ -367,7 +367,11 @@ host = "http://127.0.0.1"
 port = 0
 user = ""
 password = ""
-specific_params = { "category" = "", "super_seeding" = false, "save_path_mode" = "Client default", "save_path_template" = "" }
+# "auth_mode" chooses between the user/password pair above and "api_key".
+# They are alternatives: qBittorrent 5.2.0 and above send an API key as a
+# bearer token and reject the login endpoint while one is in use. Only the
+# selected mode is written, so the other side stays blank.
+specific_params = { "category" = "", "super_seeding" = false, "save_path_mode" = "Client default", "save_path_template" = "", "auth_mode" = "Username & password", "api_key" = "" }
 
 [torrent_client.deluge]
 enabled = false

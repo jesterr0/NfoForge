@@ -4,7 +4,7 @@ from typing import Any, TypeVar
 import tomlkit
 
 from src.config.models import AppConfig
-from src.enums.torrent_client import QBittorrentSavePathMode
+from src.enums.torrent_client import QBittorrentAuthMode, QBittorrentSavePathMode
 from src.exceptions import ConfigError, ConfigSchemaError
 
 TomlMutableMapping = TypeVar("TomlMutableMapping", bound=MutableMapping[str, Any])
@@ -129,11 +129,37 @@ class TomlConfigCodec:
         return None
 
     @classmethod
+    def qbittorrent_auth_error(cls, config: AppConfig) -> str | None:
+        """Why the qBittorrent credentials cannot be used, in plain words.
+
+        Only the API key side is checked. A blank username or password is a
+        working setup for anyone who has turned off authentication for
+        localhost, so it stays the client's business to report.
+        """
+        qbit = config.torrent_clients.qbittorrent
+        if (
+            qbit.enabled
+            and qbit.auth_mode is QBittorrentAuthMode.API_KEY
+            and not qbit.api_key.strip()
+        ):
+            return (
+                "qBittorrent's authentication mode is 'API key', which needs "
+                "an API key."
+            )
+        return None
+
+    @classmethod
     def validate_settings(cls, config: AppConfig) -> None:
         if cls.qbittorrent_save_path_error(config):
             raise ConfigError(
                 "Invalid configuration value at "
                 "torrent_client.qbittorrent.specific_params.save_path_template"
+            )
+
+        if cls.qbittorrent_auth_error(config):
+            raise ConfigError(
+                "Invalid configuration value at "
+                "torrent_client.qbittorrent.specific_params.api_key"
             )
 
         checks = {

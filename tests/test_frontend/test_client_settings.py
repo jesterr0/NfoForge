@@ -8,7 +8,7 @@ import pytest
 
 from src.config.config import ConfigManager
 from src.config.paths import ConfigPaths
-from src.enums.torrent_client import TorrentClientSelection
+from src.enums.torrent_client import QBittorrentAuthMode, TorrentClientSelection
 from src.frontend.custom_widgets.client_listbox import QBittorrentClientEdit
 from src.frontend.custom_widgets.client_settings import ClientSettingsWidget
 from src.frontend.custom_widgets.masked_qline_edit import MaskedQLineEdit
@@ -75,6 +75,131 @@ def test_client_settings_changes_are_transactional_until_apply(
     settings._save_settings()
 
     assert live_config.category == "Movies"
+
+
+def _qbittorrent_editor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> tuple[ClientsSettings, QBittorrentClientEdit]:
+    config = _config(tmp_path, monkeypatch)
+    parent = QWidget()
+    settings = ClientsSettings(
+        config,
+        main_window=cast(Any, None),
+        parent=cast(Any, parent),
+    )
+    editor = cast(
+        QBittorrentClientEdit,
+        settings.client_widget._editor_map[TorrentClientSelection.QBITTORRENT],
+    )
+    return settings, editor
+
+
+def _select_auth_mode(editor: QBittorrentClientEdit, mode: QBittorrentAuthMode) -> None:
+    editor.auth_mode.setCurrentIndex(editor.auth_mode.findData(mode.value))
+
+
+def _set_qbittorrent_enabled(settings: ClientsSettings, enabled: bool) -> None:
+    """Tick the client's row, which is what `enabled` is read from.
+
+    `save_editor_settings` syncs the list checkboxes over the config, so
+    setting the field directly would be undone before validation runs.
+    """
+    client_list = settings.client_widget.client_list
+    for index in range(client_list.count()):
+        item = client_list.item(index)
+        if item.data(Qt.ItemDataRole.UserRole) is TorrentClientSelection.QBITTORRENT:
+            item.setCheckState(
+                Qt.CheckState.Checked if enabled else Qt.CheckState.Unchecked
+            )
+            return
+    raise AssertionError("no qBittorrent row in the client list")
+
+
+def test_the_default_auth_mode_leaves_the_api_key_field_disabled(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, editor = _qbittorrent_editor(tmp_path, monkeypatch)
+
+    assert editor.auth_mode.currentData() == QBittorrentAuthMode.USER_PASS.value
+    assert editor.user.isEnabled()
+    assert editor.password.isEnabled()
+    assert not editor.api_key.isEnabled()
+
+
+def test_choosing_the_api_key_mode_swaps_which_fields_are_editable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, editor = _qbittorrent_editor(tmp_path, monkeypatch)
+
+    _select_auth_mode(editor, QBittorrentAuthMode.API_KEY)
+
+    assert not editor.user.isEnabled()
+    assert not editor.password.isEnabled()
+    assert editor.api_key.isEnabled()
+
+
+def test_saving_in_api_key_mode_clears_the_stored_credentials(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The two are alternatives, so only the selected one is kept. Holding
+    # both would leave a password in the profile that nothing ever sends.
+    settings, editor = _qbittorrent_editor(tmp_path, monkeypatch)
+    editor.user.setText("admin")
+    editor.password.setText("password")
+    _select_auth_mode(editor, QBittorrentAuthMode.API_KEY)
+    editor.api_key.setText("qbt_" + "x" * 28)
+
+    settings._save_settings()
+    stored = settings.config.settings.torrent_clients.qbittorrent
+
+    assert stored.auth_mode is QBittorrentAuthMode.API_KEY
+    assert stored.api_key == "qbt_" + "x" * 28
+    assert stored.user == ""
+    assert stored.password == ""
+
+
+def test_saving_in_user_pass_mode_clears_the_stored_api_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    settings, editor = _qbittorrent_editor(tmp_path, monkeypatch)
+    _select_auth_mode(editor, QBittorrentAuthMode.API_KEY)
+    editor.api_key.setText("qbt_" + "x" * 28)
+    _select_auth_mode(editor, QBittorrentAuthMode.USER_PASS)
+    editor.user.setText("admin")
+    editor.password.setText("password")
+
+    settings._save_settings()
+    stored = settings.config.settings.torrent_clients.qbittorrent
+
+    assert stored.auth_mode is QBittorrentAuthMode.USER_PASS
+    assert stored.api_key == ""
+    assert stored.user == "admin"
+
+
+def test_an_enabled_client_in_api_key_mode_needs_a_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    settings, editor = _qbittorrent_editor(tmp_path, monkeypatch)
+    _set_qbittorrent_enabled(settings, True)
+    _select_auth_mode(editor, QBittorrentAuthMode.API_KEY)
+    editor.api_key.setText("   ")
+
+    error = settings.validation_error()
+
+    assert error is not None
+    assert "API key" in error
+
+
+def test_a_disabled_client_is_not_held_to_the_api_key_rule(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A client nobody injects with cannot block saving the rest of Settings.
+    settings, editor = _qbittorrent_editor(tmp_path, monkeypatch)
+    _set_qbittorrent_enabled(settings, False)
+    _select_auth_mode(editor, QBittorrentAuthMode.API_KEY)
+    editor.api_key.setText("")
+
+    assert settings.validation_error() is None
 
 
 def _left_click(event_type: QEvent.Type) -> QMouseEvent:
