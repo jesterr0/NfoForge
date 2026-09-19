@@ -246,14 +246,22 @@ def test_cleanable_size_survives_a_directory_disappearing_mid_walk(
     gone.mkdir()
     (gone / "trace.log").write_bytes(b"x" * 30)
 
-    real_scandir = os.scandir
+    real_rglob = Path.rglob
 
-    def vanishing(path: object = ".") -> object:
-        if Path(path).name == "gone":
+    def vanishing(self: Path, pattern: str) -> object:
+        if self.name != "gone":
+            return real_rglob(self, pattern)
+
+        def disappearing_walk() -> object:
+            # Yield the folder once, then fail as the walk attempts to descend.
+            # Python 3.13's pathlib now suppresses scandir() failures internally,
+            # so the iterator boundary is the stable point to model this race.
+            yield self
             raise FileNotFoundError("directory vanished mid-scan")
-        return real_scandir(path)
 
-    monkeypatch.setattr(os, "scandir", vanishing)
+        return disappearing_walk()
+
+    monkeypatch.setattr(Path, "rglob", vanishing)
 
     # "gone" disappears out from under the walk; only "keep" can still be measured
     assert cleanable_size(tmp_path, data_root) == 50

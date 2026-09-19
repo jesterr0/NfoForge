@@ -152,13 +152,11 @@ def cleanable_size(working_dir: Path, data_root: Path) -> int:
     Two nested guards, because a scan can lose ground at two different levels.
     A single file can vanish between being listed and being stat()'d -- the
     inner guard skips just that file so its siblings still count toward the
-    total. But the walk itself can also vanish out from under us: rglob()
-    calls os.scandir() lazily as it descends and only swallows
-    PermissionError, so if a whole subdirectory disappears mid-descent (a
-    concurrent job's run folder, say) the exception surfaces from the `for`
-    statement itself, past a guard sitting only in the loop body. The outer
-    guard catches that case too, so one vanished top-level item doesn't cost
-    us the count already gathered for the rest.
+    total. But the walk's iterator can also fail as it descends into a whole
+    subdirectory (a concurrent job's run folder, say). That exception surfaces
+    from the `for` statement itself, past a guard sitting only in the loop
+    body. The outer guard catches that case too, so one vanished top-level item
+    does not cost us the count already gathered for the rest.
     """
     total = 0
     for item in cleanable_items(working_dir, data_root):
