@@ -45,7 +45,7 @@ dependencies = [
 dev = [
     "basedpyright",
     "ruff>=0.16.2",
-    "cython>=3.0.12",
+    "cython>=3.3.0",
     "pytest",
     "pytest-cov",
     "pytest-timeout",
