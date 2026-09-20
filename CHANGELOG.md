@@ -1,6 +1,12 @@
 # Changelog
 
-## [1.2.0] - Rolling
+## [1.2.1] - 2026-09-20
+
+### Fixes
+
+- Verbiage for migration to appdata runtime.
+
+## [1.2.0] - 2026-09-19
 
 ### Added
 
