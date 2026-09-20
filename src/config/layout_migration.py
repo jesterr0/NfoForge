@@ -570,6 +570,24 @@ _ACTION_HEADINGS = {
     ActionKind.COPY: "Copy from the previous installation",
     ActionKind.REWRITE: "Repoint these settings",
 }
+"""What a plan proposes, for the reader deciding whether to run it."""
+
+_COMPLETED_ACTION_HEADINGS = {
+    ActionKind.MOVE: "Moved within the data directory",
+    ActionKind.COPY: "Copied from the previous installation",
+    ActionKind.REWRITE: "Repointed these settings",
+}
+"""The same three, for a run that has already happened.
+
+`render_summary` renders its actions through `render_plan`, so that the window
+and the saved copy cannot become two accounts of a run that disagree. That
+account is a record rather than a proposal. Left in the imperative it read as a
+list of work still waiting, when by the time anybody sees it the data has
+already moved.
+
+The findings headings need no such pair. A finding is something noticed and left
+alone, so it reads the same either way.
+"""
 
 _FINDING_HEADINGS = {
     FindingKind.UNRECOGNISED_ENTRY: "Left in place, not part of the layout",
@@ -589,16 +607,21 @@ skimmed.
 """
 
 
-def render_plan(plan: MigrationPlan) -> str:
+def render_plan(plan: MigrationPlan, *, completed: bool = False) -> str:
     """A plan as text, grouped by what happens and sized.
 
     Deliberately plain text rather than anything the GUI owns, so that the same
     output can be read in a dialog, written beside a migration as a record, or
     printed by a rehearsal that never starts the application at all.
+
+    `completed` puts the action headings in the past tense, for the caller
+    reporting a run rather than proposing one. It defaults to the proposal,
+    because a plan is worked out before anything happens.
     """
     sections: list[str] = []
 
-    for kind, heading in _ACTION_HEADINGS.items():
+    headings = _COMPLETED_ACTION_HEADINGS if completed else _ACTION_HEADINGS
+    for kind, heading in headings.items():
         matching = [action for action in plan.actions if action.kind is kind]
         if not matching:
             continue
