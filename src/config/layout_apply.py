@@ -127,7 +127,7 @@ def render_summary(run: MigrationRun, saved_to: Path | None = None) -> str:
     plan, outcome = run.plan, run.outcome
     sections = [f"Your settings and data are now in:\n  {plan.state_root}"]
 
-    rendered = render_plan(plan)
+    rendered = render_plan(plan, completed=True)
     if rendered:
         sections.append(rendered)
 
