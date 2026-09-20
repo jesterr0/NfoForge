@@ -1,6 +1,6 @@
 [project]
 name = "NfoForge"
-version = "1.2.0"
+version = "1.2.1"
 description = "NFO generator and upload assistant"
 license = "GPL-3.0-or-later"
 readme = "README.md"
@@ -45,7 +45,7 @@ dependencies = [
 dev = [
     "basedpyright",
     "ruff>=0.16.2",
-    "cython>=3.0.12",
+    "cython>=3.2.9,!=3.3.0",
     "pytest",
     "pytest-cov",
     "pytest-timeout",

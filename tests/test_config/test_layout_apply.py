@@ -19,6 +19,7 @@ from src.config.layout_apply import (
     apply_plan,
     import_legacy,
     migrate_layout,
+    render_summary,
     startup_migration,
 )
 from src.config.layout_migration import (
@@ -748,6 +749,26 @@ def test_importing_over_existing_work_diverts_rather_than_replacing_it(
     assert [one.planned for one in run.outcome.diverted] == [
         paths.state_root / "cookies"
     ]
+
+
+def test_a_summary_reports_what_happened_rather_than_asking_for_it(
+    tmp_path: Path,
+) -> None:
+    """A record cannot be written in the imperative, or it reads as a to-do list.
+
+    The summary renders its actions through the plan's renderer, which is worded
+    for the reader deciding whether to run a migration. Left in that mood it told
+    someone to move and copy things the migration had finished before the window
+    opened, and the obvious response is to go and do it again by hand.
+    """
+    paths = _migrated(tmp_path)
+
+    run = import_legacy(paths, _legacy_with_cookies(tmp_path))
+    summary = render_summary(run)
+
+    assert "Copied from the previous installation" in summary
+    for instruction in ("Move within", "Copy from", "Repoint these"):
+        assert instruction not in summary
 
 
 def test_progress_is_reported_for_each_step(tmp_path: Path) -> None:
