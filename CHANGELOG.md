@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.2.2] - 2026-09-21
+
+### Fixes
+
+- Didn't pin latest version causing update notification to be displayed.
+
 ## [1.2.1] - 2026-09-20
 
 ### Fixes
