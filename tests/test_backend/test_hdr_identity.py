@@ -3,8 +3,8 @@ import inspect
 from pymediainfo import MediaInfo
 import pytest
 
-from src.backend.utils.hdr_identity import resolve_hdr_identity
-from src.config.models import HdrType
+from nfoforge.backend.utils.hdr_identity import resolve_hdr_identity
+from nfoforge.config.models import HdrType
 
 
 def _dynamic_range_media_info(hdr_format: str = "", transfer: str = "") -> MediaInfo:

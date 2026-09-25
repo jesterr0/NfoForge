@@ -8,7 +8,7 @@ becomes a switchable claim like the other six.
 
 from typing import Any
 
-from src.config.migrations import migrate_v12_to_v13
+from nfoforge.config.migrations import migrate_v12_to_v13
 
 
 def _doc(

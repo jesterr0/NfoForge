@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from src.config.layout_migration import (
+from nfoforge.config.layout_migration import (
     ActionKind,
     CopyPolicy,
     Finding,
@@ -23,7 +23,7 @@ from src.config.layout_migration import (
     recognise_legacy_install,
     render_plan,
 )
-from src.config.paths import AppPaths
+from nfoforge.config.paths import AppPaths
 
 
 def _frozen_install(tmp_path: Path) -> LegacyInstall:

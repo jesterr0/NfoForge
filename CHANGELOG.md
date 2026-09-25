@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Breaking
+
+- **The Python package is now `nfoforge` instead of `src`.** Plugins must import from `nfoforge.plugins.api` (and any other host module) instead of `src.plugins.api`. There is no compatibility alias: a plugin still importing `src.*` fails to load and is reported in **Settings -> Plugins**. The change is a find-and-replace of `src.` with `nfoforge.` in a plugin's imports.
+
 ## [1.2.2] - 2026-09-21
 
 ### Fixes

@@ -1,17 +1,17 @@
 from pathlib import Path
 
-from src.backend.rename_encode_series import RenameEncodeSeriesBackEnd
-from src.backend.rename_files import RenameExecutor, RenamePlan
-from src.backend.utils.example_parsed_series_data import (
+from nfoforge.backend.rename_encode_series import RenameEncodeSeriesBackEnd
+from nfoforge.backend.rename_files import RenameExecutor, RenamePlan
+from nfoforge.backend.utils.example_parsed_series_data import (
     EXAMPLE_MEDIA_INPUT_PAYLOAD,
     EXAMPLE_SEARCH_PAYLOAD,
 )
-from src.enums.media_type import MediaType
-from src.enums.multi_episode_style import MultiEpisodeStyle
-from src.enums.series import EpisodeFormat
-from src.enums.token_replacer import ColonReplace
-from src.payloads.media_inputs import MediaInputPayload
-from src.payloads.media_search import MediaSearchPayload
+from nfoforge.enums.media_type import MediaType
+from nfoforge.enums.multi_episode_style import MultiEpisodeStyle
+from nfoforge.enums.series import EpisodeFormat
+from nfoforge.enums.token_replacer import ColonReplace
+from nfoforge.payloads.media_inputs import MediaInputPayload
+from nfoforge.payloads.media_search import MediaSearchPayload
 
 
 def _minimal_series_payload() -> MediaInputPayload:

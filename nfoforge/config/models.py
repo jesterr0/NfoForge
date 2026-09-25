@@ -1,0 +1,484 @@
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Literal, TypedDict, overload
+
+from nfoforge.backend.tokens import TokenSelection
+from nfoforge.enums.cropping import Cropping
+from nfoforge.enums.image_host import ImageHost, ImageSource
+from nfoforge.enums.image_plugin import ImagePlugin
+from nfoforge.enums.indexer import Indexer
+from nfoforge.enums.logging_settings import LogLevel
+from nfoforge.enums.media_search_mode import MediaSearchMode
+from nfoforge.enums.multi_episode_style import MultiEpisodeStyle
+from nfoforge.enums.screen_shot_mode import ScreenShotMode
+from nfoforge.enums.subtitles import SubtitleAlignment
+from nfoforge.enums.theme import NfoForgeTheme
+from nfoforge.enums.token_replacer import ColonReplace
+from nfoforge.enums.torrent_client import TorrentClientSelection
+from nfoforge.enums.tracker_selection import TrackerSelection
+from nfoforge.enums.url_type import URLType
+from nfoforge.packages.custom_types import ImageHostRef
+from nfoforge.payloads.clients import (
+    DelugeConfig,
+    NetworkTorrentClientConfig,
+    QBittorrentConfig,
+    RTorrentConfig,
+    TransmissionConfig,
+)
+from nfoforge.payloads.image_hosts import (
+    CheveretoV3Payload,
+    CheveretoV4Payload,
+    ImageBBPayload,
+    ImageBoxPayload,
+    ImagePayloadBase,
+    LensdumpPayload,
+    OnlyImagePayload,
+    PixhostPayload,
+)
+from nfoforge.payloads.trackers import (
+    AitherInfo,
+    BeyondHDInfo,
+    BlutopiaInfo,
+    DarkPeersInfo,
+    FearNoPeerInfo,
+    HDBInfo,
+    HunoInfo,
+    LSTInfo,
+    OnlyEncodesInfo,
+    PassThePopcornInfo,
+    ReelFlixInfo,
+    SeedPoolInfo,
+    ShareIslandInfo,
+    TorrentLeechInfo,
+    TrackerInfo,
+    UploadCXInfo,
+    UTPInfo,
+    YuSceneInfo,
+)
+from nfoforge.payloads.watch_folder import WatchFolder
+
+ReplacementRule = tuple[str, str]
+UserToken = tuple[str, TokenSelection]
+type ResolutionKey = Literal["720p", "1080p", "2160p"]
+type HdrType = Literal[
+    "SDR",
+    "PQ",
+    "HLG",
+    "HDR10",
+    "HDR10+",
+    "DV",
+    "DV HDR10",
+    "DV HDR10+",
+]
+
+
+class DynamicRangeSettingsData(TypedDict):
+    resolutions: dict[ResolutionKey, bool]
+    hdr_types: dict[HdrType, bool]
+    custom_strings: dict[HdrType, str]
+
+
+@dataclass(slots=True)
+class ProgramConfig:
+    current_config: str | None = None
+    main_window_position: str | None = None
+    suppress_template_token_prompt: bool = False
+    last_update_check: str | None = None  # ISO 8601 UTC timestamp, or None
+    latest_known_version: str | None = None  # cached tag string (no leading "v")
+    latest_release_url: str | None = None  # cached GitHub release page URL
+
+
+@dataclass(slots=True)
+class ApiKeysSettings:
+    """Optional user-supplied API keys that override the bundled defaults."""
+
+    tmdb_api_key: str = ""
+
+
+@dataclass(slots=True)
+class GeneralSettings:
+    ui_suffix: str
+    ui_scale_factor: float
+    theme: NfoForgeTheme
+    enable_plugins: bool
+    releasers_name: str
+    # The group tag printed on output. The user's publishing identity, so it
+    # is theirs rather than the movie or series side's -- see CONTEXT.md.
+    release_group: str
+    tmdb_language: str
+    media_search_mode: MediaSearchMode
+    timeout: int
+    enable_prompt_overview: bool
+    log_level: LogLevel
+    log_total: int
+    working_dir: Path
+    check_for_updates: bool
+
+
+@dataclass(slots=True)
+class DependencySettings:
+    ffmpeg: Path | None
+    ffprobe: Path | None
+    frame_forge: Path | None
+    mkbrr: Path | None
+    enable_mkbrr: bool
+
+
+@dataclass(slots=True)
+class TrackerSettings:
+    order: list[TrackerSelection]
+    last_used_image_host: dict[TrackerSelection, ImageHostRef | ImageSource]
+    torrent_leech: TorrentLeechInfo
+    beyond_hd: BeyondHDInfo
+    pass_the_popcorn: PassThePopcornInfo
+    reelflix: ReelFlixInfo
+    aither: AitherInfo
+    huno: HunoInfo
+    lst: LSTInfo
+    dark_peers: DarkPeersInfo
+    share_island: ShareIslandInfo
+    upload_cx: UploadCXInfo
+    only_encodes: OnlyEncodesInfo
+    hdb: HDBInfo
+    blutopia: BlutopiaInfo
+    seedpool: SeedPoolInfo
+    utp: UTPInfo
+    yuscene: YuSceneInfo
+    fearnopeer: FearNoPeerInfo
+
+    def by_selection(self) -> dict[TrackerSelection, TrackerInfo]:
+        return {
+            TrackerSelection.TORRENT_LEECH: self.torrent_leech,
+            TrackerSelection.BEYOND_HD: self.beyond_hd,
+            TrackerSelection.PASS_THE_POPCORN: self.pass_the_popcorn,
+            TrackerSelection.REELFLIX: self.reelflix,
+            TrackerSelection.AITHER: self.aither,
+            TrackerSelection.HUNO: self.huno,
+            TrackerSelection.LST: self.lst,
+            TrackerSelection.DARK_PEERS: self.dark_peers,
+            TrackerSelection.SHARE_ISLAND: self.share_island,
+            TrackerSelection.UPLOAD_CX: self.upload_cx,
+            TrackerSelection.ONLY_ENCODES: self.only_encodes,
+            TrackerSelection.HDB: self.hdb,
+            TrackerSelection.BLUTOPIA: self.blutopia,
+            TrackerSelection.SEEDPOOL: self.seedpool,
+            TrackerSelection.UTOPIA: self.utp,
+            TrackerSelection.YU_SCENE: self.yuscene,
+            TrackerSelection.FEAR_NO_PEER: self.fearnopeer,
+        }
+
+
+@dataclass(slots=True)
+class TorrentClientSettings:
+    qbittorrent: QBittorrentConfig
+    deluge: DelugeConfig
+    rtorrent: RTorrentConfig
+    transmission: TransmissionConfig
+    watch_folder: WatchFolder
+
+    def by_selection(
+        self,
+    ) -> dict[TorrentClientSelection, NetworkTorrentClientConfig | WatchFolder]:
+        return {
+            TorrentClientSelection.QBITTORRENT: self.qbittorrent,
+            TorrentClientSelection.DELUGE: self.deluge,
+            TorrentClientSelection.RTORRENT: self.rtorrent,
+            TorrentClientSelection.TRANSMISSION: self.transmission,
+            TorrentClientSelection.WATCH_FOLDER: self.watch_folder,
+        }
+
+
+@dataclass(slots=True)
+class ClaimSwitches:
+    """Which claims are read out of the input filename.
+
+    A claim is parsed if and only if `enabled` and its own switch are both
+    true. All seven are claims MediaInfo cannot verify; quality/source and
+    streaming service are always parsed and have no switch.
+    """
+
+    enabled: bool
+    edition: bool
+    frame_size: bool
+    localization: bool
+    re_release: bool
+    remux: bool
+    hybrid: bool
+    release_group: bool
+
+
+@dataclass(slots=True)
+class MovieSettings:
+    enabled: bool
+    filename_colon_replace: ColonReplace
+    title_colon_replace: ColonReplace
+    claims: ClaimSwitches
+    filename_token: str
+    title_token: str
+
+
+@dataclass(slots=True)
+class SeriesSettings:
+    enabled: bool
+    filename_colon_replace: ColonReplace
+    title_colon_replace: ColonReplace
+    claims: ClaimSwitches
+    standard_episode_token: str
+    daily_episode_token: str
+    anime_episode_token: str
+    dvd_episode_token: str
+    season_folder_token: str
+    # Blank means "use season_folder_token": in a single-season pack the
+    # opened folder IS the season folder, so one token covers both. This
+    # only diverges for a nested pack, where the root carries the season
+    # range and each subfolder carries its own season.
+    season_subfolder_token: str
+    multi_episode_style: MultiEpisodeStyle
+    standard_title_token: str
+    daily_title_token: str
+    anime_title_token: str
+    dvd_title_token: str
+
+
+@dataclass(slots=True)
+class DynamicRangeSettings:
+    resolutions: dict[ResolutionKey, bool]
+    hdr_types: dict[HdrType, bool]
+    custom_strings: dict[HdrType, str]
+
+    def to_dict(
+        self,
+    ) -> DynamicRangeSettingsData:
+        return {
+            "resolutions": dict[ResolutionKey, bool](self.resolutions),
+            "hdr_types": dict[HdrType, bool](self.hdr_types),
+            "custom_strings": dict[HdrType, str](self.custom_strings),
+        }
+
+    @overload
+    def __getitem__(self, key: Literal["resolutions"]) -> dict[ResolutionKey, bool]: ...
+
+    @overload
+    def __getitem__(self, key: Literal["hdr_types"]) -> dict[HdrType, bool]: ...
+
+    @overload
+    def __getitem__(self, key: Literal["custom_strings"]) -> dict[HdrType, str]: ...
+
+    @overload
+    def __getitem__(
+        self, key: str
+    ) -> dict[ResolutionKey, bool] | dict[HdrType, bool] | dict[HdrType, str]: ...
+
+    def __getitem__(
+        self, key: str
+    ) -> dict[ResolutionKey, bool] | dict[HdrType, bool] | dict[HdrType, str]:
+        if key == "resolutions":
+            return self.resolutions
+        if key == "hdr_types":
+            return self.hdr_types
+        if key == "custom_strings":
+            return self.custom_strings
+        raise KeyError(key)
+
+    @overload
+    def get(
+        self, key: Literal["resolutions"], default: None = None
+    ) -> dict[ResolutionKey, bool] | None: ...
+
+    @overload
+    def get(
+        self, key: Literal["resolutions"], default: dict[ResolutionKey, bool]
+    ) -> dict[ResolutionKey, bool]: ...
+
+    @overload
+    def get(
+        self, key: Literal["hdr_types"], default: None = None
+    ) -> dict[HdrType, bool] | None: ...
+
+    @overload
+    def get(
+        self, key: Literal["hdr_types"], default: dict[HdrType, bool]
+    ) -> dict[HdrType, bool]: ...
+
+    @overload
+    def get(
+        self, key: Literal["custom_strings"], default: None = None
+    ) -> dict[HdrType, str] | None: ...
+
+    @overload
+    def get(
+        self, key: Literal["custom_strings"], default: dict[HdrType, str]
+    ) -> dict[HdrType, str]: ...
+
+    @overload
+    def get(
+        self,
+        key: str,
+        default: dict[ResolutionKey, bool]
+        | dict[HdrType, bool]
+        | dict[HdrType, str]
+        | None = None,
+    ) -> (
+        dict[ResolutionKey, bool] | dict[HdrType, bool] | dict[HdrType, str] | None
+    ): ...
+
+    def get(
+        self,
+        key: str,
+        default: dict[ResolutionKey, bool]
+        | dict[HdrType, bool]
+        | dict[HdrType, str]
+        | None = None,
+    ) -> dict[ResolutionKey, bool] | dict[HdrType, bool] | dict[HdrType, str] | None:
+        try:
+            return self[key]
+        except KeyError:
+            return default
+
+
+@dataclass(slots=True)
+class GlobalManagementSettings:
+    title_clean_rules: list[ReplacementRule]
+    title_clean_rules_modified: bool
+    video_dynamic_range: DynamicRangeSettings
+
+
+@dataclass(slots=True)
+class UserTokenSettings:
+    tokens: dict[str, UserToken]
+
+
+@dataclass(slots=True)
+class ScreenshotSettings:
+    crop_mode: Cropping
+    enabled: bool
+    count: int
+    mode: ScreenShotMode
+    subtitle_height_720: int
+    subtitle_height_1080: int
+    subtitle_height_2160: int
+    subtitle_alignment: SubtitleAlignment
+    subtitle_color: str
+    subtitle_outline_color: str
+    trim_start: int
+    trim_end: int
+    min_required_selected: int
+    max_required_selected: int
+    comparison_subtitles: bool
+    comparison_source_name: str
+    comparison_encode_name: str
+    optimize_generated_images: bool
+    optimize_downloaded_images: bool
+    optimize_downloaded_images_percentage: float
+    indexer: Indexer
+    image_plugin: ImagePlugin
+
+
+@dataclass(slots=True)
+class ImageHostSettings:
+    # Chevereto sites are user-managed lists rather than single slots: one
+    # Chevereto build powers many sites (ptscreens, and the OnlyImage/Lensdump
+    # entries below), so a single slot meant choosing one of them per profile.
+    chevereto_v3: list[CheveretoV3Payload]
+    chevereto_v4: list[CheveretoV4Payload]
+    image_bb: ImageBBPayload
+    image_box: ImageBoxPayload
+    only_image: OnlyImagePayload
+    pixhost: PixhostPayload
+    lensdump: LensdumpPayload
+
+    def by_selection(self) -> dict[ImageHostRef, ImagePayloadBase]:
+        hosts: dict[ImageHostRef, ImagePayloadBase] = {}
+        for kind, instances in (
+            (ImageHost.CHEVERETO_V3, self.chevereto_v3),
+            (ImageHost.CHEVERETO_V4, self.chevereto_v4),
+        ):
+            for instance in instances:
+                hosts[
+                    ImageHostRef(
+                        kind=kind,
+                        instance_id=instance.instance_id,
+                        label=instance.label,
+                    )
+                ] = instance
+        for kind, payload in (
+            (ImageHost.IMAGE_BB, self.image_bb),
+            (ImageHost.IMAGE_BOX, self.image_box),
+            (ImageHost.ONLY_IMAGE, self.only_image),
+            (ImageHost.PIXHOST, self.pixhost),
+            (ImageHost.LENSDUMP, self.lensdump),
+        ):
+            hosts[ImageHostRef(kind=kind)] = payload
+        return hosts
+
+    def instance_for(self, ref: ImageHostRef) -> ImagePayloadBase | None:
+        """The payload `ref` points at, or None once it has been deleted."""
+        return self.by_selection().get(ref)
+
+
+@dataclass(slots=True)
+class UrlSettings:
+    alt: str
+    columns: int
+    vertical: int
+    horizontal: int
+    mode: int
+    type: URLType
+    image_width: int
+    manual: int
+
+
+@dataclass(slots=True)
+class PluginSettings:
+    wizard_page: str | None
+    token_replacer: str | None
+    pre_upload: str | None
+    post_upload: str | None
+    metadata_transformer: str | None
+    image_host_uploader: str | None
+    duplicate_checker: str | None
+
+
+@dataclass(slots=True)
+class TemplateSettings:
+    block_syntax_color: str
+    variable_syntax_color: str
+    comment_syntax_color: str
+    warning_syntax_color: str
+    trim_blocks: bool
+    lstrip_blocks: bool
+    newline_sequence: str
+    keep_trailing_newline: bool
+    enable_sandbox_prompt_tokens: bool
+
+
+@dataclass(slots=True)
+class ReleaseNoteSettings:
+    enabled: bool
+    last_used: str
+    notes: dict[str, str]
+
+
+@dataclass(slots=True)
+class WidgetSettings:
+    prompt_token_editor_warn_on_missing: bool
+
+
+@dataclass(slots=True)
+class AppConfig:
+    general: GeneralSettings
+    api_keys: ApiKeysSettings
+    dependencies: DependencySettings
+    trackers: TrackerSettings
+    torrent_clients: TorrentClientSettings
+    movie: MovieSettings
+    series: SeriesSettings
+    global_management: GlobalManagementSettings
+    user_tokens: UserTokenSettings
+    screenshots: ScreenshotSettings
+    image_hosts: ImageHostSettings
+    urls: UrlSettings
+    plugins: PluginSettings
+    templates: TemplateSettings
+    release_notes: ReleaseNoteSettings
+    widgets: WidgetSettings

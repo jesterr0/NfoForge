@@ -1,7 +1,7 @@
 from PySide6.QtTest import QTest
 
-from src.enums.tracker_selection import TrackerSelection
-from src.frontend.custom_widgets.overview_dialog import OverviewDialog
+from nfoforge.enums.tracker_selection import TrackerSelection
+from nfoforge.frontend.custom_widgets.overview_dialog import OverviewDialog
 
 # characters Qt silently rewrites when text is pushed into its editors: a non
 # breaking space becomes a plain space and CRLF/CR collapse to "\n". An NFO

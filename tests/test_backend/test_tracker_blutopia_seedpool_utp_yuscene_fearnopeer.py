@@ -1,6 +1,6 @@
 """Unit coverage for the 5 UNIT3D trackers added alongside HDBits: Blutopia,
 SeedPool, UTP, Yu-scene, and FearNoPeer. Each is a thin parametrization of
-the shared Unit3dBaseUploader/Unit3dBaseSearch pair (src/backend/trackers/
+the shared Unit3dBaseUploader/Unit3dBaseSearch pair (nfoforge/backend/trackers/
 unit3d_base.py) -- these tests lock in the per-site category/type/
 resolution ID mapping, UTP's narrower resolution support, and Blutopia's
 mod_queue_opt_in field (the one place these 5 aren't all identical)."""
@@ -13,24 +13,24 @@ from unittest.mock import patch
 from pymediainfo import MediaInfo
 import pytest
 
-from src.backend.trackers.blutopia import BlutopiaUploader, blu_uploader
-from src.backend.trackers.fearnopeer import FearNoPeerUploader, fnp_uploader
-from src.backend.trackers.seedpool import SeedPoolUploader, sp_uploader
-from src.backend.trackers.unit3d_base import Unit3dBaseUploader
-from src.backend.trackers.utp import UTPUploader, utp_uploader
-from src.backend.trackers.yuscene import YuSceneUploader, yus_uploader
-from src.enums.media_type import MediaType
-from src.enums.trackers.blutopia import (
+from nfoforge.backend.trackers.blutopia import BlutopiaUploader, blu_uploader
+from nfoforge.backend.trackers.fearnopeer import FearNoPeerUploader, fnp_uploader
+from nfoforge.backend.trackers.seedpool import SeedPoolUploader, sp_uploader
+from nfoforge.backend.trackers.unit3d_base import Unit3dBaseUploader
+from nfoforge.backend.trackers.utp import UTPUploader, utp_uploader
+from nfoforge.backend.trackers.yuscene import YuSceneUploader, yus_uploader
+from nfoforge.enums.media_type import MediaType
+from nfoforge.enums.trackers.blutopia import (
     BlutopiaCategory,
     BlutopiaResolution,
     BlutopiaType,
 )
-from src.enums.trackers.fearnopeer import FearNoPeerType
-from src.enums.trackers.seedpool import SeedPoolType
-from src.enums.trackers.utp import UTPResolution, UTPType
-from src.enums.trackers.yuscene import YuSceneType
-from src.exceptions import TrackerError
-from src.payloads.media_search import MediaSearchPayload
+from nfoforge.enums.trackers.fearnopeer import FearNoPeerType
+from nfoforge.enums.trackers.seedpool import SeedPoolType
+from nfoforge.enums.trackers.utp import UTPResolution, UTPType
+from nfoforge.enums.trackers.yuscene import YuSceneType
+from nfoforge.exceptions import TrackerError
+from nfoforge.payloads.media_search import MediaSearchPayload
 
 
 def _uploader(
@@ -257,13 +257,13 @@ def test_a_supplied_title_reaches_the_payload_verbatim(
 @pytest.mark.parametrize(
     ("wrapper", "uploader_cls_path"),
     [
-        (blu_uploader, "src.backend.trackers.blutopia.BlutopiaUploader.upload"),
-        (sp_uploader, "src.backend.trackers.seedpool.SeedPoolUploader.upload"),
-        (utp_uploader, "src.backend.trackers.utp.UTPUploader.upload"),
-        (yus_uploader, "src.backend.trackers.yuscene.YuSceneUploader.upload"),
+        (blu_uploader, "nfoforge.backend.trackers.blutopia.BlutopiaUploader.upload"),
+        (sp_uploader, "nfoforge.backend.trackers.seedpool.SeedPoolUploader.upload"),
+        (utp_uploader, "nfoforge.backend.trackers.utp.UTPUploader.upload"),
+        (yus_uploader, "nfoforge.backend.trackers.yuscene.YuSceneUploader.upload"),
         (
             fnp_uploader,
-            "src.backend.trackers.fearnopeer.FearNoPeerUploader.upload",
+            "nfoforge.backend.trackers.fearnopeer.FearNoPeerUploader.upload",
         ),
     ],
 )

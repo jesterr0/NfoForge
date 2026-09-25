@@ -10,13 +10,13 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
 
-from src.backend.process import ProcessBackEnd
-from src.config.config import ConfigManager
-from src.config.models import ClaimSwitches
-from src.context.processing_context import ProcessingContext
-from src.enums.media_type import MediaType
-from src.payloads.media_inputs import MediaInputPayload
-from src.payloads.media_search import MediaSearchPayload
+from nfoforge.backend.process import ProcessBackEnd
+from nfoforge.config.config import ConfigManager
+from nfoforge.config.models import ClaimSwitches
+from nfoforge.context.processing_context import ProcessingContext
+from nfoforge.enums.media_type import MediaType
+from nfoforge.payloads.media_inputs import MediaInputPayload
+from nfoforge.payloads.media_search import MediaSearchPayload
 
 MOVIE_STEM = "Movie.2024.Directors.Cut.IMAX.REPACK.1080p.BluRay.x264-GRP"
 

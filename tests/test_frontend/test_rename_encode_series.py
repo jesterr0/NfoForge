@@ -5,21 +5,21 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QDialog, QMessageBox
 import pytest
 
-from src.backend.rename_encode_series import RenameEncodeSeriesBackEnd
-from src.backend.utils.filename_claims import PER_FILE_CLAIM_KEYS
-from src.config.config import ConfigManager
-from src.config.paths import ConfigPaths
-from src.context.processing_context import ProcessingContext
-from src.enums.media_type import MediaType
-from src.enums.series import EpisodeFormat
-from src.frontend.custom_widgets.episode_claims_table import (
+from nfoforge.backend.rename_encode_series import RenameEncodeSeriesBackEnd
+from nfoforge.backend.utils.filename_claims import PER_FILE_CLAIM_KEYS
+from nfoforge.config.config import ConfigManager
+from nfoforge.config.paths import ConfigPaths
+from nfoforge.context.processing_context import ProcessingContext
+from nfoforge.enums.media_type import MediaType
+from nfoforge.enums.series import EpisodeFormat
+from nfoforge.frontend.custom_widgets.episode_claims_table import (
     CLAIM_COLUMNS,
     VALUE_CLAIMS,
     _is_checked,
 )
-from src.frontend.wizards.rename_encode_series import RenameEncodeSeries
-from src.payloads.media_inputs import MediaInputPayload
-from src.payloads.media_search import MediaSearchPayload
+from nfoforge.frontend.wizards.rename_encode_series import RenameEncodeSeries
+from nfoforge.payloads.media_inputs import MediaInputPayload
+from nfoforge.payloads.media_search import MediaSearchPayload
 from tests.repo_paths import build_app_paths
 
 # a token template that exercises the same "{token|filter}" shape used by the
@@ -39,7 +39,7 @@ def _make_series_rename_page(
     episode_map: dict | None = None,
 ) -> RenameEncodeSeries:
     monkeypatch.setattr(
-        "src.config.config.FindDependencies.update_dependencies",
+        "nfoforge.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
     )
 
@@ -249,7 +249,7 @@ def test_partial_episode_rename_failure_warns_but_does_not_abort(
         lambda self, **kwargs: None,
     )
     monkeypatch.setattr(
-        "src.frontend.wizards.rename_encode_series.RenamePreviewDialog.exec",
+        "nfoforge.frontend.wizards.rename_encode_series.RenamePreviewDialog.exec",
         lambda self: QDialog.DialogCode.Rejected,
     )
 
@@ -326,11 +326,11 @@ def _captured_plan(
         captured["directories"] = directory_map
 
     monkeypatch.setattr(
-        "src.frontend.wizards.rename_encode_series.RenamePreviewDialog.set_renames",
+        "nfoforge.frontend.wizards.rename_encode_series.RenamePreviewDialog.set_renames",
         _capture,
     )
     monkeypatch.setattr(
-        "src.frontend.wizards.rename_encode_series.RenamePreviewDialog.exec",
+        "nfoforge.frontend.wizards.rename_encode_series.RenamePreviewDialog.exec",
         lambda self: QDialog.DialogCode.Rejected,
     )
 

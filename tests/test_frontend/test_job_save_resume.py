@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (
 import pytest
 from torf import Torrent
 
-from src.backend.jobs import (
+from nfoforge.backend.jobs import (
     MediaFingerprint,
     context_from_dict,
     context_to_dict,
@@ -28,24 +28,28 @@ from src.backend.jobs import (
     template_fingerprint,
     torrent_content_files,
 )
-from src.backend.jobs.models import JobSummary
-from src.backend.upload_retry import TrackerRunOutcome
-from src.backend.utils.media_info_utils import clear_full_mi_str_cache
-from src.context.processing_context import ProcessingContext
-from src.enums.image_host import ImageHost, ImageSource
-from src.enums.media_type import MediaType
-from src.enums.tracker_selection import TrackerSelection
-from src.enums.upload_process import UploadProcessMode
-from src.enums.wizard import WizardPages
-from src.frontend.custom_widgets import load_job_dialog as load_job_dialog_module
-from src.frontend.custom_widgets.combo_qtree import ComboBoxTreeWidget
-from src.frontend.custom_widgets.load_job_dialog import LoadJobDialog
-from src.frontend.global_signals import GSigs
-from src.frontend.wizards import process as process_module, wizard as wizard_module
-from src.frontend.wizards.process import ProcessPage
-from src.frontend.wizards.wizard import MainWindowWizard
-from src.packages.custom_types import ImageHostRef, ImageUploadData, ImageUploadFromTo
-from src.payloads.image_hosts import ImagePayloadBase
+from nfoforge.backend.jobs.models import JobSummary
+from nfoforge.backend.upload_retry import TrackerRunOutcome
+from nfoforge.backend.utils.media_info_utils import clear_full_mi_str_cache
+from nfoforge.context.processing_context import ProcessingContext
+from nfoforge.enums.image_host import ImageHost, ImageSource
+from nfoforge.enums.media_type import MediaType
+from nfoforge.enums.tracker_selection import TrackerSelection
+from nfoforge.enums.upload_process import UploadProcessMode
+from nfoforge.enums.wizard import WizardPages
+from nfoforge.frontend.custom_widgets import load_job_dialog as load_job_dialog_module
+from nfoforge.frontend.custom_widgets.combo_qtree import ComboBoxTreeWidget
+from nfoforge.frontend.custom_widgets.load_job_dialog import LoadJobDialog
+from nfoforge.frontend.global_signals import GSigs
+from nfoforge.frontend.wizards import process as process_module, wizard as wizard_module
+from nfoforge.frontend.wizards.process import ProcessPage
+from nfoforge.frontend.wizards.wizard import MainWindowWizard
+from nfoforge.packages.custom_types import (
+    ImageHostRef,
+    ImageUploadData,
+    ImageUploadFromTo,
+)
+from nfoforge.payloads.image_hosts import ImagePayloadBase
 
 
 @pytest.fixture(autouse=True)
@@ -1641,7 +1645,7 @@ def test_starting_over_drops_mediainfo_cached_by_a_loaded_job(
     qapp: Any, sample_media: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A stale dump would be sent to a tracker as if it described the new file."""
-    from src.backend.utils import media_info_utils
+    from nfoforge.backend.utils import media_info_utils
 
     media_info_utils.cache_full_mi_str(sample_media, "dump from the previous job")
 
@@ -1758,18 +1762,18 @@ def test_a_job_name_with_markup_is_rendered_as_plain_text_in_the_saved_box(
 
     # Mock media validation.
     monkeypatch.setattr(
-        "src.context.processing_context.MediaInputPayload.require_existing_media_paths",
+        "nfoforge.context.processing_context.MediaInputPayload.require_existing_media_paths",
         lambda *_, **__: None,
     )
 
     monkeypatch.setattr(
-        "src.frontend.wizards.process.build_job",
+        "nfoforge.frontend.wizards.process.build_job",
         lambda **_: SimpleNamespace(
             name="<b>bold</b> job", job_id="test-id", context={}
         ),
     )
     monkeypatch.setattr(
-        "src.frontend.wizards.process.save_job",
+        "nfoforge.frontend.wizards.process.save_job",
         lambda *_: Path("/saved/job"),
     )
 

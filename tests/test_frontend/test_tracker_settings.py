@@ -5,20 +5,20 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QWidget
 import pytest
 
-from src.backend.trackers.media_support import UNSUPPORTED_SERIES_TRACKERS
-from src.config.config import ConfigManager
-from src.config.paths import ConfigPaths
-from src.enums.tracker_selection import TrackerSelection
-from src.frontend.custom_widgets.tracker_management import (
+from nfoforge.backend.trackers.media_support import UNSUPPORTED_SERIES_TRACKERS
+from nfoforge.config.config import ConfigManager
+from nfoforge.config.paths import ConfigPaths
+from nfoforge.enums.tracker_selection import TrackerSelection
+from nfoforge.frontend.custom_widgets.tracker_management import (
     BHDTrackerEdit,
     LSTTrackerEdit,
     TLTrackerEdit,
 )
-from src.frontend.custom_widgets.tracker_settings import (
+from nfoforge.frontend.custom_widgets.tracker_settings import (
     TrackerListDelegate,
     TrackerSettingsWidget,
 )
-from src.frontend.stacked_windows.settings.trackers import TrackersSettings
+from nfoforge.frontend.stacked_windows.settings.trackers import TrackersSettings
 from tests.repo_paths import build_app_paths
 
 # Qt's QWIDGETSIZE_MAX: the `maximumWidth` of a widget nobody has capped.
@@ -34,7 +34,7 @@ def _make_tracker_settings(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> tuple[TrackersSettings, ConfigManager]:
     monkeypatch.setattr(
-        "src.config.config.FindDependencies.update_dependencies",
+        "nfoforge.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
     )
     manager = ConfigManager("test", _paths(tmp_path))

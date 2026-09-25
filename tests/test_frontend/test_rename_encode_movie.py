@@ -6,14 +6,14 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QDialog
 import pytest
 
-from src.backend.rename_encode import RenameEncodeBackEnd
-from src.config.config import ConfigManager
-from src.config.paths import ConfigPaths
-from src.context.processing_context import ProcessingContext
-from src.enums.media_type import MediaType
-from src.frontend.wizards.rename_encode import RenameEncode
-from src.payloads.media_inputs import MediaInputPayload
-from src.payloads.media_search import MediaSearchPayload
+from nfoforge.backend.rename_encode import RenameEncodeBackEnd
+from nfoforge.config.config import ConfigManager
+from nfoforge.config.paths import ConfigPaths
+from nfoforge.context.processing_context import ProcessingContext
+from nfoforge.enums.media_type import MediaType
+from nfoforge.frontend.wizards.rename_encode import RenameEncode
+from nfoforge.payloads.media_inputs import MediaInputPayload
+from nfoforge.payloads.media_search import MediaSearchPayload
 from tests.repo_paths import build_app_paths
 
 
@@ -28,7 +28,7 @@ def _make_movie_rename_page(
     file_list: list[Path] | None = None,
 ) -> RenameEncode:
     monkeypatch.setattr(
-        "src.config.config.FindDependencies.update_dependencies",
+        "nfoforge.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
     )
 
@@ -84,7 +84,7 @@ def test_confirmed_folder_and_file_rename_updates_payload_asynchronously(
     monkeypatch.setattr(page, "_name_validations", lambda: True)
     monkeypatch.setattr(page, "_quality_validations", lambda: True)
     monkeypatch.setattr(
-        "src.frontend.wizards.rename_encode.RenamePreviewDialog.exec",
+        "nfoforge.frontend.wizards.rename_encode.RenamePreviewDialog.exec",
         lambda self: QDialog.DialogCode.Accepted,
     )
 

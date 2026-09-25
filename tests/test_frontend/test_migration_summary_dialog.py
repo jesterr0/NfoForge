@@ -11,16 +11,16 @@ from pathlib import Path
 
 import pytest
 
-from src.config.layout_apply import Diversion, MigrationOutcome, MigrationRun
-from src.config.layout_migration import (
+from nfoforge.config.layout_apply import Diversion, MigrationOutcome, MigrationRun
+from nfoforge.config.layout_migration import (
     ActionKind,
     Finding,
     FindingKind,
     MigrationPlan,
     PlannedAction,
 )
-import src.frontend.windows.migration_summary_dialog as summary_module
-from src.frontend.windows.migration_summary_dialog import MigrationSummaryDialog
+import nfoforge.frontend.windows.migration_summary_dialog as summary_module
+from nfoforge.frontend.windows.migration_summary_dialog import MigrationSummaryDialog
 
 
 @pytest.fixture

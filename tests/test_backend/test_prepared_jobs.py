@@ -12,13 +12,13 @@ from unittest.mock import MagicMock
 
 import pytest
 
-import src.backend.process as process_module
-from src.backend.process import ProcessBackEnd
-from src.backend.template_selector import TemplateSelectorBackEnd
-from src.backend.torrents import generate_torrent
-from src.context.processing_context import ProcessingContext
-from src.enums.tracker_selection import TrackerSelection
-from src.enums.upload_process import RunPhase
+import nfoforge.backend.process as process_module
+from nfoforge.backend.process import ProcessBackEnd
+from nfoforge.backend.template_selector import TemplateSelectorBackEnd
+from nfoforge.backend.torrents import generate_torrent
+from nfoforge.context.processing_context import ProcessingContext
+from nfoforge.enums.tracker_selection import TrackerSelection
+from nfoforge.enums.upload_process import RunPhase
 
 
 def _tracker_info() -> Any:

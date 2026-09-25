@@ -1,4 +1,4 @@
-from src.backend.utils.guessit_helpers import get_guessit_title
+from nfoforge.backend.utils.guessit_helpers import get_guessit_title
 
 
 def test_get_guessit_title_keeps_scalar_title() -> None:

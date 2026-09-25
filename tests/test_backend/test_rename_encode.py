@@ -4,8 +4,8 @@ from pathlib import Path
 import pytest
 from tenacity.wait import wait_none
 
-from src.backend import rename_files
-from src.backend.rename_files import RenameExecutor, RenamePlan
+from nfoforge.backend import rename_files
+from nfoforge.backend.rename_files import RenameExecutor, RenamePlan
 
 
 @pytest.fixture(autouse=True)

@@ -4,20 +4,20 @@ from unittest.mock import Mock
 from pymediainfo import MediaInfo
 import pytest
 
-from src.backend.token_replacer import TokenReplacer
-from src.backend.tokens import FileToken, TokenData
-from src.backend.utils.example_parsed_series_data import (
+from nfoforge.backend.token_replacer import TokenReplacer
+from nfoforge.backend.tokens import FileToken, TokenData
+from nfoforge.backend.utils.example_parsed_series_data import (
     EXAMPLE_MEDIA_INPUT_PAYLOAD,
     EXAMPLE_MEDIAINFO_OBJ,
     EXAMPLE_SEARCH_PAYLOAD,
 )
-from src.enums.media_type import MediaType
-from src.enums.multi_episode_style import MultiEpisodeStyle
-from src.enums.series import EpisodeFormat
-from src.enums.token_replacer import ColonReplace, UnfilledTokenRemoval
-from src.nf_jinja2 import Jinja2TemplateEngine
-from src.payloads.media_inputs import MediaInputPayload
-from src.payloads.media_search import MediaSearchPayload
+from nfoforge.enums.media_type import MediaType
+from nfoforge.enums.multi_episode_style import MultiEpisodeStyle
+from nfoforge.enums.series import EpisodeFormat
+from nfoforge.enums.token_replacer import ColonReplace, UnfilledTokenRemoval
+from nfoforge.nf_jinja2 import Jinja2TemplateEngine
+from nfoforge.payloads.media_inputs import MediaInputPayload
+from nfoforge.payloads.media_search import MediaSearchPayload
 
 
 def _td() -> TokenData:
@@ -163,7 +163,7 @@ def _series_search_replacer(
 def _series_replacer_from_example(token: str) -> TokenReplacer:
     """Mirrors the series-management settings preview's TokenReplacer call
     (`_update_example` in
-    src/frontend/stacked_windows/settings/series_management.py):
+    nfoforge/frontend/stacked_windows/settings/series_management.py):
     EXAMPLE_MEDIA_INPUT_PAYLOAD/EXAMPLE_SEARCH_PAYLOAD, season 1 episode 1,
     flattened, no jinja engine, and no series_episode_map beyond the one
     baked into the fixture itself."""

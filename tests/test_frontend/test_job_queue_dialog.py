@@ -12,8 +12,8 @@ from typing import Any
 from PySide6.QtWidgets import QDialogButtonBox, QMessageBox
 import pytest
 
-from src.backend.job_queue import JobDisposition, QueuedJobOutcome, QueuedJobResult
-from src.frontend.custom_widgets.job_queue_dialog import JobQueueDialog
+from nfoforge.backend.job_queue import JobDisposition, QueuedJobOutcome, QueuedJobResult
+from nfoforge.frontend.custom_widgets.job_queue_dialog import JobQueueDialog
 
 
 @pytest.fixture

@@ -3,12 +3,12 @@ from pathlib import Path
 
 import pytest
 
-from src.backend.process import ProcessBackEnd
-from src.config.config import ConfigManager
-from src.config.paths import ConfigPaths
-from src.context.processing_context import ProcessingContext
-from src.enums.tracker_selection import TrackerSelection
-from src.plugins.api import PluginDefinition, PreUploadDecision, PreUploadRequest
+from nfoforge.backend.process import ProcessBackEnd
+from nfoforge.config.config import ConfigManager
+from nfoforge.config.paths import ConfigPaths
+from nfoforge.context.processing_context import ProcessingContext
+from nfoforge.enums.tracker_selection import TrackerSelection
+from nfoforge.plugins.api import PluginDefinition, PreUploadDecision, PreUploadRequest
 from tests.repo_paths import build_app_paths
 
 
@@ -36,7 +36,7 @@ def _any_torrent_path() -> Path:
 @pytest.fixture
 def process_backend(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> ProcessBackEnd:
     monkeypatch.setattr(
-        "src.config.config.FindDependencies.update_dependencies",
+        "nfoforge.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
     )
     config = ConfigManager("test", _paths(tmp_path))

@@ -17,13 +17,13 @@ from unittest.mock import MagicMock
 import pytest
 from torf import Torrent
 
-import src.backend.process as process_module
-from src.backend.process import ProcessBackEnd
-from src.backend.torrents import BASE_TORRENT_SUFFIX, generate_torrent
-from src.backend.torrents.torrent import NFO_FORGE_CREATOR
-from src.context.processing_context import ProcessingContext
-from src.enums.tracker_selection import TrackerSelection
-from src.enums.upload_process import RunPhase
+import nfoforge.backend.process as process_module
+from nfoforge.backend.process import ProcessBackEnd
+from nfoforge.backend.torrents import BASE_TORRENT_SUFFIX, generate_torrent
+from nfoforge.backend.torrents.torrent import NFO_FORGE_CREATOR
+from nfoforge.context.processing_context import ProcessingContext
+from nfoforge.enums.tracker_selection import TrackerSelection
+from nfoforge.enums.upload_process import RunPhase
 
 _TRACKERS = {
     TrackerSelection.AITHER: SimpleNamespace(

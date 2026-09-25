@@ -4,9 +4,9 @@ from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QWidget
 import pytest
 
-from src.config.config import ConfigManager
-from src.config.paths import ConfigPaths
-from src.frontend.stacked_windows.settings.templates import TemplatesSettings
+from nfoforge.config.config import ConfigManager
+from nfoforge.config.paths import ConfigPaths
+from nfoforge.frontend.stacked_windows.settings.templates import TemplatesSettings
 from tests.repo_paths import build_app_paths
 
 
@@ -18,7 +18,7 @@ def _make_templates_settings(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> tuple[TemplatesSettings, ConfigManager]:
     monkeypatch.setattr(
-        "src.config.config.FindDependencies.update_dependencies",
+        "nfoforge.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
     )
     manager = ConfigManager("test", _paths(tmp_path))

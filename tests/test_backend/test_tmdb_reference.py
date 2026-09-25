@@ -1,7 +1,7 @@
 import pytest
 
-from src.backend.utils.tmdb_reference import TmdbReference, parse_tmdb_reference
-from src.enums.media_type import MediaType
+from nfoforge.backend.utils.tmdb_reference import TmdbReference, parse_tmdb_reference
+from nfoforge.enums.media_type import MediaType
 
 
 @pytest.mark.parametrize(

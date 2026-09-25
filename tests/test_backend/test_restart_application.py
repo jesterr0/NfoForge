@@ -1,7 +1,7 @@
 import pytest
 
-import src.backend.main_window as main_window_module
-from src.backend.main_window import restart_application
+import nfoforge.backend.main_window as main_window_module
+from nfoforge.backend.main_window import restart_application
 
 
 class _FakeMainWindow:

@@ -1,6 +1,6 @@
 import pytest
 
-from src.utils.secret_redaction import blank_credentials, scrub_secrets
+from nfoforge.utils.secret_redaction import blank_credentials, scrub_secrets
 
 
 @pytest.mark.parametrize(

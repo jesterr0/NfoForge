@@ -7,17 +7,17 @@ import time
 
 import pytest
 
-from src.backend.image_host_uploading.base_image_host import (
+from nfoforge.backend.image_host_uploading.base_image_host import (
     BaseImageHostUploader,
     ImageUploadRequest,
 )
-from src.enums.tracker_selection import TrackerSelection
-from src.exceptions import PluginError, PluginExecutionError
-from src.packages.custom_types import ImageUploadData, RenameNormalization
-from src.payloads.media_inputs import MediaInputPayload
-from src.payloads.media_search import MediaSearchPayload
-from src.payloads.tracker_search_result import TrackerSearchResult
-from src.plugins.api import (
+from nfoforge.enums.tracker_selection import TrackerSelection
+from nfoforge.exceptions import PluginError, PluginExecutionError
+from nfoforge.packages.custom_types import ImageUploadData, RenameNormalization
+from nfoforge.payloads.media_inputs import MediaInputPayload
+from nfoforge.payloads.media_search import MediaSearchPayload
+from nfoforge.payloads.tracker_search_result import TrackerSearchResult
+from nfoforge.plugins.api import (
     CustomEditionContribution,
     DuplicateChecker,
     DuplicateCheckRequest,
@@ -31,7 +31,7 @@ from src.plugins.api import (
     PostUploadRequest,
     UploadReporter,
 )
-from src.plugins.manager import PluginManager
+from nfoforge.plugins.manager import PluginManager
 
 
 def _definition(

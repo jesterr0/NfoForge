@@ -1,6 +1,6 @@
 import pytest
 
-from src.utils.announce_url import ensure_torrentleech_announce_url
+from nfoforge.utils.announce_url import ensure_torrentleech_announce_url
 
 
 @pytest.mark.parametrize(

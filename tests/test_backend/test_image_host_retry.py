@@ -14,14 +14,17 @@ from unittest.mock import MagicMock, patch
 import aiohttp
 import pytest
 
-from src.backend.image_host_uploading.base_image_host import ImageUploadRequest
-from src.backend.image_host_uploading.pixhost import PixhostUploader, pixhost_upload
-from src.backend.image_host_uploading.retry import (
+from nfoforge.backend.image_host_uploading.base_image_host import ImageUploadRequest
+from nfoforge.backend.image_host_uploading.pixhost import (
+    PixhostUploader,
+    pixhost_upload,
+)
+from nfoforge.backend.image_host_uploading.retry import (
     RetryableStatus,
     image_client_timeout,
     retry_image_upload,
 )
-from src.packages.custom_types import ImageUploadData
+from nfoforge.packages.custom_types import ImageUploadData
 
 
 class _MockResponse:
@@ -80,7 +83,9 @@ def test_a_hosts_session_is_given_the_requested_timeout(tmp_path: Path) -> None:
         )
     )
     with (
-        patch("src.backend.image_host_uploading.pixhost.image_client_timeout", record),
+        patch(
+            "nfoforge.backend.image_host_uploading.pixhost.image_client_timeout", record
+        ),
         patch("aiohttp.ClientSession.post", post),
     ):
         asyncio.run(
