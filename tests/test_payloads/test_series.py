@@ -7,6 +7,7 @@ import pytest
 from nfoforge.backend.process import ProcessBackEnd
 from nfoforge.backend.token_replacer import TokenReplacer
 from nfoforge.backend.tokens import FileToken
+from nfoforge.core.series.match import match_by_absolute, match_by_air_date
 from nfoforge.enums.media_type import MediaType
 from nfoforge.enums.multi_episode_style import MultiEpisodeStyle
 from nfoforge.enums.series import EpisodeFormat
@@ -14,8 +15,6 @@ from nfoforge.enums.token_replacer import ColonReplace, UnfilledTokenRemoval
 from nfoforge.frontend.custom_widgets.series_episode_mapper import (
     NO_TVDB_EPISODE_DATA_MESSAGE,
     SeriesEpisodeMapper,
-    match_by_absolute,
-    match_by_air_date,
 )
 from nfoforge.payloads.media_inputs import MediaInputPayload
 from nfoforge.payloads.media_search import MediaSearchPayload
