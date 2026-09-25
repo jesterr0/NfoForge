@@ -13,6 +13,11 @@ from nfoforge.backend.utils.tmdb_reference import TmdbReference
 from nfoforge.config.config import ConfigManager
 from nfoforge.config.paths import ConfigPaths
 from nfoforge.context.processing_context import ProcessingContext
+from nfoforge.core.metadata.resolve import (
+    MediaSearchJobResult,
+    run_media_search,
+    run_tmdb_id_lookup,
+)
 from nfoforge.enums.media_search_mode import MediaSearchMode
 from nfoforge.enums.media_type import MediaType
 from nfoforge.enums.tmdb_genres import TMDBGenreIDsMovies, TMDBGenreIDsSeries
@@ -21,10 +26,7 @@ from nfoforge.frontend.custom_widgets.custom_splitter import CustomSplitter
 from nfoforge.frontend.utils.general_worker import GeneralWorker
 from nfoforge.frontend.wizards.media_search import (
     MediaSearch,
-    MediaSearchJobResult,
     _alternative_title_regions,
-    _run_media_search_job,
-    _run_tmdb_id_lookup_job,
 )
 from nfoforge.payloads.media_inputs import MediaInputPayload
 from nfoforge.payloads.media_search import MediaSearchPayload
@@ -406,11 +408,9 @@ def test_automatic_search_uses_inferred_title_and_selected_files(
         def resolve_tmdb_reference(self, tmdb_id, media_type, search_mode):
             raise AssertionError("not used by this test")
 
-    monkeypatch.setattr(
-        "nfoforge.frontend.wizards.media_search.MediaTitleInferer", FakeInferer
-    )
+    monkeypatch.setattr("nfoforge.core.metadata.resolve.MediaTitleInferer", FakeInferer)
 
-    result = _run_media_search_job(
+    result = run_media_search(
         FakeBackend(),
         None,
         input_path,
@@ -442,10 +442,10 @@ def test_manual_search_bypasses_title_inference(monkeypatch) -> None:
             raise AssertionError("not used by this test")
 
     monkeypatch.setattr(
-        "nfoforge.frontend.wizards.media_search.MediaTitleInferer", FailingInferer
+        "nfoforge.core.metadata.resolve.MediaTitleInferer", FailingInferer
     )
 
-    result = _run_media_search_job(
+    result = run_media_search(
         FakeBackend(),
         "Manual Movie",
         None,
@@ -475,10 +475,10 @@ def test_title_inference_failure_returns_manual_search_error(
             raise AssertionError("not used by this test")
 
     monkeypatch.setattr(
-        "nfoforge.frontend.wizards.media_search.MediaTitleInferer", FailingInferer
+        "nfoforge.core.metadata.resolve.MediaTitleInferer", FailingInferer
     )
 
-    result = _run_media_search_job(
+    result = run_media_search(
         FakeBackend(),
         None,
         tmp_path,
@@ -502,7 +502,7 @@ def test_id_lookup_job_returns_the_resolved_row() -> None:
         def _parse_tmdb_api(self, media_str, search_mode):
             raise AssertionError("not used by this test")
 
-    result = _run_tmdb_id_lookup_job(FakeBackend(), reference, MediaSearchMode.BOTH)
+    result = run_tmdb_id_lookup(FakeBackend(), reference, MediaSearchMode.BOTH)
 
     assert result == MediaSearchJobResult(
         query=None,
@@ -523,7 +523,7 @@ def test_id_lookup_job_reports_a_bad_id_as_zero_results() -> None:
         def _parse_tmdb_api(self, media_str, search_mode):
             raise AssertionError("not used by this test")
 
-    result = _run_tmdb_id_lookup_job(FakeBackend(), reference, MediaSearchMode.BOTH)
+    result = run_tmdb_id_lookup(FakeBackend(), reference, MediaSearchMode.BOTH)
 
     assert result == MediaSearchJobResult(query=None, results=OrderedDict())
 
@@ -540,7 +540,7 @@ def test_id_lookup_job_propagates_a_network_outage() -> None:
             raise AssertionError("not used by this test")
 
     with pytest.raises(MediaSearchUnavailableError):
-        _run_tmdb_id_lookup_job(FakeBackend(), reference, MediaSearchMode.BOTH)
+        run_tmdb_id_lookup(FakeBackend(), reference, MediaSearchMode.BOTH)
 
 
 class _FakeSignal:
@@ -582,7 +582,7 @@ def test_search_box_routes_a_pasted_tmdb_url_to_the_id_lookup_job(
 
     worker = page.search_worker
     assert isinstance(worker, _FakeWorker)
-    assert worker.func is _run_tmdb_id_lookup_job
+    assert worker.func is run_tmdb_id_lookup
     assert worker.args[0] is page.backend
     assert worker.args[1] == TmdbReference(tmdb_id="603", media_type=MediaType.MOVIE)
     assert worker.started is True
@@ -601,7 +601,7 @@ def test_search_box_routes_a_tmdb_id_prefix_to_the_id_lookup_job(
 
     worker = page.search_worker
     assert isinstance(worker, _FakeWorker)
-    assert worker.func is _run_tmdb_id_lookup_job
+    assert worker.func is run_tmdb_id_lookup
     assert worker.args[1] == TmdbReference(tmdb_id="603", media_type=None)
 
 
@@ -618,7 +618,7 @@ def test_search_box_still_runs_a_plain_text_search(monkeypatch, tmp_path: Path) 
 
     worker = page.search_worker
     assert isinstance(worker, _FakeWorker)
-    assert worker.func is _run_media_search_job
+    assert worker.func is run_media_search
 
 
 def test_failed_search_clears_payload_and_preserves_query(
@@ -1093,7 +1093,7 @@ def test_series_row_genres_reach_the_id_parse_worker(
     )
     page._search_other_ids()
 
-    assert TMDBGenreIDsSeries.ANIMATION in captured["tmdb_genres"]  # type: ignore[operator]
+    assert TMDBGenreIDsSeries.ANIMATION in captured["item_data"]["genre_ids"]  # type: ignore[index]
 
 
 def test_reset_page_restores_tmdb_placeholder(tmp_path: Path) -> None:
