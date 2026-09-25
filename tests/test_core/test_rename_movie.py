@@ -9,13 +9,15 @@ import pytest
 
 from nfoforge.config.config import ConfigManager
 from nfoforge.context.processing_context import ProcessingContext
+from nfoforge.core.rename.choices import (
+    RenameChoices,
+    quality_problem,
+    rename_override_tokens,
+)
 from nfoforge.core.rename.movie import (
-    MovieRenameChoices,
     commit_movie_rename,
     detect_movie_choices,
     movie_name_problems,
-    movie_override_tokens,
-    movie_quality_problem,
     movie_rename_map,
 )
 from nfoforge.enums.media_type import MediaType
@@ -103,7 +105,7 @@ def test_the_configured_group_beats_the_detected_one(config: ConfigManager) -> N
 # tokens
 # --------------------------------------------------------------------------
 def test_blank_choices_are_left_out_but_the_group_is_always_there() -> None:
-    tokens = movie_override_tokens(MovieRenameChoices(hybrid=True))
+    tokens = rename_override_tokens(RenameChoices(hybrid=True))
 
     assert tokens == {"hybrid": "HYBRID", "release_group": ""}
 
@@ -146,8 +148,8 @@ def test_only_standard_definition_qualities_are_checked() -> None:
         },
     )
 
-    assert movie_quality_problem(QualitySelection.BLURAY, media_input) is None
-    assert movie_quality_problem(None, media_input) is None
+    assert quality_problem(QualitySelection.BLURAY, media_input) is None
+    assert quality_problem(None, media_input) is None
 
 
 def test_a_folder_holding_the_film_is_renamed_with_it(tmp_path: Path) -> None:
@@ -183,7 +185,7 @@ def test_commit_records_overrides_and_reason_globals() -> None:
 
     commit_movie_rename(
         context,
-        MovieRenameChoices(
+        RenameChoices(
             edition="Directors Cut",
             repack_reason="Repacked due to audio issues",
             proper_reason="ignored, repack wins",
