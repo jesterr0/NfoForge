@@ -37,6 +37,8 @@ class DecisionKind(StrEnum):
     """Files that could not be matched to an episode."""
     RENAME = "rename"
     """Confirm the files and folders a rename moves."""
+    MULTI_SEASON_PACK = "multi_season_pack"
+    """A multi-season pack would be filed under one season on some trackers."""
     SCREENSHOTS = "screenshots"
     """Continue without screenshots, or confirm the selection."""
     PROMPT_TOKENS = "prompt_tokens"

@@ -1,5 +1,5 @@
 import asyncio
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from html import escape
 from pathlib import Path
 import shutil
@@ -210,6 +210,8 @@ class ProcessBackEnd:
         # Asks for a PassThePopcorn 2FA code when the stored TOTP secret's code
         # is rejected. `None` means nobody can be asked, and the upload fails.
         self.prompt_2fa = prompt_2fa
+        # Upload without handing torrents to any configured client.
+        self.skip_injection = False
         self.template_selector_be = TemplateSelectorBackEnd()
         self.template_selector_be.load_templates()
 
@@ -223,6 +225,30 @@ class ProcessBackEnd:
         self.transmission_client: TransmissionClient | None = None
         self.watch_folder_counter = 0
         self.clients_can_logout = (self.qbit_client, self.deluge_client)
+
+    def unresolved_prompt_tokens(
+        self, trackers: Iterable[str | TrackerSelection], answered: Mapping[str, str]
+    ) -> list[str]:
+        """The `prompt_*` tokens these trackers' NFO templates ask for that
+        `answered` does not cover, in template order, without repeats."""
+        all_prompt_tokens: list[str] = []
+        for tracker_name in trackers:
+            tracker_info = self.config.settings.trackers.by_selection()[
+                TrackerSelection(tracker_name)
+            ]
+            # An unassigned template is a legitimate state -- the tracker
+            # simply uploads without an NFO. Reading one by an empty name is
+            # not: `read_template` treats that as a programmer error and raises.
+            if not tracker_info.nfo_template:
+                continue
+            nfo_template = self.template_selector_be.read_template(
+                name=tracker_info.nfo_template
+            )
+            if nfo_template:
+                all_prompt_tokens.extend(get_prompt_tokens(nfo_template))
+        return [
+            token for token in dict.fromkeys(all_prompt_tokens) if token not in answered
+        ]
 
     def _seed_claim_overrides(self, context: ProcessingContext) -> None:
         """Run stage 1 for a run that never reached a rename page.
@@ -1121,29 +1147,9 @@ class ProcessBackEnd:
 
         # find all prompt tokens
         if token_prompt_cb and not already_prepared:
-            all_prompt_tokens: list[str] = []
-            for tracker_name in trackers_to_generate:
-                cur_tracker = TrackerSelection(tracker_name)
-                tracker_info = self.config.settings.trackers.by_selection()[cur_tracker]
-                # An unassigned template is a legitimate state -- the tracker
-                # simply uploads without an NFO (see the `if nfo_template` guard
-                # around generation below). Reading one by an empty name is not:
-                # `read_template` treats that as a programmer error and raises.
-                if not tracker_info.nfo_template:
-                    continue
-                nfo_template = self.template_selector_be.read_template(
-                    name=tracker_info.nfo_template
-                )
-                if nfo_template:
-                    prompt_tokens = get_prompt_tokens(nfo_template)
-                    all_prompt_tokens.extend(prompt_tokens)
-
-            # remove duplicates but maintain order from prompt tokens
-            unresolved_tokens = [
-                token
-                for token in dict.fromkeys(all_prompt_tokens)
-                if token not in base_usr_tokens
-            ]
+            unresolved_tokens = self.unresolved_prompt_tokens(
+                trackers_to_generate, base_usr_tokens
+            )
             if unresolved_tokens:
                 # use a callback to wait for a response from the frontend
                 response = token_prompt_cb(unresolved_tokens)
@@ -3373,6 +3379,11 @@ class ProcessBackEnd:
         file_input: Path,
         qbittorrent_save_path: str | None = None,
     ) -> None:
+        if self.skip_injection:
+            queued_text_update(
+                f"<br />Not injecting the torrent for {tracker_name} (turned off for this run)"
+            )
+            return
         for (
             client,
             client_settings,

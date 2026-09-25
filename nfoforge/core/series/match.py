@@ -286,7 +286,7 @@ class EpisodeMatcher:
     series_format: EpisodeFormat = EpisodeFormat.STANDARD
     show_title: str | None = None
     fuzzy_enabled: bool = True
-    fuzzy_threshold: float = 70.0
+    fuzzy_threshold: float = 75.0
     mappings: dict[Path, EpisodeMapping] = field(default_factory=dict)
     parsed: dict[Path, EpisodeData] = field(default_factory=dict)
     """Each file's GuessIt parse, cached: parsing is slow enough to matter."""
