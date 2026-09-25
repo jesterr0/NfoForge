@@ -1,7 +1,7 @@
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Sequence
 from pathlib import Path
 import traceback
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt, Slot
 from PySide6.QtGui import QKeyEvent
@@ -23,13 +23,13 @@ from nfoforge.backend.jobs import (
     fingerprints_match,
     load_job,
     read_job_asset,
-    template_fingerprint,
 )
 from nfoforge.backend.template_selector import TemplateSelectorBackEnd
 from nfoforge.backend.utils.media_info_utils import clear_restored_mediainfo
 from nfoforge.config.config import ConfigManager
 from nfoforge.context.factory import create_processing_context
 from nfoforge.context.processing_context import ProcessingContext
+from nfoforge.core.trackers.validate import job_profile_problems
 from nfoforge.core.workflow.stages import RoutingOptions, Stage, next_stage
 from nfoforge.enums.media_type import MediaType
 from nfoforge.enums.tracker_selection import TrackerSelection
@@ -52,36 +52,6 @@ from nfoforge.logger.nfo_forge_logger import LOG
 
 if TYPE_CHECKING:
     from nfoforge.frontend.windows.main_window import MainWindow
-
-
-def tracker_profile_problems(
-    trackers: Iterable[TrackerSelection],
-    tracker_map: Mapping[TrackerSelection, Any],
-    template_selector: TemplateSelectorBackEnd,
-) -> list[str]:
-    """Ways the *active* profile cannot fully serve `trackers`.
-
-    A job stores no settings of its own -- credentials, templates and
-    per-tracker toggles are all read live -- so this asks the live config, not
-    the job.
-
-    Deliberately silent about a tracker with no template assigned at all: a
-    prepared job uploads a frozen NFO and does not care, and an unprepared one
-    is stopped by the pre-upload page, which names the trackers precisely.
-    """
-    available_templates = set(template_selector.load_templates())
-    problems: list[str] = []
-    for tracker in trackers:
-        tracker_info = tracker_map.get(tracker)
-        if tracker_info is None:
-            problems.append(f"{tracker}: not configured in this config")
-            continue
-        if not tracker_info.upload_enabled:
-            problems.append(f"{tracker}: uploads are disabled in this config")
-        template = tracker_info.nfo_template
-        if template and template not in available_templates:
-            problems.append(f"{tracker}: NFO template '{template}' no longer exists")
-    return problems
 
 
 # The plugin input page stands in for the input page, so both are the input
@@ -539,28 +509,6 @@ class MainWindowWizard(QWizard):
 
         context.shared_data.base_torrent = stored
 
-    @staticmethod
-    def _stale_template_warnings(
-        context: ProcessingContext, template_selector: TemplateSelectorBackEnd
-    ) -> list[str]:
-        """Name any template that has changed since this job froze its NFOs.
-
-        A prepared job deliberately uploads the NFO it prepared, so an edited
-        template does not change what goes out. That is the intended behavior --
-        this exists only so the difference is visible rather than silent.
-        """
-        warnings: list[str] = []
-        for name, digest in context.shared_data.template_fingerprints.items():
-            current = template_selector.read_template(name=name)
-            if current is None:
-                continue
-            if template_fingerprint(current) != digest:
-                warnings.append(
-                    f"template '{name}' changed since this job was prepared; "
-                    "its saved NFO will be uploaded, not the new template"
-                )
-        return warnings
-
     def _confirm_profile_can_serve_job(
         self, job_name: str, context: ProcessingContext
     ) -> bool:
@@ -571,13 +519,11 @@ class MainWindowWizard(QWizard):
         active profile has since turned off or renamed would otherwise only
         surface as a failure partway through the upload.
         """
-        template_selector = TemplateSelectorBackEnd()
-        problems = tracker_profile_problems(
-            context.shared_data.tracker_image_hosts,
+        problems = job_profile_problems(
+            context,
             self.config.settings.trackers.by_selection(),
-            template_selector,
+            TemplateSelectorBackEnd(),
         )
-        problems.extend(self._stale_template_warnings(context, template_selector))
 
         if not problems:
             return True

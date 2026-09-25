@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
 
 from nfoforge.config.config import ConfigManager
 from nfoforge.context.processing_context import ProcessingContext
+from nfoforge.core.trackers.validate import missing_nfo_templates
 from nfoforge.frontend.custom_widgets.basic_code_editor import HighlightKeywords
 from nfoforge.frontend.custom_widgets.template_selector import TemplateSelector
 from nfoforge.frontend.global_signals import GSigs
@@ -65,8 +66,9 @@ class NfoTemplateSection(QGroupBox):
 
         missing = [
             str(tracker)
-            for tracker in selected_trackers
-            if not self.config.settings.trackers.by_selection()[tracker].nfo_template
+            for tracker in missing_nfo_templates(
+                selected_trackers, self.config.settings.trackers.by_selection()
+            )
         ]
         if missing:
             self.configure_button.setStyleSheet(
