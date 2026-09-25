@@ -40,7 +40,7 @@ from nfoforge.backend.jobs.migrations import (
     JobMigrationError,
     migrate_document,
 )
-from nfoforge.backend.jobs.models import JobListing, JobSummary, SavedJob
+from nfoforge.backend.jobs.models import JobListing, JobSummary, SavedJob, job_state
 from nfoforge.backend.utils.working_dir import JOBS_DIR_NAME, jobs_dir
 from nfoforge.config.persistence import atomic_write_text
 from nfoforge.logger.nfo_forge_logger import LOG
@@ -375,6 +375,7 @@ def list_jobs(working_dirs: Iterable[Path]) -> list[JobListing]:
                     media_available=media_available,
                     archived=bool(document.get("archived")),
                     source_less_ready=source_less_ready,
+                    state=job_state(document.get("state")),
                 )
             )
 

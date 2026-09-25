@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from nfoforge.backend.jobs.migrations import JOB_SCHEMA_VERSION
+from nfoforge.enums.automation import JobState
 
 
 @dataclass(slots=True)
@@ -70,6 +71,18 @@ class JobSummary:
         )
 
 
+def job_state(value: object) -> JobState:
+    """A stored state, or QUEUED for a job written before states existed."""
+    try:
+        return JobState(str(value))
+    except ValueError:
+        return JobState.QUEUED
+
+
+def _dict_or_none(value: object) -> dict[str, Any] | None:
+    return dict(value) if isinstance(value, dict) else None
+
+
 @dataclass(slots=True)
 class SavedJob:
     """A configured upload run, persisted so it can be resumed later."""
@@ -102,6 +115,24 @@ class SavedJob:
     uploaded_trackers: list[str] = field(default_factory=list)
     uncertain_trackers: list[str] = field(default_factory=list)
 
+    state: JobState = JobState.QUEUED
+    """Where the job is. A job saved from the desktop app is ready to run."""
+
+    stage: str | None = None
+    """The workflow stage the job reached, and resumes at."""
+
+    request: dict[str, Any] | None = None
+    """The `ReleaseRequest` that started a headless run, as JSON."""
+
+    pending_decision: dict[str, Any] | None = None
+    """The question a waiting job stopped at, as JSON."""
+
+    decision_answers: dict[str, Any] = field(default_factory=dict)
+    """Answers given so far, keyed by decision id; reused on resume."""
+
+    error: str | None = None
+    """Why a failed job failed."""
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "schema_version": self.schema_version,
@@ -115,6 +146,12 @@ class SavedJob:
             "uncertain_trackers": list(self.uncertain_trackers),
             "summary": self.summary.to_dict(),
             "context": self.context,
+            "state": str(self.state),
+            "stage": self.stage,
+            "request": self.request,
+            "pending_decision": self.pending_decision,
+            "decision_answers": dict(self.decision_answers),
+            "error": self.error,
         }
 
     @classmethod
@@ -141,6 +178,14 @@ class SavedJob:
             if isinstance(document.get("uncertain_trackers"), list)
             else [],
             schema_version=int(document.get("schema_version") or JOB_SCHEMA_VERSION),
+            # Added without a schema bump (see `migrations`): a job written
+            # before these existed reads as a queued job with no history.
+            state=job_state(document.get("state")),
+            stage=str(document["stage"]) if document.get("stage") else None,
+            request=_dict_or_none(document.get("request")),
+            pending_decision=_dict_or_none(document.get("pending_decision")),
+            decision_answers=_dict_or_none(document.get("decision_answers")) or {},
+            error=str(document["error"]) if document.get("error") else None,
         )
 
 
@@ -173,6 +218,7 @@ class JobListing:
     """
     archived: bool = False
     source_less_ready: bool = False
+    state: JobState = JobState.QUEUED
 
     def matches_profile(self, active_profile: str | None) -> bool:
         """Whether this job belongs to the currently active config profile.
