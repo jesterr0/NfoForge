@@ -24,7 +24,7 @@ from enum import Enum, auto
 from html import escape
 from pathlib import Path
 import traceback
-from typing import TYPE_CHECKING, Any, cast
+from typing import Any
 
 from nfoforge.backend.jobs import (
     JobAssetError,
@@ -51,9 +51,6 @@ from nfoforge.context.processing_context import ProcessingContext
 from nfoforge.enums.tracker_selection import TrackerSelection
 from nfoforge.logger.nfo_forge_logger import LOG
 from nfoforge.utils.secret_redaction import scrub_secrets
-
-if TYPE_CHECKING:
-    from PySide6.QtCore import SignalInstance
 
 
 class QueuedJobResult(Enum):
@@ -409,13 +406,9 @@ class JobQueueRunner:
                 queued_text_update=self._text_update,
                 queued_text_update_replace_last_line=self._text_replace_last_update,
                 progress_bar_cb=self._progress_cb,
-                # `process_trackers` types this as a Qt signal because every
-                # other caller has a page to surface errors into; the queue has
-                # none, so it takes the same `emit` shape and logs instead
-                # quoted so the name is not resolved at runtime -- it is only
-                # imported for type checking, and `cast` evaluates its first
-                # argument
-                caught_error=cast("SignalInstance", _LoggingSignal()),
+                # The queue has no page to surface errors into, so they go to
+                # the log.
+                caught_error=_LoggingSignal(),
                 context=context,
                 # No callbacks: a prepared job has nothing to prompt for, and a
                 # null retry callback is already read as "retry automatically,
@@ -669,10 +662,10 @@ class JobQueueRunner:
 
 
 class _LoggingSignal:
-    """Stand-in for the Qt error signal `process_trackers` expects.
+    """An `ErrorSignal` that writes to the log.
 
     The queue has no page to surface errors into, so they go to the log.
     """
 
-    def emit(self, message: str) -> None:
+    def emit(self, message: str, /) -> None:
         LOG.error(LOG.LOG_SOURCE.BE, message)

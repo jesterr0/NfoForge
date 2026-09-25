@@ -1,15 +1,13 @@
 from pathlib import Path
-from typing import cast
 from unittest.mock import MagicMock
 
-from PySide6.QtCore import SignalInstance
 import pytest
 
 from nfoforge.backend.media_input import MediaInputBackEnd
 
 
 def _backend() -> MediaInputBackEnd:
-    return MediaInputBackEnd(cast(SignalInstance, MagicMock()))
+    return MediaInputBackEnd(MagicMock())
 
 
 def test_a_failing_file_is_reported_with_its_reason(

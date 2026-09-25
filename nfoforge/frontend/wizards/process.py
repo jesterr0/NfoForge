@@ -73,6 +73,7 @@ from nfoforge.frontend.custom_widgets.prompt_token_editor_dialog import (
     PromptTokenEditorDialog,
 )
 from nfoforge.frontend.global_signals import GSigs
+from nfoforge.frontend.utils import ask_ptp_2fa_code
 from nfoforge.frontend.wizards.wizard_base_page import BaseWizardPage
 from nfoforge.logger.nfo_forge_logger import LOG
 from nfoforge.packages.custom_types import (
@@ -444,7 +445,7 @@ class ProcessPage(BaseWizardPage):
 
         self.config = config
         self.save_config = False
-        self.backend = ProcessBackEnd(self.config)
+        self.backend = ProcessBackEnd(self.config, prompt_2fa=ask_ptp_2fa_code)
         self.main_window = parent
         GSigs().wizard_process_btn_clicked.connect(self.process_jobs)
 

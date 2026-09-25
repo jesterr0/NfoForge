@@ -3,8 +3,8 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from pymediainfo import MediaInfo
-from PySide6.QtCore import SignalInstance
 
+from nfoforge.core.signals import FileProgressSignal
 from nfoforge.logger.nfo_forge_logger import LOG
 
 
@@ -15,7 +15,7 @@ class MediaInputBackEnd:
         "_semaphore",
     )
 
-    def __init__(self, progress_signal: SignalInstance) -> None:
+    def __init__(self, progress_signal: FileProgressSignal) -> None:
         self.progress_signal = progress_signal
 
         self._completed_files = 0

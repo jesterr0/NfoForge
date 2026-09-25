@@ -1,4 +1,5 @@
 import asyncio
+from collections.abc import Callable
 from pathlib import Path
 import re
 from tempfile import TemporaryDirectory
@@ -29,12 +30,15 @@ from nfoforge.enums.trackers.passthepopcorn import (
     PTPType,
 )
 from nfoforge.exceptions import TrackerError
-from nfoforge.frontend.utils import ask_thread_safe_prompt
 from nfoforge.logger.nfo_forge_logger import LOG
 from nfoforge.payloads.media_search import MediaSearchPayload
 from nfoforge.payloads.tracker_search_result import TrackerSearchResult
 from nfoforge.plugins.api import MetadataMediaKind
 from nfoforge.utils.secret_redaction import scrub_secrets
+
+# Asks a person for a 2FA code, returning `None` if they declined. Only used
+# once the code generated from the stored TOTP secret has been rejected.
+type TwoFactorPrompt = Callable[[], str | None]
 
 
 def ptp_uploader(
@@ -52,6 +56,7 @@ def ptp_uploader(
     totp: str | None = None,
     timeout: int = 60,
     content_size: int | None = None,
+    prompt_2fa: TwoFactorPrompt | None = None,
 ) -> bool | None:
     """Upload to PassThePopcorn.
 
@@ -75,6 +80,7 @@ def ptp_uploader(
         cookie_dir=cookie_dir,
         totp=totp,
         timeout=timeout,
+        prompt_2fa=prompt_2fa,
     )
     auth_token = uploader.login()
     if not auth_token:
@@ -110,6 +116,7 @@ class PTPUploader:
         "cookie_path",
         "totp",
         "timeout",
+        "prompt_2fa",
         "_session",
     )
 
@@ -266,6 +273,7 @@ class PTPUploader:
         cookie_dir: Path,
         totp: str | None = None,
         timeout: int = 60,
+        prompt_2fa: TwoFactorPrompt | None = None,
     ) -> None:
         self.username = username
         self.password = password
@@ -274,6 +282,7 @@ class PTPUploader:
         self.cookie_path = cookie_dir / "ptp_cookie.json"
         self.totp = totp
         self.timeout = timeout
+        self.prompt_2fa = prompt_2fa
 
         self._session = new_http_session()
 
@@ -821,10 +830,13 @@ class PTPUploader:
             data["TfaCode"] = pyotp.TOTP(totp).now()
             tried_totp = True
         else:
-            got_code, code = ask_thread_safe_prompt(
-                "2FA", "Enter your 2FA code for PassThePopcorn:"
-            )
-            if not got_code or not code:
+            if self.prompt_2fa is None:
+                raise TrackerError(
+                    "PassThePopcorn rejected the 2FA code generated from the "
+                    "stored TOTP secret, and there is nobody to ask for one"
+                )
+            code = self.prompt_2fa()
+            if not code:
                 raise TrackerError("2FA cancelled or no code entered")
             data["TfaCode"] = code
         data["TfaType"] = "normal"
