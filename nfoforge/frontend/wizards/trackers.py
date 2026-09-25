@@ -3,21 +3,15 @@ from typing import TYPE_CHECKING
 
 from PySide6.QtWidgets import QMessageBox, QVBoxLayout
 
-from nfoforge.backend.trackers.media_support import (
-    UNIT3D_TRACKERS,
-    UNSUPPORTED_SERIES_TRACKERS,
-)
+from nfoforge.backend.trackers.media_support import UNSUPPORTED_SERIES_TRACKERS
 from nfoforge.config.config import ConfigManager
 from nfoforge.context.processing_context import ProcessingContext
+from nfoforge.core.trackers.validate import multi_season_pack_warning
 from nfoforge.enums.media_type import MediaType
 from nfoforge.enums.tracker_selection import TrackerSelection
 from nfoforge.frontend.custom_widgets.tracker_settings import TrackerSettingsWidget
 from nfoforge.frontend.global_signals import GSigs
 from nfoforge.frontend.wizards.wizard_base_page import BaseWizardPage
-from nfoforge.payloads.series import (
-    build_series_release_info,
-    describe_multi_season_pack,
-)
 
 if TYPE_CHECKING:
     from nfoforge.frontend.windows.main_window import MainWindow
@@ -113,11 +107,7 @@ class TrackersPage(BaseWizardPage):
         Asked once per visit, and only when a UNIT3D tracker is actually
         selected, so a single-season release never sees it.
         """
-        if not any(tracker in UNIT3D_TRACKERS for tracker in trackers):
-            return True
-        message = describe_multi_season_pack(
-            build_series_release_info(self.context.media_input)
-        )
+        message = multi_season_pack_warning(trackers, self.context)
         if not message:
             return True
         return (

@@ -21,7 +21,6 @@ from nfoforge.backend.jobs import (
     context_to_dict,
     fingerprint_files,
     store,
-    template_fingerprint,
     torrent_content_files,
 )
 from nfoforge.backend.jobs.models import JobSummary
@@ -117,9 +116,6 @@ def _wizard_stub(
             job_name,
             context,  # pyright: ignore[reportArgumentType]
         )
-    )
-    wizard._stale_template_warnings = (  # pyright: ignore[reportAttributeAccessIssue]
-        MainWindowWizard._stale_template_warnings
     )
     return wizard
 
@@ -1112,43 +1108,6 @@ def test_a_tracker_absent_from_the_active_config_is_flagged(
         is False
     )
     assert "not configured" in asked[0]
-
-
-def test_a_template_edited_since_preparing_is_flagged(
-    qapp: Any, sample_media: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Frozen NFOs win, so the change must at least be said out loud."""
-    context = ProcessingContext()
-    populate_context(context, sample_media)
-    context.shared_data.template_fingerprints["default"] = "a-stale-digest"
-    selector = SimpleNamespace(read_template=lambda **_k: "the template changed")
-
-    warnings = MainWindowWizard._stale_template_warnings(context, cast(Any, selector))
-
-    assert len(warnings) == 1
-    assert "default" in warnings[0]
-    assert "saved NFO will be uploaded" in warnings[0]
-
-
-def test_an_unchanged_template_is_not_flagged(qapp: Any, sample_media: Path) -> None:
-    context = ProcessingContext()
-    populate_context(context, sample_media)
-    body = "the template body"
-    context.shared_data.template_fingerprints["default"] = template_fingerprint(body)
-    selector = SimpleNamespace(read_template=lambda **_k: body)
-
-    assert MainWindowWizard._stale_template_warnings(context, cast(Any, selector)) == []
-
-
-def test_a_job_with_no_frozen_templates_is_not_flagged(
-    qapp: Any, sample_media: Path
-) -> None:
-    """An unprepared job froze nothing, so there is nothing to go stale."""
-    context = ProcessingContext()
-    populate_context(context, sample_media)
-    selector = SimpleNamespace(read_template=lambda **_k: "anything")
-
-    assert MainWindowWizard._stale_template_warnings(context, cast(Any, selector)) == []
 
 
 def test_a_fully_served_job_asks_nothing(qapp: Any, sample_media: Path) -> None:
