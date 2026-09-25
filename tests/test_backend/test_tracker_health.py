@@ -4,13 +4,13 @@ import niquests
 import pytest
 from tenacity.wait import wait_none
 
-import src.backend.trackers.health as health_module
-from src.backend.trackers.health import (
+import nfoforge.backend.trackers.health as health_module
+from nfoforge.backend.trackers.health import (
     HEALTH_CHECK_TIMEOUT_SECONDS,
     ensure_tracker_health,
 )
-from src.enums.tracker_selection import TRACKER_ROOT_URLS, TrackerSelection
-from src.exceptions import TrackerError
+from nfoforge.enums.tracker_selection import TRACKER_ROOT_URLS, TrackerSelection
+from nfoforge.exceptions import TrackerError
 
 
 @patch("niquests.Session.get")

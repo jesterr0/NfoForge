@@ -2,10 +2,10 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.backend.trackers.passthepopcorn import PTPSearch
-from src.backend.trackers.unit3d_base import Unit3dBaseSearch
-from src.enums.tracker_selection import TrackerSelection
-from src.exceptions import TrackerError
+from nfoforge.backend.trackers.passthepopcorn import PTPSearch
+from nfoforge.backend.trackers.unit3d_base import Unit3dBaseSearch
+from nfoforge.enums.tracker_selection import TrackerSelection
+from nfoforge.exceptions import TrackerError
 
 
 @pytest.mark.parametrize("status_code", [401, 403, 500])

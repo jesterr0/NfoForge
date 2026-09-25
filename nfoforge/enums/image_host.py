@@ -1,0 +1,30 @@
+from typing import override
+
+from nfoforge.enums import CaseInsensitiveEnum
+
+
+class ImageHost(CaseInsensitiveEnum):
+    CHEVERETO_V3 = "Chevereto v3"
+    CHEVERETO_V4 = "Chevereto v4"
+    IMAGE_BOX = "ImageBox"
+    IMAGE_BB = "ImageBB"
+    ONLY_IMAGE = "OnlyImage"
+    PIXHOST = "Pixhost"
+    LENSDUMP = "Lensdump"
+    PLUGIN = "Plugin"
+
+    # used outside of the UI
+    DISABLED = "Disabled"
+
+    @override
+    def __str__(self) -> str:
+        return self.value
+
+
+class ImageSource(CaseInsensitiveEnum):
+    IMAGES = "IMGs"
+    URLS = "URLs"
+
+    @override
+    def __str__(self) -> str:
+        return self.value

@@ -10,9 +10,9 @@ from typing import Any
 
 import pytest
 
-from src.backend.trackers.torrentleech import TLUploader
-from src.backend.utils.tvmaze_client import TVmazeClient, normalize_imdb_id
-from src.enums.media_type import MediaType
+from nfoforge.backend.trackers.torrentleech import TLUploader
+from nfoforge.backend.utils.tvmaze_client import TVmazeClient, normalize_imdb_id
+from nfoforge.enums.media_type import MediaType
 
 
 class _FakeTVmazeClient:
@@ -231,7 +231,7 @@ def test_owned_tvmaze_client_is_closed(monkeypatch: pytest.MonkeyPatch) -> None:
     ours to close, and an injected one is not."""
     client = _FakeTVmazeClient()
     monkeypatch.setattr(
-        "src.backend.trackers.torrentleech.TVmazeClient", lambda timeout: client
+        "nfoforge.backend.trackers.torrentleech.TVmazeClient", lambda timeout: client
     )
     uploader = _uploader(imdb_id="tt0944947")
 

@@ -2,7 +2,7 @@
 
 PyInstaller assembles its module list by walking imports from the entry script,
 so a module nothing in NfoForge imports is never reached and does not enter the
-bundle. Most of `src.plugins` rides along because the loader and manager import
+bundle. Most of `nfoforge.plugins` rides along because the loader and manager import
 it for their own work, but a module written purely for external plugins to
 subclass or call has no internal importer by design. It drops out of every
 release while continuing to work when NfoForge runs from source, and the plugin
@@ -22,12 +22,12 @@ from pathlib import Path
 from build import PLUGIN_API_MODULES, spec_hiddenimports
 from tests.repo_paths import REPO_ROOT
 
-HOST_SOURCE = REPO_ROOT / "src"
+HOST_SOURCE = REPO_ROOT / "nfoforge"
 PLUGIN_PACKAGE = HOST_SOURCE / "plugins"
 
 
 def dotted_name(module: Path) -> str:
-    """The importable name of a source file, e.g. `src.plugins.api`."""
+    """The importable name of a source file, e.g. `nfoforge.plugins.api`."""
     return ".".join(module.relative_to(REPO_ROOT).with_suffix("").parts)
 
 
@@ -63,7 +63,7 @@ def test_every_plugin_module_is_either_imported_by_nfoforge_or_declared() -> Non
     )
 
     assert not undeclared, (
-        "these modules in src/plugins are imported by no NfoForge code, so "
+        "these modules in nfoforge/plugins are imported by no NfoForge code, so "
         "PyInstaller will not collect them and any plugin importing one will "
         "fail to load in a release build. Add them to build.PLUGIN_API_MODULES "
         f"if they exist for plugins, or remove them if they are dead: {undeclared}"

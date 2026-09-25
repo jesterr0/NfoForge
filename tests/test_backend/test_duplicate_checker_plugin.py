@@ -3,15 +3,15 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
 
-from src.backend.process import ProcessBackEnd
-from src.config.config import ConfigManager
-from src.enums.media_type import MediaType
-from src.enums.tracker_selection import TrackerSelection
-from src.payloads.media_inputs import MediaInputPayload
-from src.payloads.media_search import MediaSearchPayload
-from src.payloads.tracker_search_result import TrackerSearchResult
-from src.plugins.api import DuplicateCheckRequest, PluginDefinition
-from src.plugins.manager import PluginManager
+from nfoforge.backend.process import ProcessBackEnd
+from nfoforge.config.config import ConfigManager
+from nfoforge.enums.media_type import MediaType
+from nfoforge.enums.tracker_selection import TrackerSelection
+from nfoforge.payloads.media_inputs import MediaInputPayload
+from nfoforge.payloads.media_search import MediaSearchPayload
+from nfoforge.payloads.tracker_search_result import TrackerSearchResult
+from nfoforge.plugins.api import DuplicateCheckRequest, PluginDefinition
+from nfoforge.plugins.manager import PluginManager
 
 
 def _backend(

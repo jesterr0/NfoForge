@@ -13,7 +13,7 @@ import sys
 from platformdirs import user_data_dir
 import pytest
 
-from src.config.paths import (
+from nfoforge.config.paths import (
     DATA_DIR_ENV_VAR,
     DEV_PLUGINS_ENV_VAR,
     AppPaths,
@@ -97,7 +97,7 @@ def test_the_state_root_is_the_per_user_data_directory(
     against platformdirs directly rather than against the function under test,
     so the two cannot agree on a wrong answer.
     """
-    monkeypatch.setattr("src.config.paths.IS_FROZEN", False)
+    monkeypatch.setattr("nfoforge.config.paths.IS_FROZEN", False)
     monkeypatch.delenv(DATA_DIR_ENV_VAR, raising=False)
 
     assert default_paths().state_root == Path(
@@ -109,7 +109,7 @@ def test_a_released_build_puts_state_in_its_own_per_user_directory(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """And the shipped build uses the real one, not the development directory."""
-    monkeypatch.setattr("src.config.paths.IS_FROZEN", True)
+    monkeypatch.setattr("nfoforge.config.paths.IS_FROZEN", True)
     monkeypatch.setattr(sys, "executable", str(tmp_path / "NfoForge.exe"))
     monkeypatch.delenv(DATA_DIR_ENV_VAR, raising=False)
 
@@ -127,7 +127,7 @@ def test_the_data_directory_override_is_honoured_from_source(
     reads and writes the same per-user directory as an installed copy, and a
     dev run would offer to migrate a working tree into it.
     """
-    monkeypatch.setattr("src.config.paths.IS_FROZEN", False)
+    monkeypatch.setattr("nfoforge.config.paths.IS_FROZEN", False)
     monkeypatch.setenv(DATA_DIR_ENV_VAR, str(tmp_path / "rehearsal"))
 
     assert default_paths().state_root == tmp_path / "rehearsal"
@@ -141,7 +141,7 @@ def test_the_override_is_refused_by_a_released_build(
     Otherwise anything that can set a variable in the process environment
     decides where profiles, cookies and credentials are read from.
     """
-    monkeypatch.setattr("src.config.paths.IS_FROZEN", True)
+    monkeypatch.setattr("nfoforge.config.paths.IS_FROZEN", True)
     monkeypatch.setattr(sys, "executable", str(tmp_path / "NfoForge.exe"))
     monkeypatch.setenv(DATA_DIR_ENV_VAR, str(tmp_path / "rehearsal"))
 
@@ -158,7 +158,7 @@ def test_the_override_is_honoured_by_the_debug_build(
     That is the one a rehearsal runs, so the migration can be exercised on the
     artefact that actually ships rather than only from source.
     """
-    monkeypatch.setattr("src.config.paths.IS_FROZEN", True)
+    monkeypatch.setattr("nfoforge.config.paths.IS_FROZEN", True)
     monkeypatch.setattr(sys, "executable", str(tmp_path / "NfoForge-debug.exe"))
     monkeypatch.setenv(DATA_DIR_ENV_VAR, str(tmp_path / "rehearsal"))
 
@@ -176,7 +176,7 @@ def test_running_from_source_gets_its_own_per_user_directory(
     migrate them. Isolating by default means there is no variable to remember,
     and forgetting one cannot reach someone's working data.
     """
-    monkeypatch.setattr("src.config.paths.IS_FROZEN", False)
+    monkeypatch.setattr("nfoforge.config.paths.IS_FROZEN", False)
     monkeypatch.delenv(DATA_DIR_ENV_VAR, raising=False)
 
     resolved = resolve_data_root()
@@ -196,7 +196,7 @@ def test_the_override_redirects_the_per_user_directory(
     resolve from, so an override that moved the state root and left this behind
     would rehearse the migration while writing into live data.
     """
-    monkeypatch.setattr("src.config.paths.IS_FROZEN", False)
+    monkeypatch.setattr("nfoforge.config.paths.IS_FROZEN", False)
     monkeypatch.setenv(DATA_DIR_ENV_VAR, str(tmp_path / "rehearsal"))
 
     assert resolve_data_root() == tmp_path / "rehearsal"
@@ -210,7 +210,7 @@ def test_the_per_user_directory_ignores_the_override_in_a_released_build(
 
     This one matters more, because it is the directory holding saved jobs.
     """
-    monkeypatch.setattr("src.config.paths.IS_FROZEN", True)
+    monkeypatch.setattr("nfoforge.config.paths.IS_FROZEN", True)
     monkeypatch.setattr(sys, "executable", str(tmp_path / "NfoForge.exe"))
     monkeypatch.setenv(DATA_DIR_ENV_VAR, str(tmp_path / "rehearsal"))
 
@@ -245,7 +245,7 @@ def test_no_test_can_reach_the_real_per_user_directory(tmp_path: Path) -> None:
 
 def test_a_blank_override_is_ignored(monkeypatch: pytest.MonkeyPatch) -> None:
     """An empty or whitespace value is an unset variable, not the filesystem root."""
-    monkeypatch.setattr("src.config.paths.IS_FROZEN", False)
+    monkeypatch.setattr("nfoforge.config.paths.IS_FROZEN", False)
     monkeypatch.setenv(DATA_DIR_ENV_VAR, "   ")
 
     assert default_paths().state_root == Path(
@@ -330,7 +330,7 @@ def test_a_development_plugins_folder_is_read_from_the_environment(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The folder a developer keeps checkouts in, used in place of the real one."""
-    monkeypatch.setattr("src.config.paths.IS_FROZEN", False)
+    monkeypatch.setattr("nfoforge.config.paths.IS_FROZEN", False)
     monkeypatch.setenv(DEV_PLUGINS_ENV_VAR, str(tmp_path / "checkouts"))
 
     assert dev_plugin_dirs() == (tmp_path / "checkouts",)
@@ -344,7 +344,7 @@ def test_several_development_folders_keep_the_order_they_were_written_in(
     Two folders holding one plugin id is a state the loader has to resolve, and
     the only answer that is not arbitrary is the one the developer typed first.
     """
-    monkeypatch.setattr("src.config.paths.IS_FROZEN", False)
+    monkeypatch.setattr("nfoforge.config.paths.IS_FROZEN", False)
     first, second = tmp_path / "zeta", tmp_path / "alpha"
     monkeypatch.setenv(DEV_PLUGINS_ENV_VAR, pathsep.join((str(first), str(second))))
 
@@ -359,7 +359,7 @@ def test_empty_segments_in_the_development_folders_are_dropped(
     `Path("")` is `Path(".")`, so keeping an empty segment would have the
     loader treat wherever the process was launched from as a plugin root.
     """
-    monkeypatch.setattr("src.config.paths.IS_FROZEN", False)
+    monkeypatch.setattr("nfoforge.config.paths.IS_FROZEN", False)
     monkeypatch.setenv(
         DEV_PLUGINS_ENV_VAR, str(tmp_path / "checkout") + pathsep + pathsep + "  "
     )
@@ -370,7 +370,7 @@ def test_empty_segments_in_the_development_folders_are_dropped(
 def test_no_development_folders_when_the_variable_is_unset(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr("src.config.paths.IS_FROZEN", False)
+    monkeypatch.setattr("nfoforge.config.paths.IS_FROZEN", False)
     monkeypatch.delenv(DEV_PLUGINS_ENV_VAR, raising=False)
 
     assert dev_plugin_dirs() == ()
@@ -385,7 +385,7 @@ def test_development_folders_are_refused_by_a_released_build(
     worse, so the same gate covers both and this is the half that must not be
     allowed to rot.
     """
-    monkeypatch.setattr("src.config.paths.IS_FROZEN", True)
+    monkeypatch.setattr("nfoforge.config.paths.IS_FROZEN", True)
     monkeypatch.setattr(sys, "executable", str(tmp_path / "NfoForge.exe"))
     monkeypatch.setenv(DEV_PLUGINS_ENV_VAR, str(tmp_path / "checkout"))
 
@@ -400,7 +400,7 @@ def test_development_folders_are_honoured_by_the_debug_build(
     A plugin developer testing against the artefact that ships needs the
     override there too, and the debug executable is where that is allowed.
     """
-    monkeypatch.setattr("src.config.paths.IS_FROZEN", True)
+    monkeypatch.setattr("nfoforge.config.paths.IS_FROZEN", True)
     monkeypatch.setattr(sys, "executable", str(tmp_path / "NfoForge-debug.exe"))
     monkeypatch.setenv(DEV_PLUGINS_ENV_VAR, str(tmp_path / "checkout"))
 

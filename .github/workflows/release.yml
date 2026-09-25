@@ -112,9 +112,9 @@ jobs:
         shell: bash
         run: |
           TAG="${{ needs.resolve-release.outputs.tag }}"
-          CURRENT_VERSION="$(uv run python -c 'from src.version import __version__; print(__version__)')"
+          CURRENT_VERSION="$(uv run python -c 'from nfoforge.version import __version__; print(__version__)')"
           if [ "$CURRENT_VERSION" != "$TAG" ]; then
-            echo "::warning::src/version.py (__version__=$CURRENT_VERSION) does not match the release tag ($TAG) - did you forget to bump the version?"
+            echo "::warning::nfoforge/version.py (__version__=$CURRENT_VERSION) does not match the release tag ($TAG) - did you forget to bump the version?"
           fi
 
       - name: Build application

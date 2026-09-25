@@ -6,16 +6,16 @@ from pathlib import Path
 
 import pytest
 
-from src.backend.jobs import migrations, store
-from src.backend.jobs.assets import copy_images
-from src.backend.jobs.migrations import (
+from nfoforge.backend.jobs import migrations, store
+from nfoforge.backend.jobs.assets import copy_images
+from nfoforge.backend.jobs.migrations import (
     JOB_SCHEMA_VERSION,
     JobMigrationError,
     check_migration_chain,
     migrate_document,
 )
-from src.backend.jobs.models import JobSummary
-from src.backend.utils.working_dir import JOBS_DIR_NAME, jobs_dir
+from nfoforge.backend.jobs.models import JobSummary
+from nfoforge.backend.utils.working_dir import JOBS_DIR_NAME, jobs_dir
 
 
 @pytest.fixture

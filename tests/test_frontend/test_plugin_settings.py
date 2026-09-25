@@ -4,10 +4,10 @@ from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QMessageBox, QWidget
 import pytest
 
-from src.config.config import ConfigManager
-from src.config.paths import DEV_PLUGINS_ENV_VAR, ConfigPaths
-from src.frontend.stacked_windows.settings.plugins import PluginsSettings
-from src.plugins.api import PluginDefinition, TokenReplaceRequest
+from nfoforge.config.config import ConfigManager
+from nfoforge.config.paths import DEV_PLUGINS_ENV_VAR, ConfigPaths
+from nfoforge.frontend.stacked_windows.settings.plugins import PluginsSettings
+from nfoforge.plugins.api import PluginDefinition, TokenReplaceRequest
 from tests.repo_paths import build_app_paths
 
 
@@ -23,7 +23,7 @@ def _make_plugin_settings(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> tuple[PluginsSettings, ConfigManager]:
     monkeypatch.setattr(
-        "src.config.config.FindDependencies.update_dependencies",
+        "nfoforge.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
     )
     manager = ConfigManager("test", _paths(tmp_path))
@@ -132,7 +132,7 @@ def test_opening_the_plugins_folder_creates_it_first(
     widget, manager = _make_plugin_settings(tmp_path, monkeypatch)
     opened: list[Path] = []
     monkeypatch.setattr(
-        "src.frontend.stacked_windows.settings.plugins.open_explorer",
+        "nfoforge.frontend.stacked_windows.settings.plugins.open_explorer",
         opened.append,
     )
 
@@ -150,7 +150,7 @@ def test_installing_a_plugin_offers_the_restart_it_needs(
     widget, manager = _make_plugin_settings(tmp_path, monkeypatch)
     installed = manager.paths.plugins / "my-plugin"
     monkeypatch.setattr(
-        "src.frontend.stacked_windows.settings.plugins.install_from_folder",
+        "nfoforge.frontend.stacked_windows.settings.plugins.install_from_folder",
         lambda parent, paths: installed,
     )
     asked: list[str] = []
@@ -174,7 +174,7 @@ def test_declining_the_folder_dialog_asks_nothing(
 ) -> None:
     widget, _ = _make_plugin_settings(tmp_path, monkeypatch)
     monkeypatch.setattr(
-        "src.frontend.stacked_windows.settings.plugins.install_from_archive",
+        "nfoforge.frontend.stacked_windows.settings.plugins.install_from_archive",
         lambda parent, paths: None,
     )
 

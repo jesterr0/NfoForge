@@ -2,12 +2,12 @@ import re
 
 import pytest
 
-from src.backend.trackers.title_render import (
+from nfoforge.backend.trackers.title_render import (
     compose_token_string,
     normalise_title,
     resolve_dynamic_range,
 )
-from src.backend.trackers.title_rules import (
+from nfoforge.backend.trackers.title_rules import (
     TITLE_RULES,
     Composition,
     ConditionalOrder,
@@ -19,8 +19,8 @@ from src.backend.trackers.title_rules import (
     ReleaseProperties,
     Separator,
 )
-from src.enums.token_replacer import ColonReplace
-from src.enums.tracker_selection import TrackerSelection
+from nfoforge.enums.token_replacer import ColonReplace
+from nfoforge.enums.tracker_selection import TrackerSelection
 
 
 def _normalise(title: str, normalisation: Normalisation) -> str:

@@ -7,22 +7,22 @@ from PySide6.QtCore import SignalInstance
 import pytest
 from tenacity.wait import wait_none
 
-import src.backend.process as process_module
-from src.backend.process import ProcessBackEnd
-from src.backend.upload_retry import (
+import nfoforge.backend.process as process_module
+from nfoforge.backend.process import ProcessBackEnd
+from nfoforge.backend.upload_retry import (
     RETRY_ATTEMPTS,
     UploadFailurePhase,
     UploadRetryAction,
 )
-from src.config.config import ConfigManager
-from src.config.models import ClaimSwitches
-from src.context.processing_context import ProcessingContext
-from src.enums.media_type import MediaType
-from src.enums.tracker_selection import TrackerSelection
-from src.exceptions import ProcessCancelled, TrackerClientError, TrackerError
-from src.payloads.shared_data import SharedPayload
-from src.plugins.api import PluginDefinition, PostUploadOutcome, PostUploadRequest
-from src.plugins.manager import PluginManager
+from nfoforge.config.config import ConfigManager
+from nfoforge.config.models import ClaimSwitches
+from nfoforge.context.processing_context import ProcessingContext
+from nfoforge.enums.media_type import MediaType
+from nfoforge.enums.tracker_selection import TrackerSelection
+from nfoforge.exceptions import ProcessCancelled, TrackerClientError, TrackerError
+from nfoforge.payloads.shared_data import SharedPayload
+from nfoforge.plugins.api import PluginDefinition, PostUploadOutcome, PostUploadRequest
+from nfoforge.plugins.manager import PluginManager
 
 _CLAIMS_OFF = ClaimSwitches(
     enabled=False,
@@ -548,7 +548,7 @@ def _process_trackers_backend(
     )
     pre_upload_plugin_id = ""
     if skip_via_pre_upload:
-        from src.plugins.api import PreUploadDecision, PreUploadRequest
+        from nfoforge.plugins.api import PreUploadDecision, PreUploadRequest
 
         def skip(request: PreUploadRequest) -> PreUploadDecision:
             return PreUploadDecision.SKIP

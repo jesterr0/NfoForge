@@ -3,12 +3,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from src.backend.trackers.passthepopcorn import PTPUploader
-from src.enums.media_type import MediaType
-from src.exceptions import TrackerError
-from src.packages.custom_types import ImageUploadData
-from src.payloads.media_search import MediaSearchPayload
-from src.plugins.api import MetadataMediaKind
+from nfoforge.backend.trackers.passthepopcorn import PTPUploader
+from nfoforge.enums.media_type import MediaType
+from nfoforge.exceptions import TrackerError
+from nfoforge.packages.custom_types import ImageUploadData
+from nfoforge.payloads.media_search import MediaSearchPayload
+from nfoforge.plugins.api import MetadataMediaKind
 
 
 def _uploader(cookie_dir: Path, mediainfo_obj: MagicMock | None = None) -> PTPUploader:
@@ -30,7 +30,7 @@ def test_ptp_disc_size_can_come_from_an_archive(tmp_path: Path) -> None:
     assert codec == "BD25"
 
 
-@patch("src.backend.trackers.passthepopcorn.ImageBoxUploader")
+@patch("nfoforge.backend.trackers.passthepopcorn.ImageBoxUploader")
 @patch("niquests.Session.get")
 def test_ptp_new_group_poster_is_rehosted_on_imgbox(
     get: MagicMock, image_box_uploader: MagicMock, tmp_path: Path
@@ -56,7 +56,7 @@ def test_ptp_new_group_poster_is_rehosted_on_imgbox(
     image_box_uploader.return_value.upload.assert_awaited_once()
 
 
-@patch("src.backend.trackers.passthepopcorn.ImageBoxUploader")
+@patch("nfoforge.backend.trackers.passthepopcorn.ImageBoxUploader")
 @patch("niquests.Session.get")
 def test_ptp_new_group_poster_requires_imgbox_url(
     get: MagicMock, image_box_uploader: MagicMock, tmp_path: Path
@@ -74,7 +74,7 @@ def test_ptp_new_group_poster_requires_imgbox_url(
         )
 
 
-@patch("src.backend.trackers.passthepopcorn.VideoResolutionAnalyzer")
+@patch("nfoforge.backend.trackers.passthepopcorn.VideoResolutionAnalyzer")
 def test_ptp_upload_post_has_a_timeout(
     _resolution_analyzer: MagicMock, tmp_path: Path
 ) -> None:
@@ -109,7 +109,7 @@ def test_ptp_upload_post_has_a_timeout(
     assert fake_session.post.call_args.kwargs["timeout"] == uploader.timeout
 
 
-@patch("src.backend.trackers.passthepopcorn.VideoResolutionAnalyzer")
+@patch("nfoforge.backend.trackers.passthepopcorn.VideoResolutionAnalyzer")
 def test_ptp_upload_does_not_close_the_shared_session(
     _resolution_analyzer: MagicMock, tmp_path: Path
 ) -> None:
@@ -166,10 +166,10 @@ def test_ptp_2fa_uses_interactive_prompt_after_automatic_code(
     totp = MagicMock()
     totp.now.return_value = "123456"
     monkeypatch.setattr(
-        "src.backend.trackers.passthepopcorn.pyotp.TOTP", lambda _secret: totp
+        "nfoforge.backend.trackers.passthepopcorn.pyotp.TOTP", lambda _secret: totp
     )
     monkeypatch.setattr(
-        "src.backend.trackers.passthepopcorn.ask_thread_safe_prompt",
+        "nfoforge.backend.trackers.passthepopcorn.ask_thread_safe_prompt",
         lambda *_args: (True, "654321"),
     )
 
@@ -208,15 +208,17 @@ def test_ptp_2fa_attempts_are_bounded_and_backed_off(
     uploader._session = fake_session
 
     monkeypatch.setattr(
-        "src.backend.trackers.passthepopcorn.pyotp.TOTP",
+        "nfoforge.backend.trackers.passthepopcorn.pyotp.TOTP",
         lambda _secret: MagicMock(now=lambda: "123456"),
     )
     monkeypatch.setattr(
-        "src.backend.trackers.passthepopcorn.ask_thread_safe_prompt",
+        "nfoforge.backend.trackers.passthepopcorn.ask_thread_safe_prompt",
         lambda *_args: (True, "654321"),
     )
     sleeps: list[float] = []
-    monkeypatch.setattr("src.backend.trackers.passthepopcorn.time.sleep", sleeps.append)
+    monkeypatch.setattr(
+        "nfoforge.backend.trackers.passthepopcorn.time.sleep", sleeps.append
+    )
 
     with pytest.raises(TrackerError, match="2FA failed after 3 attempts"):
         uploader.login()

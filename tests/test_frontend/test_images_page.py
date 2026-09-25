@@ -4,19 +4,19 @@ from typing import cast
 from pymediainfo import MediaInfo
 import pytest
 
-from src.config.config import ConfigManager
-from src.config.paths import ConfigPaths
-from src.context.processing_context import ProcessingContext
-from src.enums.cropping import Cropping
-from src.enums.media_type import MediaType
-from src.enums.screen_shot_mode import ScreenShotMode
-from src.frontend.global_signals import GSigs
-from src.frontend.windows.image_viewer import ImageViewer
-from src.frontend.wizards.images import ImagesPage, QueuedWorker
-from src.packages.custom_types import ComparisonPair
-from src.payloads.media_inputs import MediaInputPayload
-from src.payloads.media_search import MediaSearchPayload
-from src.payloads.script import ScriptValues
+from nfoforge.config.config import ConfigManager
+from nfoforge.config.paths import ConfigPaths
+from nfoforge.context.processing_context import ProcessingContext
+from nfoforge.enums.cropping import Cropping
+from nfoforge.enums.media_type import MediaType
+from nfoforge.enums.screen_shot_mode import ScreenShotMode
+from nfoforge.frontend.global_signals import GSigs
+from nfoforge.frontend.windows.image_viewer import ImageViewer
+from nfoforge.frontend.wizards.images import ImagesPage, QueuedWorker
+from nfoforge.packages.custom_types import ComparisonPair
+from nfoforge.payloads.media_inputs import MediaInputPayload
+from nfoforge.payloads.media_search import MediaSearchPayload
+from nfoforge.payloads.script import ScriptValues
 from tests.repo_paths import build_app_paths
 
 VPY_WITH_CROP = (
@@ -56,7 +56,7 @@ def _make_images_page(
     comparison: bool = True,
 ) -> tuple[ImagesPage, list[ScriptValues | None]]:
     monkeypatch.setattr(
-        "src.config.config.FindDependencies.update_dependencies",
+        "nfoforge.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
     )
 
@@ -103,7 +103,7 @@ def _make_images_page(
 
     _DialogSpy.instances = []
     _DialogSpy.result = None
-    monkeypatch.setattr("src.frontend.wizards.images.CropWidgetDialog", _DialogSpy)
+    monkeypatch.setattr("nfoforge.frontend.wizards.images.CropWidgetDialog", _DialogSpy)
 
     return page, generated
 
@@ -125,7 +125,7 @@ def _images_page(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> ImagesPage:
     itself, since the worker-parenting test needs the real construction path.
     """
     monkeypatch.setattr(
-        "src.config.config.FindDependencies.update_dependencies",
+        "nfoforge.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
     )
 
@@ -224,12 +224,12 @@ def test_a_viewer_that_fails_to_open_still_re_enables_the_main_window(
     """
     page = _images_page(tmp_path, monkeypatch)
     monkeypatch.setattr(
-        "src.frontend.wizards.images.ImageViewer",
+        "nfoforge.frontend.wizards.images.ImageViewer",
         lambda **kwargs: (_ for _ in ()).throw(IndexError("list index out of range")),
     )
     warned: list[tuple[str, str]] = []
     monkeypatch.setattr(
-        "src.frontend.wizards.images.QMessageBox.critical",
+        "nfoforge.frontend.wizards.images.QMessageBox.critical",
         lambda parent, title, text, *a, **kw: warned.append((title, text)),
     )
     enabled: list[bool] = []

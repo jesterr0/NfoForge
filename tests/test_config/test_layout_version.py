@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from src.config.layout_version import (
+from nfoforge.config.layout_version import (
     CURRENT_LAYOUT_VERSION,
     LEGACY_LAYOUT_VERSION,
     LayoutRecordError,

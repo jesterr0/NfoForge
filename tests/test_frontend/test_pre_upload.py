@@ -5,36 +5,36 @@ from typing import cast
 from PySide6.QtWidgets import QWidget
 import pytest
 
-from src.config.config import ConfigManager
-from src.config.paths import ConfigPaths
-from src.context.processing_context import ProcessingContext
-from src.enums.torrent_client import (
+from nfoforge.config.config import ConfigManager
+from nfoforge.config.paths import ConfigPaths
+from nfoforge.context.processing_context import ProcessingContext
+from nfoforge.enums.torrent_client import (
     QBittorrentSavePathMode,
     TorrentClientSelection,
 )
-from src.enums.tracker_selection import TrackerSelection
-from src.enums.wizard import WizardPages
-from src.frontend.custom_widgets.client_listbox import (
+from nfoforge.enums.tracker_selection import TrackerSelection
+from nfoforge.enums.wizard import WizardPages
+from nfoforge.frontend.custom_widgets.client_listbox import (
     DelugeClientEdit,
     QBittorrentClientEdit,
     RTorrentClientEdit,
     TransmissionClientEdit,
     WatchFolderClientEdit,
 )
-from src.frontend.custom_widgets.pre_upload_widgets.client_options import (
+from nfoforge.frontend.custom_widgets.pre_upload_widgets.client_options import (
     ClientOptionsSection,
 )
-from src.frontend.windows.main_window import MainWindow
-from src.frontend.wizards.pre_upload import PreUploadPage
-from src.frontend.wizards.wizard import MainWindowWizard
-from src.payloads.clients import (
+from nfoforge.frontend.windows.main_window import MainWindow
+from nfoforge.frontend.wizards.pre_upload import PreUploadPage
+from nfoforge.frontend.wizards.wizard import MainWindowWizard
+from nfoforge.payloads.clients import (
     DelugeConfig,
     QBittorrentConfig,
     RTorrentConfig,
     TransmissionConfig,
 )
-from src.payloads.media_inputs import MediaInputPayload
-from src.payloads.watch_folder import WatchFolder
+from nfoforge.payloads.media_inputs import MediaInputPayload
+from nfoforge.payloads.watch_folder import WatchFolder
 from tests.repo_paths import build_app_paths
 
 
@@ -47,7 +47,7 @@ def test_client_options_section_tracks_and_resets_run_override(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        "src.config.config.FindDependencies.update_dependencies",
+        "nfoforge.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
     )
     config = ConfigManager("test", _paths(tmp_path))
@@ -94,7 +94,7 @@ def test_client_options_warns_for_remote_windows_save_path(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        "src.config.config.FindDependencies.update_dependencies",
+        "nfoforge.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
     )
     config = ConfigManager("test", _paths(tmp_path))
@@ -202,7 +202,7 @@ def test_pre_upload_page_applies_release_notes_and_hides_disabled_client(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        "src.config.config.FindDependencies.update_dependencies",
+        "nfoforge.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
     )
     config = ConfigManager("test", _paths(tmp_path))
@@ -231,7 +231,7 @@ def test_pre_upload_page_loads_and_applies_plugin_encode_logs(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        "src.config.config.FindDependencies.update_dependencies",
+        "nfoforge.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
     )
     config = ConfigManager("test", _paths(tmp_path))
@@ -262,7 +262,7 @@ def test_pre_upload_page_blocks_missing_template_assignment(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        "src.config.config.FindDependencies.update_dependencies",
+        "nfoforge.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
     )
     config = ConfigManager("test", _paths(tmp_path))

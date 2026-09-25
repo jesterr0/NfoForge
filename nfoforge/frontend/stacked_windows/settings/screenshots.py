@@ -1,0 +1,502 @@
+from typing import TYPE_CHECKING
+
+from PySide6.QtCore import QEvent, QObject, Qt, Slot
+from PySide6.QtGui import QColor, QPalette, QWheelEvent
+from PySide6.QtWidgets import (
+    QCheckBox,
+    QDoubleSpinBox,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QMessageBox,
+    QSpinBox,
+    QWidget,
+)
+
+from nfoforge.config.config import ConfigManager
+from nfoforge.enums.cropping import Cropping
+from nfoforge.enums.image_plugin import ImagePlugin
+from nfoforge.enums.indexer import Indexer
+from nfoforge.enums.screen_shot_mode import ScreenShotMode
+from nfoforge.enums.subtitles import SubtitleAlignment
+from nfoforge.frontend.custom_widgets.color_selection_shape import ColorSelectionShape
+from nfoforge.frontend.custom_widgets.combo_box import CustomComboBox
+from nfoforge.frontend.custom_widgets.image_host_listbox import ImageHostListBox
+from nfoforge.frontend.stacked_windows.settings.base import BaseSettings
+from nfoforge.frontend.utils import build_h_line, create_form_layout
+
+if TYPE_CHECKING:
+    from nfoforge.frontend.stacked_windows.settings.settings import Settings
+    from nfoforge.frontend.windows.main_window import MainWindow
+
+
+class ScreenShotSettings(BaseSettings):
+    def __init__(
+        self, config: ConfigManager, main_window: "MainWindow", parent: "Settings"
+    ) -> None:
+        super().__init__(config=config, main_window=main_window, parent=parent)
+        self.setObjectName("screenShotSettings")
+
+        self.load_saved_settings.connect(self._load_saved_settings)
+        self.update_saved_settings.connect(self._save_settings)
+
+        ss_enabled_lbl = QLabel("Enable Image Handling")
+        ss_enabled_lbl.setToolTip(
+            "Enable image handling (enables image wizard page as well as logic to handle screenshots)"
+        )
+        self.ss_enabled_btn = QCheckBox(self)
+
+        ss_count_lbl = QLabel("Screenshot Count", self)
+        ss_count_lbl.setToolTip(
+            "Sets total number of screenshots generated for user to choose from"
+        )
+        self.ss_count_spinbox = self._build_spinbox(2, (2, 100), self)
+
+        ss_mode_lbl = QLabel("Screenshot Mode", self)
+        self.ss_mode_combo = CustomComboBox(
+            completer=True, disable_mouse_wheel=True, parent=self
+        )
+
+        ss_trim_start_lbl = QLabel("Video Start %", self)
+        ss_trim_start_lbl.setToolTip(
+            "Percentage of video file to trim from start for screenshot generation (max 30%)"
+        )
+        self.ss_trim_start = self._build_spinbox(
+            step=1, min_max_range=(0, 30), parent=self
+        )
+
+        ss_trim_end_lbl = QLabel("Video End %", self)
+        ss_trim_end_lbl.setToolTip(
+            "Percentage of video file to trim from end for screenshot generation (max 30%)"
+        )
+        self.ss_trim_end = self._build_spinbox(
+            step=1, min_max_range=(0, 30), parent=self
+        )
+
+        min_ss_required_count_lbl = QLabel(
+            "Image Viewer Minimum Screenshot Count", self
+        )
+        min_ss_required_count_lbl.setToolTip(
+            "Image Viewer minimum required screenshots/screenshot pairs to be selected before closing Image Viewer"
+        )
+        self.min_ss_required_count_spinbox = self._build_spinbox(1, (0, 100), self)
+
+        max_ss_required_count_lbl = QLabel(
+            "Image Viewer Maximum Screenshot Count", self
+        )
+        max_ss_required_count_lbl.setToolTip(
+            "Image Viewer maximum required screenshots/screenshot pairs to be selected before closing Image Viewer"
+        )
+        self.max_ss_required_count_spinbox = self._build_spinbox(1, (0, 100), self)
+
+        crop_mode_lbl = QLabel("Crop Mode", self)
+        crop_mode_lbl.setToolTip("Sets which cropping method will be used")
+        self.crop_mode_combo = CustomComboBox(
+            completer=True, disable_mouse_wheel=True, parent=self
+        )
+
+        indexer_lbl = QLabel("Image Indexer", self)
+        indexer_lbl.setToolTip(
+            "Indexing library used to index files for screenshots with FrameForge"
+        )
+        self.indexer_combo = CustomComboBox(
+            completer=True, disable_mouse_wheel=True, parent=self
+        )
+
+        image_plugin_lbl = QLabel("Image Plugin", self)
+        image_plugin_lbl.setToolTip(
+            "Image library used when generating screenshots with FrameForge"
+        )
+        self.image_plugin_combo = CustomComboBox(
+            completer=True, disable_mouse_wheel=True, parent=self
+        )
+
+        ss_comparison_subtitle_lbl = QLabel("Comparison Subtitles")
+        ss_comparison_subtitle_lbl.setToolTip("Toggles comparison subtitles")
+        self.ss_comparison_subtitle_btn = QCheckBox(self)
+
+        ss_comp_source_lbl = QLabel("Comparison Source Subtitles", self)
+        ss_comp_source_lbl.setToolTip("Comparison subtitle for source images")
+        self.ss_comp_source_entry = QLineEdit(self)
+
+        ss_comp_encode_lbl = QLabel("Comparison Encode Subtitles", self)
+        ss_comp_encode_lbl.setToolTip("Comparison subtitle for encode images")
+        self.ss_comp_encode_entry = QLineEdit(self)
+
+        sub_720p_size_lbl = QLabel("Subtitle Size (<= 720p)", self)
+        sub_720p_size_lbl.setToolTip(
+            "Subtitle size for resolution less than or equal to 720p"
+        )
+        self.sub_720p_size_spinbox = self._build_spinbox(2, (2, 100), self)
+
+        sub_1080p_size_lbl = QLabel("Subtitle Size (<= 1080p)", self)
+        sub_1080p_size_lbl.setToolTip(
+            "Subtitle size for resolution less than or equal to 1080p"
+        )
+        self.sub_1080p_size_spinbox = self._build_spinbox(2, (2, 100), self)
+
+        sub_2160p_size_lbl = QLabel("Subtitle Size (> 1080p)", self)
+        sub_2160p_size_lbl.setToolTip("Subtitle size for resolution greater than 1080p")
+        self.sub_2160p_size_spinbox = self._build_spinbox(2, (2, 100), self)
+
+        sub_color_lbl = QLabel("Subtitle Color (hex: #f5c70a)", self)
+        sub_color_lbl.setToolTip("Subtitle color (must be specified as a hex value)")
+
+        self.sub_color_picker = ColorSelectionShape(width=14, height=14, parent=self)
+        self.sub_color_picker.setToolTip("Set subtitle color")
+        self.sub_color_picker.color_changed.connect(self._update_sub_entry_color)
+
+        self.sub_color_entry = QLineEdit(self)
+        self.sub_color_entry.setReadOnly(True)
+
+        sub_lbl_color_widget = QWidget()
+        sub_lbl_color_layout = QHBoxLayout(sub_lbl_color_widget)
+        sub_lbl_color_layout.setContentsMargins(0, 0, 0, 0)
+        sub_lbl_color_layout.addWidget(sub_color_lbl)
+        sub_lbl_color_layout.addWidget(
+            self.sub_color_picker, alignment=Qt.AlignmentFlag.AlignRight
+        )
+
+        sub_outline_color_lbl = QLabel("Subtitle Outline Color (hex: #000000)", self)
+        sub_outline_color_lbl.setToolTip(
+            "Subtitle outline color (must be specified as a hex value)"
+        )
+
+        self.sub_outline_color_picker = ColorSelectionShape(
+            width=14, height=14, parent=self
+        )
+        self.sub_outline_color_picker.setToolTip("Set subtitle outline color")
+        self.sub_outline_color_picker.color_changed.connect(
+            self._update_sub_entry_outline_color
+        )
+
+        self.sub_outline_color_entry = QLineEdit(self)
+        self.sub_outline_color_entry.setReadOnly(True)
+
+        sub_lbl_outline_color_widget = QWidget()
+        sub_lbl_outline_color_layout = QHBoxLayout(sub_lbl_outline_color_widget)
+        sub_lbl_outline_color_layout.setContentsMargins(0, 0, 0, 0)
+        sub_lbl_outline_color_layout.addWidget(sub_outline_color_lbl)
+        sub_lbl_outline_color_layout.addWidget(
+            self.sub_outline_color_picker, alignment=Qt.AlignmentFlag.AlignRight
+        )
+
+        sub_alignment_lbl = QLabel("Subtitle Alignment", self)
+        sub_alignment_lbl.setToolTip("Adjust subtitle position")
+        self.sub_alignment_combo = CustomComboBox(
+            completer=True, disable_mouse_wheel=True, parent=self
+        )
+
+        ss_optimize_generated_lbl = QLabel(
+            '<span>Optimize <span style="font-weight: bold;">Generated</span> Images<span>',
+            self,
+        )
+        ss_optimize_generated_lbl.setToolTip("Optimize generated images (recommended)")
+        self.ss_optimize_generated_btn = QCheckBox(self)
+
+        dl_provided_images_optimize_lbl = QLabel(
+            '<span>Optimize <span style="font-weight: bold;">Opened</span> Images</span>',
+            self,
+        )
+        dl_provided_images_optimize_lbl.setToolTip(
+            "Converts images from downloaded URLs and opened files to PNG format, "
+            "optimizing them for re-uploading to another image host."
+        )
+        self.dl_provided_images_optimize = QCheckBox(self)
+
+        self.optimize_cpu_cores_percent_lbl = QLabel(self)
+        self.optimize_cpu_cores_percent_lbl.setToolTip(
+            "Will calculate percentage of CPUs to use based on a percentage (8 threads at 0.5% = 4 threads)"
+        )
+        self.optimize_cpu_cores_percent = QDoubleSpinBox(self)
+        self.optimize_cpu_cores_percent.setStepType(
+            QDoubleSpinBox.StepType.AdaptiveDecimalStepType
+        )
+        self.optimize_cpu_cores_percent.setSingleStep(0.1)
+        self.optimize_cpu_cores_percent.setRange(0.1, 1.0)
+        self.optimize_cpu_cores_percent.installEventFilter(self)
+        self.optimize_cpu_cores_percent.valueChanged.connect(self._optimize_cpu_changed)
+
+        image_host_config_label = QLabel("Image Hosts Configuration", self)
+        self.image_host_config = ImageHostListBox(self.config, self)
+        self.image_host_config.setMinimumHeight(180)
+
+        self.add_layout(create_form_layout(ss_enabled_lbl, self.ss_enabled_btn))
+        self.add_layout(create_form_layout(ss_count_lbl, self.ss_count_spinbox))
+        self.add_layout(create_form_layout(ss_mode_lbl, self.ss_mode_combo))
+        self.add_layout(create_form_layout(ss_trim_start_lbl, self.ss_trim_start))
+        self.add_layout(create_form_layout(ss_trim_end_lbl, self.ss_trim_end))
+        self.add_layout(
+            create_form_layout(
+                min_ss_required_count_lbl, self.min_ss_required_count_spinbox
+            )
+        )
+        self.add_layout(
+            create_form_layout(
+                max_ss_required_count_lbl, self.max_ss_required_count_spinbox
+            )
+        )
+        self.add_layout(create_form_layout(crop_mode_lbl, self.crop_mode_combo))
+        self.add_layout(create_form_layout(indexer_lbl, self.indexer_combo))
+        self.add_layout(create_form_layout(image_plugin_lbl, self.image_plugin_combo))
+        self.add_widget(build_h_line((10, 1, 10, 1)))
+        self.add_layout(
+            create_form_layout(
+                ss_comparison_subtitle_lbl, self.ss_comparison_subtitle_btn
+            )
+        )
+        self.add_layout(
+            create_form_layout(ss_comp_source_lbl, self.ss_comp_source_entry)
+        )
+        self.add_layout(
+            create_form_layout(ss_comp_encode_lbl, self.ss_comp_encode_entry)
+        )
+        self.add_widget(build_h_line((10, 1, 10, 1)))
+        self.add_layout(
+            create_form_layout(sub_720p_size_lbl, self.sub_720p_size_spinbox)
+        )
+        self.add_layout(
+            create_form_layout(sub_1080p_size_lbl, self.sub_1080p_size_spinbox)
+        )
+        self.add_layout(
+            create_form_layout(sub_2160p_size_lbl, self.sub_2160p_size_spinbox)
+        )
+        self.add_layout(create_form_layout(sub_lbl_color_widget, self.sub_color_entry))
+        self.add_layout(
+            create_form_layout(
+                sub_lbl_outline_color_widget, self.sub_outline_color_entry
+            )
+        )
+        self.add_layout(create_form_layout(sub_alignment_lbl, self.sub_alignment_combo))
+        self.add_widget(build_h_line((10, 1, 10, 1)))
+        self.add_layout(
+            create_form_layout(
+                ss_optimize_generated_lbl, self.ss_optimize_generated_btn
+            )
+        )
+        self.add_layout(
+            create_form_layout(
+                dl_provided_images_optimize_lbl, self.dl_provided_images_optimize
+            )
+        )
+        self.add_layout(
+            create_form_layout(
+                self.optimize_cpu_cores_percent_lbl, self.optimize_cpu_cores_percent
+            )
+        )
+        self.add_widget(build_h_line((10, 1, 10, 1)))
+        self.add_layout(
+            create_form_layout(image_host_config_label, self.image_host_config)
+        )
+        self.add_layout(self.reset_layout, add_stretch=True)
+
+        self._load_saved_settings()
+
+    @Slot(object)
+    def _update_sub_entry_color(self, color: QColor) -> None:
+        palette = self.sub_color_entry.palette()
+        palette.setColor(QPalette.ColorRole.Text, color)
+        self.sub_color_entry.setPalette(palette)
+        self.sub_color_entry.setText(self.sub_color_picker.get_hex_color())
+
+    @Slot(object)
+    def _update_sub_entry_outline_color(self, color: QColor) -> None:
+        palette = self.sub_color_entry.palette()
+        palette.setColor(QPalette.ColorRole.Text, color)
+        self.sub_outline_color_entry.setPalette(palette)
+        self.sub_outline_color_entry.setText(
+            self.sub_outline_color_picker.get_hex_color()
+        )
+
+    @Slot(float)
+    def _optimize_cpu_changed(self, value: float) -> None:
+        """When optimize spinbox is changed the label is automatically populated"""
+        self.optimize_cpu_cores_percent_lbl.setText(
+            f"Optimize Images CPU Percent ({value:.0%})"
+        )
+
+    @Slot()
+    def _load_saved_settings(self) -> None:
+        """Applies user saved settings from the config"""
+        payload = self.config.settings.screenshots
+        self.ss_enabled_btn.setChecked(payload.enabled)
+        self.ss_count_spinbox.setValue(payload.count)
+        self.load_combo_box(self.ss_mode_combo, ScreenShotMode, payload.mode)
+        self.ss_trim_start.setValue(payload.trim_start)
+        self.ss_trim_end.setValue(payload.trim_end)
+        self.min_ss_required_count_spinbox.setValue(payload.min_required_selected)
+        self.max_ss_required_count_spinbox.setValue(payload.max_required_selected)
+        self.load_combo_box(self.crop_mode_combo, Cropping, payload.crop_mode)
+        self.load_combo_box(self.indexer_combo, Indexer, payload.indexer)
+        self.load_combo_box(self.image_plugin_combo, ImagePlugin, payload.image_plugin)
+        self.ss_comparison_subtitle_btn.setChecked(payload.comparison_subtitles)
+        self.ss_comp_source_entry.setText(payload.comparison_source_name)
+        self.ss_comp_encode_entry.setText(payload.comparison_encode_name)
+        self.sub_720p_size_spinbox.setValue(payload.subtitle_height_720)
+        self.sub_1080p_size_spinbox.setValue(payload.subtitle_height_1080)
+        self.sub_2160p_size_spinbox.setValue(payload.subtitle_height_2160)
+        self.sub_color_entry.setText(payload.subtitle_color)
+        self.sub_color_picker.update_color(
+            QColor(self.config.settings.screenshots.subtitle_color)
+        )
+        self.sub_outline_color_entry.setText(payload.subtitle_outline_color)
+        self.sub_outline_color_picker.update_color(
+            QColor(self.config.settings.screenshots.subtitle_outline_color)
+        )
+        self._update_sub_entry_color(self.sub_color_picker.get_color())
+        self.load_combo_box(
+            self.sub_alignment_combo, SubtitleAlignment, payload.subtitle_alignment
+        )
+        self.ss_optimize_generated_btn.setChecked(payload.optimize_generated_images)
+        self.dl_provided_images_optimize.setChecked(
+            self.config.settings.screenshots.optimize_downloaded_images
+        )
+        self.optimize_cpu_cores_percent.setValue(
+            self.config.settings.screenshots.optimize_downloaded_images_percentage
+        )
+        self.image_host_config.add_items(
+            self.config.settings.image_hosts.by_selection()
+        )
+
+    @Slot()
+    def _save_settings(self) -> None:
+        self.config.settings.screenshots.enabled = self.ss_enabled_btn.isChecked()
+        self.config.settings.screenshots.count = self.ss_count_spinbox.value()
+        self.config.settings.screenshots.mode = self.ss_mode_combo.currentData()
+        self.config.settings.screenshots.min_required_selected = (
+            self.min_ss_required_count_spinbox.value()
+        )
+        self.config.settings.screenshots.max_required_selected = (
+            self.max_ss_required_count_spinbox.value()
+        )
+        self.config.settings.screenshots.crop_mode = self.crop_mode_combo.currentData()
+        self.config.settings.screenshots.indexer = self.indexer_combo.currentData()
+        self.config.settings.screenshots.image_plugin = (
+            self.image_plugin_combo.currentData()
+        )
+        self.config.settings.screenshots.comparison_subtitles = (
+            self.ss_comparison_subtitle_btn.isChecked()
+        )
+        self.config.settings.screenshots.comparison_source_name = (
+            self.ss_comp_source_entry.text().strip()
+        )
+        self.config.settings.screenshots.comparison_encode_name = (
+            self.ss_comp_encode_entry.text().strip()
+        )
+        self.config.settings.screenshots.subtitle_height_720 = (
+            self.sub_720p_size_spinbox.value()
+        )
+        self.config.settings.screenshots.subtitle_height_1080 = (
+            self.sub_1080p_size_spinbox.value()
+        )
+        self.config.settings.screenshots.subtitle_height_2160 = (
+            self.sub_2160p_size_spinbox.value()
+        )
+        self.config.settings.screenshots.subtitle_color = (
+            self.sub_color_entry.text().strip()
+        )
+        self.config.settings.screenshots.subtitle_outline_color = (
+            self.sub_outline_color_entry.text().strip()
+        )
+        self.config.settings.screenshots.subtitle_alignment = (
+            self.sub_alignment_combo.currentData()
+        )
+        self.config.settings.screenshots.optimize_generated_images = (
+            self.ss_optimize_generated_btn.isChecked()
+        )
+        self.config.settings.screenshots.optimize_downloaded_images = (
+            self.dl_provided_images_optimize.isChecked()
+        )
+        self.config.settings.screenshots.optimize_downloaded_images_percentage = (
+            self.optimize_cpu_cores_percent.value()
+        )
+        try:
+            self.image_host_config.validate_settings()
+        except AttributeError as attr_error:
+            QMessageBox.warning(self, "Warning", str(attr_error))
+            return
+        self.image_host_config.save_host_info()
+        self.updated_settings_applied.emit()
+
+    def apply_defaults(self) -> None:
+        self.ss_enabled_btn.setChecked(self.config.defaults.screenshots.enabled)
+        self.ss_count_spinbox.setValue(self.config.defaults.screenshots.count)
+        self.ss_mode_combo.setCurrentIndex(
+            self.config.defaults.screenshots.mode.value - 1
+        )
+        self.min_ss_required_count_spinbox.setValue(
+            self.config.defaults.screenshots.min_required_selected
+        )
+        self.max_ss_required_count_spinbox.setValue(
+            self.config.defaults.screenshots.max_required_selected
+        )
+        self.crop_mode_combo.setCurrentIndex(
+            self.config.defaults.screenshots.crop_mode.value - 1
+        )
+        self.indexer_combo.setCurrentIndex(
+            self.config.defaults.screenshots.indexer.value - 1
+        )
+        self.image_plugin_combo.setCurrentIndex(
+            self.config.defaults.screenshots.image_plugin.value - 1
+        )
+        self.ss_comparison_subtitle_btn.setChecked(
+            self.config.defaults.screenshots.comparison_subtitles
+        )
+        self.ss_comp_source_entry.setText(
+            self.config.defaults.screenshots.comparison_source_name
+        )
+        self.ss_comp_encode_entry.setText(
+            self.config.defaults.screenshots.comparison_encode_name
+        )
+        self.sub_720p_size_spinbox.setValue(
+            self.config.defaults.screenshots.subtitle_height_720
+        )
+        self.sub_1080p_size_spinbox.setValue(
+            self.config.defaults.screenshots.subtitle_height_1080
+        )
+        self.sub_2160p_size_spinbox.setValue(
+            self.config.defaults.screenshots.subtitle_height_2160
+        )
+        self.sub_color_picker.update_color(
+            QColor(self.config.defaults.screenshots.subtitle_color)
+        )
+        self._update_sub_entry_color(self.sub_color_picker.get_color())
+        self.sub_outline_color_picker.update_color(
+            QColor(self.config.defaults.screenshots.subtitle_outline_color)
+        )
+        self._update_sub_entry_outline_color(self.sub_outline_color_picker.get_color())
+        self.ss_optimize_generated_btn.setChecked(
+            self.config.defaults.screenshots.optimize_generated_images
+        )
+        self.dl_provided_images_optimize.setChecked(
+            self.config.defaults.screenshots.optimize_downloaded_images
+        )
+        self.optimize_cpu_cores_percent.setValue(
+            self.config.defaults.screenshots.optimize_downloaded_images_percentage
+        )
+        self.image_host_config.add_items(
+            self.config.settings.image_hosts.by_selection(), reset=True
+        )
+        self.sub_alignment_combo.setCurrentIndex(
+            self.config.defaults.screenshots.subtitle_alignment.value - 1
+        )
+
+    def _build_spinbox(
+        self,
+        step: int,
+        min_max_range: tuple[int, int],
+        parent: QWidget | None = None,
+    ) -> QSpinBox:
+        spinbox = QSpinBox(parent)
+        spinbox.setRange(*min_max_range)
+        spinbox.setSingleStep(step)
+        spinbox.installEventFilter(self)
+        return spinbox
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:
+        if isinstance(watched, QSpinBox | QDoubleSpinBox) and isinstance(
+            event, QWheelEvent
+        ):
+            event.ignore()
+            return True
+        return super().eventFilter(watched, event)

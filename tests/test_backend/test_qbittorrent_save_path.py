@@ -5,30 +5,30 @@ from typing import cast
 
 import pytest
 
-from src.backend.torrent_clients.qbittorrent.save_path import (
+from nfoforge.backend.torrent_clients.qbittorrent.save_path import (
     _colon_replace_for_destination,
     _is_windows_destination,
     _split_windows_anchor,
     get_qbittorrent_save_path_warning,
     resolve_qbittorrent_save_path,
 )
-from src.backend.utils.example_parsed_movie_data import (
+from nfoforge.backend.utils.example_parsed_movie_data import (
     EXAMPLE_MEDIA_INPUT_PAYLOAD,
     EXAMPLE_SEARCH_PAYLOAD,
 )
-from src.config.models import AppConfig
-from src.context.processing_context import ProcessingContext
-from src.enums.media_type import MediaType
-from src.enums.multi_episode_style import MultiEpisodeStyle
-from src.enums.token_replacer import ColonReplace
-from src.enums.torrent_client import (
+from nfoforge.config.models import AppConfig
+from nfoforge.context.processing_context import ProcessingContext
+from nfoforge.enums.media_type import MediaType
+from nfoforge.enums.multi_episode_style import MultiEpisodeStyle
+from nfoforge.enums.token_replacer import ColonReplace
+from nfoforge.enums.torrent_client import (
     QBittorrentSavePathMode,
     TorrentClientSelection,
 )
-from src.exceptions import TrackerClientError
-from src.payloads.clients import QBittorrentConfig
-from src.payloads.media_inputs import MediaInputPayload
-from src.payloads.media_search import MediaSearchPayload
+from nfoforge.exceptions import TrackerClientError
+from nfoforge.payloads.clients import QBittorrentConfig
+from nfoforge.payloads.media_inputs import MediaInputPayload
+from nfoforge.payloads.media_search import MediaSearchPayload
 
 
 def _config(

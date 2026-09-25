@@ -2,18 +2,18 @@ from pathlib import Path
 
 import pytest
 
-from src.config.config import ConfigManager
-from src.config.paths import ConfigPaths
-from src.context.processing_context import ProcessingContext
-from src.enums.media_type import MediaType
-from src.enums.series import EpisodeFormat
-from src.frontend.global_signals import GSigs
-from src.frontend.wizards.sandbox_wizard import (
+from nfoforge.config.config import ConfigManager
+from nfoforge.config.paths import ConfigPaths
+from nfoforge.context.processing_context import ProcessingContext
+from nfoforge.enums.media_type import MediaType
+from nfoforge.enums.series import EpisodeFormat
+from nfoforge.frontend.global_signals import GSigs
+from nfoforge.frontend.wizards.sandbox_wizard import (
     SandboxMainWindow,
     SandboxSeriesMapperPage,
 )
-from src.payloads.media_inputs import MediaInputPayload
-from src.payloads.media_search import MediaSearchPayload
+from nfoforge.payloads.media_inputs import MediaInputPayload
+from nfoforge.payloads.media_search import MediaSearchPayload
 from tests.repo_paths import build_app_paths
 
 
@@ -69,7 +69,7 @@ def test_sandbox_main_window_disables_itself_while_main_window_set_disabled(
     a second worker and double-connect its signals. SandboxMainWindow must now
     disable/enable itself in response, mirroring MainWindow._toggle_state."""
     monkeypatch.setattr(
-        "src.config.config.FindDependencies.update_dependencies",
+        "nfoforge.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
     )
 

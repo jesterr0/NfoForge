@@ -4,22 +4,22 @@ from pathlib import Path
 from PySide6.QtGui import QColor
 import pytest
 
-from src.backend.process import ProcessBackEnd
-from src.backend.token_replacer import TokenReplacer
-from src.backend.tokens import FileToken
-from src.enums.media_type import MediaType
-from src.enums.multi_episode_style import MultiEpisodeStyle
-from src.enums.series import EpisodeFormat
-from src.enums.token_replacer import ColonReplace, UnfilledTokenRemoval
-from src.frontend.custom_widgets.series_episode_mapper import (
+from nfoforge.backend.process import ProcessBackEnd
+from nfoforge.backend.token_replacer import TokenReplacer
+from nfoforge.backend.tokens import FileToken
+from nfoforge.enums.media_type import MediaType
+from nfoforge.enums.multi_episode_style import MultiEpisodeStyle
+from nfoforge.enums.series import EpisodeFormat
+from nfoforge.enums.token_replacer import ColonReplace, UnfilledTokenRemoval
+from nfoforge.frontend.custom_widgets.series_episode_mapper import (
     NO_TVDB_EPISODE_DATA_MESSAGE,
     SeriesEpisodeMapper,
     match_by_absolute,
     match_by_air_date,
 )
-from src.payloads.media_inputs import MediaInputPayload
-from src.payloads.media_search import MediaSearchPayload
-from src.payloads.series import (
+from nfoforge.payloads.media_inputs import MediaInputPayload
+from nfoforge.payloads.media_search import MediaSearchPayload
+from nfoforge.payloads.series import (
     SeriesReleaseInfo,
     build_series_release_info,
     describe_missing_upload_fields,
@@ -903,7 +903,7 @@ def test_has_unmapped_files_reflects_mapping_completeness() -> None:
 def test_on_table_item_changed_logs_instead_of_swallowing_exceptions(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from src.frontend.custom_widgets import series_episode_mapper as mapper_module
+    from nfoforge.frontend.custom_widgets import series_episode_mapper as mapper_module
 
     file_path = Path("Show.S01E01.mkv")
     mapper = _make_mapper_with_files([file_path])

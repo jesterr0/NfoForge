@@ -8,7 +8,7 @@ import sys
 
 from stdlib_list import stdlib_list
 
-from src.backend.utils.get_os_executable_ext import get_executable_string_by_os
+from nfoforge.backend.utils.get_os_executable_ext import get_executable_string_by_os
 
 # Modules that exist for external plugins to import rather than for NfoForge's
 # own use. Nothing here imports them, so PyInstaller's walk from the entry
@@ -22,7 +22,7 @@ from src.backend.utils.get_os_executable_ext import get_executable_string_by_os
 # edge PyInstaller has no way to see.
 PLUGIN_API_MODULES: list[str] = [
     # `WizardPluginBase`, which a wizard plugin subclasses
-    "src.plugins.plugin_wizard_base",
+    "nfoforge.plugins.plugin_wizard_base",
 ]
 
 

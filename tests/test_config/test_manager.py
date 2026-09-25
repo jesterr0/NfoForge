@@ -7,21 +7,21 @@ from typing import Any, cast
 import pytest
 import tomlkit
 
-from src.config.codec import TomlConfigCodec
-from src.config.config import ConfigManager
-from src.config.paths import ConfigPaths
-from src.config.persistence import atomic_write_text
-from src.enums.media_search_mode import MediaSearchMode
-from src.enums.torrent_client import QBittorrentAuthMode, QBittorrentSavePathMode
-from src.enums.tracker_selection import TrackerSelection
-from src.exceptions import ConfigError, ConfigSchemaError
-from src.payloads.clients import (
+from nfoforge.config.codec import TomlConfigCodec
+from nfoforge.config.config import ConfigManager
+from nfoforge.config.paths import ConfigPaths
+from nfoforge.config.persistence import atomic_write_text
+from nfoforge.enums.media_search_mode import MediaSearchMode
+from nfoforge.enums.torrent_client import QBittorrentAuthMode, QBittorrentSavePathMode
+from nfoforge.enums.tracker_selection import TrackerSelection
+from nfoforge.exceptions import ConfigError, ConfigSchemaError
+from nfoforge.payloads.clients import (
     DelugeConfig,
     QBittorrentConfig,
     RTorrentConfig,
     TransmissionConfig,
 )
-from src.payloads.trackers import BeyondHDInfo
+from nfoforge.payloads.trackers import BeyondHDInfo
 from tests.repo_paths import CONFIG_FIXTURE_DIR, DEFAULT_CONFIG_TOML
 from tests.test_config.config_tree import (
     build_config_paths as _paths,
@@ -33,7 +33,7 @@ def test_manager_loads_nested_typed_settings(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(
-        "src.config.config.FindDependencies.update_dependencies",
+        "nfoforge.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
     )
 
@@ -49,7 +49,7 @@ def test_media_search_mode_is_backfilled_and_round_trips(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(
-        "src.config.config.FindDependencies.update_dependencies",
+        "nfoforge.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
     )
     paths = _paths(tmp_path)
@@ -72,7 +72,7 @@ def test_save_preserves_unknown_keys_and_comments(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(
-        "src.config.config.FindDependencies.update_dependencies",
+        "nfoforge.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
     )
     paths = _paths(tmp_path)
@@ -123,7 +123,7 @@ def test_save_preserves_a_user_supplied_tmdb_api_key(
     table on every save.
     """
     monkeypatch.setattr(
-        "src.config.config.FindDependencies.update_dependencies",
+        "nfoforge.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
     )
     paths = _paths(tmp_path)
@@ -145,7 +145,7 @@ def test_manager_preserves_qbittorrent_super_seeding_false(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(
-        "src.config.config.FindDependencies.update_dependencies",
+        "nfoforge.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
     )
     paths = _paths(tmp_path)
@@ -169,7 +169,7 @@ def test_manager_builds_concrete_torrent_client_settings(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(
-        "src.config.config.FindDependencies.update_dependencies",
+        "nfoforge.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
     )
     clients = ConfigManager("test", _paths(tmp_path)).settings.torrent_clients
@@ -184,7 +184,7 @@ def test_manager_merges_qbittorrent_save_path_defaults_into_schema3_profile(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(
-        "src.config.config.FindDependencies.update_dependencies",
+        "nfoforge.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
     )
     paths = _paths(tmp_path)
@@ -222,7 +222,7 @@ def test_manager_rejects_invalid_qbittorrent_save_path_configuration(
     invalid_key: str,
 ) -> None:
     monkeypatch.setattr(
-        "src.config.config.FindDependencies.update_dependencies",
+        "nfoforge.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
     )
     paths = _paths(tmp_path)
@@ -244,7 +244,7 @@ def test_manager_rejects_empty_qbittorrent_super_seeding(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(
-        "src.config.config.FindDependencies.update_dependencies",
+        "nfoforge.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
     )
     paths = _paths(tmp_path)
@@ -268,7 +268,7 @@ def test_lookup_helpers_do_not_cache_replaced_objects(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(
-        "src.config.config.FindDependencies.update_dependencies",
+        "nfoforge.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
     )
     manager = ConfigManager("test", _paths(tmp_path))
@@ -286,7 +286,7 @@ def test_unchanged_settings_do_not_write(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(
-        "src.config.config.FindDependencies.update_dependencies",
+        "nfoforge.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
     )
     manager = ConfigManager("test", _paths(tmp_path))
@@ -296,7 +296,7 @@ def test_unchanged_settings_do_not_write(
         nonlocal writes
         writes += 1
 
-    monkeypatch.setattr("src.config.operations.atomic_write_text", record_write)
+    monkeypatch.setattr("nfoforge.config.operations.atomic_write_text", record_write)
 
     manager.save()
 
@@ -342,7 +342,7 @@ def test_manager_rejects_blank_required_series_token(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(
-        "src.config.config.FindDependencies.update_dependencies",
+        "nfoforge.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
     )
     paths = _paths(tmp_path)
@@ -364,7 +364,7 @@ def test_manager_rejects_unsupported_schema_version(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(
-        "src.config.config.FindDependencies.update_dependencies",
+        "nfoforge.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
     )
     paths = _paths(tmp_path)
@@ -382,7 +382,7 @@ def test_manager_rejects_old_schema_before_value_validation(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(
-        "src.config.config.FindDependencies.update_dependencies",
+        "nfoforge.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
     )
     paths = _paths(tmp_path)
@@ -445,7 +445,7 @@ def test_manager_rejects_invalid_newline_sequence(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, newline_sequence: str
 ) -> None:
     monkeypatch.setattr(
-        "src.config.config.FindDependencies.update_dependencies",
+        "nfoforge.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
     )
     paths = _paths(tmp_path)
@@ -468,7 +468,7 @@ def test_load_profile_rejects_unversioned_config_without_mutating(
     flow, with the original left untouched. ConfigManager never auto-archives.
     """
     monkeypatch.setattr(
-        "src.config.config.FindDependencies.update_dependencies",
+        "nfoforge.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
     )
     paths = _paths(tmp_path)
@@ -491,7 +491,7 @@ def test_manager_wraps_malformed_profile_toml(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(
-        "src.config.config.FindDependencies.update_dependencies",
+        "nfoforge.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
     )
     paths = _paths(tmp_path)
@@ -507,7 +507,7 @@ def test_manager_wraps_malformed_program_toml(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(
-        "src.config.config.FindDependencies.update_dependencies",
+        "nfoforge.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
     )
     paths = _paths(tmp_path)
@@ -528,7 +528,7 @@ def test_load_profile_leaves_current_config_unchanged_on_schema_error(
     previous selection instead of getting stuck on a config that can't load.
     """
     monkeypatch.setattr(
-        "src.config.config.FindDependencies.update_dependencies",
+        "nfoforge.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
     )
     paths = _paths(tmp_path)
@@ -563,7 +563,7 @@ def test_load_profile_persists_new_current_config_to_disk_on_success(
     on-disk program-conf file back does.
     """
     monkeypatch.setattr(
-        "src.config.config.FindDependencies.update_dependencies",
+        "nfoforge.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
     )
     paths = _paths(tmp_path)
@@ -590,7 +590,7 @@ def test_load_profile_leaves_on_disk_current_config_unchanged_on_schema_error(
     `test_load_profile_leaves_current_config_unchanged_on_schema_error`).
     """
     monkeypatch.setattr(
-        "src.config.config.FindDependencies.update_dependencies",
+        "nfoforge.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
     )
     paths = _paths(tmp_path)
@@ -632,7 +632,7 @@ def test_load_profile_keeps_toml_data_consistent_with_settings_past_schema_failu
     fail at the very first step and so never exercise this path.
     """
     monkeypatch.setattr(
-        "src.config.config.FindDependencies.update_dependencies",
+        "nfoforge.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
     )
     paths = _paths(tmp_path)
@@ -697,7 +697,7 @@ def test_bool_tracker_flag_config_loads(
     bool` on the next launch.
     """
     monkeypatch.setattr(
-        "src.config.config.FindDependencies.update_dependencies",
+        "nfoforge.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
     )
     paths = _paths(tmp_path)
@@ -721,7 +721,7 @@ def test_tracker_bool_flag_roundtrips_through_save(
     `bool`) and saving must produce a config that reloads cleanly -- the exact
     write-then-relaunch sequence that first surfaced the bug."""
     monkeypatch.setattr(
-        "src.config.config.FindDependencies.update_dependencies",
+        "nfoforge.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
     )
     paths = _paths(tmp_path)
@@ -752,7 +752,7 @@ def test_beyond_hd_stream_and_localization_flags_persist(
     round-trip like every other tracker flag.
     """
     monkeypatch.setattr(
-        "src.config.config.FindDependencies.update_dependencies",
+        "nfoforge.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
     )
     paths = _paths(tmp_path)
@@ -777,7 +777,7 @@ def test_int_tracker_flag_is_coerced_and_persisted_as_bool(
     default, and the healed value must be written back as a real TOML bool so
     the two representations converge."""
     monkeypatch.setattr(
-        "src.config.config.FindDependencies.update_dependencies",
+        "nfoforge.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
     )
     paths = _paths(tmp_path)
@@ -855,7 +855,7 @@ def test_default_config_round_trips_without_key_drift(
       the model.
     """
     monkeypatch.setattr(
-        "src.config.config.FindDependencies.update_dependencies",
+        "nfoforge.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
     )
     paths = _paths(tmp_path)
@@ -894,7 +894,7 @@ def test_all_tracker_scalar_fields_round_trip(
     ``None`` values are skipped.
     """
     monkeypatch.setattr(
-        "src.config.config.FindDependencies.update_dependencies",
+        "nfoforge.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
     )
     paths = _paths(tmp_path)
@@ -980,7 +980,7 @@ def test_load_profile_migrates_schema1_and_archives_original(
 ) -> None:
     """A schema-1 profile migrates fully and keeps an exact rollback copy."""
     monkeypatch.setattr(
-        "src.config.config.FindDependencies.update_dependencies",
+        "nfoforge.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
     )
     paths = _paths(tmp_path)
@@ -1008,7 +1008,7 @@ def test_load_profile_migrates_schema2_to_current(
 ) -> None:
     """A schema-2 profile migrates while retaining its original contents."""
     monkeypatch.setattr(
-        "src.config.config.FindDependencies.update_dependencies",
+        "nfoforge.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
     )
     paths = _paths(tmp_path)
@@ -1038,7 +1038,7 @@ def test_load_profile_ignores_unknown_last_used_image_hosts(
 ) -> None:
     """A future/removed tracker or image host must not invalidate a profile."""
     monkeypatch.setattr(
-        "src.config.config.FindDependencies.update_dependencies",
+        "nfoforge.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
     )
     paths = _paths(tmp_path)
@@ -1068,7 +1068,7 @@ def test_migration_validation_failure_preserves_original(
     leaving the original file byte-for-byte untouched.
     """
     monkeypatch.setattr(
-        "src.config.config.FindDependencies.update_dependencies",
+        "nfoforge.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
     )
     paths = _paths(tmp_path)
@@ -1109,7 +1109,7 @@ def test_schema1_int_tracker_flags_load_as_bool(
     tripping `validate_types` and forcing an archive+regenerate on upgrade.
     """
     monkeypatch.setattr(
-        "src.config.config.FindDependencies.update_dependencies",
+        "nfoforge.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
     )
     paths = _paths(tmp_path)
@@ -1138,7 +1138,7 @@ def test_warning_syntax_color_backfills_when_a_profile_lacks_it(
     fails, the key would need a migration rather than a default.
     """
     monkeypatch.setattr(
-        "src.config.config.FindDependencies.update_dependencies",
+        "nfoforge.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
     )
     paths = _paths(tmp_path)
@@ -1163,7 +1163,7 @@ def test_qbittorrent_auth_keys_backfill_when_a_profile_lacks_them(
     decoder would raise `KeyError` on the first load of any existing profile.
     """
     monkeypatch.setattr(
-        "src.config.config.FindDependencies.update_dependencies",
+        "nfoforge.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
     )
     paths = _paths(tmp_path)
@@ -1186,7 +1186,7 @@ def test_qbittorrent_auth_keys_are_written_on_save(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(
-        "src.config.config.FindDependencies.update_dependencies",
+        "nfoforge.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
     )
     paths = _paths(tmp_path)
@@ -1213,7 +1213,7 @@ def test_warning_syntax_color_is_written_on_save(
     key and saving must persist the value to the profile TOML.
     """
     monkeypatch.setattr(
-        "src.config.config.FindDependencies.update_dependencies",
+        "nfoforge.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
     )
     paths = _paths(tmp_path)
@@ -1232,7 +1232,7 @@ def test_metadata_transformer_backfills_when_a_profile_lacks_it(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(
-        "src.config.config.FindDependencies.update_dependencies",
+        "nfoforge.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
     )
     paths = _paths(tmp_path)
@@ -1256,7 +1256,7 @@ def test_api_key_is_absent_from_an_upgraded_profile_without_raising(
     one must default the key, not raise, on startup.
     """
     monkeypatch.setattr(
-        "src.config.config.FindDependencies.update_dependencies",
+        "nfoforge.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
     )
     paths = _paths(tmp_path)
@@ -1275,7 +1275,7 @@ def test_api_key_round_trips_through_save_and_load(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(
-        "src.config.config.FindDependencies.update_dependencies",
+        "nfoforge.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
     )
     paths = _paths(tmp_path)
@@ -1292,7 +1292,7 @@ def test_metadata_transformer_is_written_on_save(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(
-        "src.config.config.FindDependencies.update_dependencies",
+        "nfoforge.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
     )
     paths = _paths(tmp_path)
@@ -1311,7 +1311,7 @@ def test_post_upload_backfills_when_a_profile_lacks_it(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(
-        "src.config.config.FindDependencies.update_dependencies",
+        "nfoforge.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
     )
     paths = _paths(tmp_path)
@@ -1331,7 +1331,7 @@ def test_post_upload_is_written_on_save(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(
-        "src.config.config.FindDependencies.update_dependencies",
+        "nfoforge.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
     )
     paths = _paths(tmp_path)
@@ -1350,7 +1350,7 @@ def test_image_host_uploader_backfills_when_a_profile_lacks_it(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(
-        "src.config.config.FindDependencies.update_dependencies",
+        "nfoforge.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
     )
     paths = _paths(tmp_path)
@@ -1370,7 +1370,7 @@ def test_image_host_uploader_is_written_on_save(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(
-        "src.config.config.FindDependencies.update_dependencies",
+        "nfoforge.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
     )
     paths = _paths(tmp_path)
@@ -1389,7 +1389,7 @@ def test_duplicate_checker_backfills_when_a_profile_lacks_it(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(
-        "src.config.config.FindDependencies.update_dependencies",
+        "nfoforge.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
     )
     paths = _paths(tmp_path)
@@ -1409,7 +1409,7 @@ def test_duplicate_checker_is_written_on_save(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(
-        "src.config.config.FindDependencies.update_dependencies",
+        "nfoforge.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
     )
     paths = _paths(tmp_path)
@@ -1435,7 +1435,7 @@ def test_dvd_tokens_fall_back_to_the_standard_pair_for_an_older_profile(
     anything is named until the user edits the new fields.
     """
     monkeypatch.setattr(
-        "src.config.config.FindDependencies.update_dependencies",
+        "nfoforge.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
     )
     paths = _paths(tmp_path)

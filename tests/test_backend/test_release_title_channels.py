@@ -25,18 +25,18 @@ from pathlib import Path
 
 import pytest
 
-from src.backend.token_replacer import TokenReplacer
-from src.backend.tokens import FileToken
-from src.backend.trackers.title_render import normalise_title
-from src.backend.trackers.title_rules import TITLE_RULES, Separator
-from src.backend.trackers.utils import strip_title_dots
-from src.backend.utils.example_parsed_movie_data import (
+from nfoforge.backend.token_replacer import TokenReplacer
+from nfoforge.backend.tokens import FileToken
+from nfoforge.backend.trackers.title_render import normalise_title
+from nfoforge.backend.trackers.title_rules import TITLE_RULES, Separator
+from nfoforge.backend.trackers.utils import strip_title_dots
+from nfoforge.backend.utils.example_parsed_movie_data import (
     EXAMPLE_MEDIA_INPUT_PAYLOAD,
     EXAMPLE_SEARCH_PAYLOAD,
 )
-from src.config.config import ConfigManager
-from src.enums.token_replacer import ColonReplace, UnfilledTokenRemoval
-from src.enums.tracker_selection import TrackerSelection
+from nfoforge.config.config import ConfigManager
+from nfoforge.enums.token_replacer import ColonReplace, UnfilledTokenRemoval
+from nfoforge.enums.tracker_selection import TrackerSelection
 from tests.test_config.config_tree import build_config_paths
 
 # every codec runtime/config/audio_conventions/default.json can emit
@@ -188,7 +188,7 @@ def test_normalisation_is_idempotent(
 
 def _config_manager(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> ConfigManager:
     monkeypatch.setattr(
-        "src.config.config.FindDependencies.update_dependencies",
+        "nfoforge.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
     )
     return ConfigManager("test", build_config_paths(tmp_path))

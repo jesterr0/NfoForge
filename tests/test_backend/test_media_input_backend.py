@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 from PySide6.QtCore import SignalInstance
 import pytest
 
-from src.backend.media_input import MediaInputBackEnd
+from nfoforge.backend.media_input import MediaInputBackEnd
 
 
 def _backend() -> MediaInputBackEnd:

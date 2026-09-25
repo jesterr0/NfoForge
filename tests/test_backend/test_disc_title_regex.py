@@ -1,6 +1,6 @@
 """Regression coverage for the shared disc-title heuristic.
 
-``DISC_TITLE_REGEX`` (src/backend/trackers/utils.py) used to exist as four
+``DISC_TITLE_REGEX`` (nfoforge/backend/trackers/utils.py) used to exist as four
 independently-copied, case-sensitive patterns matched against an
 already-lowercased title in beyondhd.py, unit3d_base.py, passthepopcorn.py,
 and hdb.py. Because the pattern's literal tokens (AVC, HEVC, BD, Blu, ISO,
@@ -18,15 +18,15 @@ from unittest.mock import MagicMock
 from pymediainfo import MediaInfo
 import pytest
 
-from src.backend.trackers.beyondhd import BHDUploader
-from src.backend.trackers.passthepopcorn import PTPUploader
-from src.backend.trackers.unit3d_base import Unit3dBaseUploader
-from src.backend.trackers.utils import DISC_TITLE_REGEX
-from src.enums.media_type import MediaType
-from src.enums.tracker_selection import TrackerSelection
-from src.enums.trackers.aither import AitherCategory, AitherResolution, AitherType
-from src.enums.trackers.beyondhd import BHDType
-from src.enums.trackers.passthepopcorn import PTPCodec
+from nfoforge.backend.trackers.beyondhd import BHDUploader
+from nfoforge.backend.trackers.passthepopcorn import PTPUploader
+from nfoforge.backend.trackers.unit3d_base import Unit3dBaseUploader
+from nfoforge.backend.trackers.utils import DISC_TITLE_REGEX
+from nfoforge.enums.media_type import MediaType
+from nfoforge.enums.tracker_selection import TrackerSelection
+from nfoforge.enums.trackers.aither import AitherCategory, AitherResolution, AitherType
+from nfoforge.enums.trackers.beyondhd import BHDType
+from nfoforge.enums.trackers.passthepopcorn import PTPCodec
 
 _BD_25_SIZE = 20_000_000_000  # under the 25 GiB BD_25 threshold
 

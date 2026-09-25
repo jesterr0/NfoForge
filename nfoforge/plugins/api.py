@@ -1,0 +1,217 @@
+from __future__ import annotations
+
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass, field
+from enum import Enum
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Protocol
+
+if TYPE_CHECKING:
+    from nfoforge.backend.image_host_uploading.base_image_host import (
+        BaseImageHostUploader,
+    )
+    from nfoforge.config.config import ConfigManager
+    from nfoforge.context.processing_context import ProcessingContext
+    from nfoforge.enums.media_type import MediaType
+    from nfoforge.enums.tracker_selection import TrackerSelection
+    from nfoforge.frontend.wizards.wizard_base_page import BaseWizardPage
+    from nfoforge.packages.custom_types import ImageUploadData, RenameNormalization
+    from nfoforge.payloads.media_inputs import MediaInputPayload
+    from nfoforge.payloads.media_search import MediaSearchPayload
+    from nfoforge.payloads.tracker_search_result import TrackerSearchResult
+
+
+PLUGIN_API_VERSION = 2
+
+
+class MetadataMediaKind(Enum):
+    """Normalized media kinds a metadata transformer may report."""
+
+    MOVIE = "movie"
+    TV_MOVIE = "tv_movie"
+    SHORT = "short"
+    MINI_SERIES = "mini_series"
+    STAND_UP_COMEDY = "stand_up_comedy"
+    LIVE_PERFORMANCE = "live_performance"
+
+
+@dataclass(frozen=True, slots=True)
+class TokenReplaceRequest:
+    """Inputs supplied to a token-replacer plugin."""
+
+    config: ConfigManager
+    context: ProcessingContext
+    text: str
+    trackers: Sequence[TrackerSelection]
+    tracker_images: Mapping[int, ImageUploadData] | None = None
+    formatted_screens: str | None = None
+    preview: bool = False
+    source_available: bool = True
+
+
+class TokenReplacer(Protocol):
+    def __call__(self, request: TokenReplaceRequest, /) -> str | None: ...
+
+
+@dataclass(frozen=True, slots=True)
+class UploadReporter:
+    """Thread-safe UI reporting callbacks available during pre-upload work."""
+
+    append_text: Callable[[str], None]
+    replace_last_line: Callable[[str], None]
+    set_progress: Callable[[float], None]
+
+
+@dataclass(frozen=True, slots=True)
+class PreUploadRequest:
+    """Inputs supplied to a pre-upload plugin."""
+
+    config: ConfigManager
+    context: ProcessingContext
+    tracker: TrackerSelection
+    torrent_file: Path
+    reporter: UploadReporter
+    source_available: bool = True
+
+
+class PreUploadDecision(Enum):
+    CONTINUE = "continue"
+    SKIP = "skip"
+
+
+class PreUploadProcessor(Protocol):
+    def __call__(self, request: PreUploadRequest, /) -> PreUploadDecision: ...
+
+
+class PostUploadOutcome(Enum):
+    """What happened to one tracker's upload-and-injection cycle."""
+
+    SUCCESS = "success"
+    UPLOAD_FAILED = "upload_failed"
+    INJECTION_FAILED = "injection_failed"
+    SKIPPED = "skipped"
+
+
+@dataclass(frozen=True, slots=True)
+class PostUploadRequest:
+    """Inputs supplied to a post-upload plugin, once per tracker."""
+
+    config: ConfigManager
+    context: ProcessingContext
+    tracker: TrackerSelection
+    torrent_file: Path
+    reporter: UploadReporter
+    outcome: PostUploadOutcome
+    error: str | None = None
+    source_available: bool = True
+
+
+class PostUploadProcessor(Protocol):
+    def __call__(self, request: PostUploadRequest, /) -> None: ...
+
+
+@dataclass(frozen=True, slots=True)
+class MetadataInputContext:
+    """Immutable media-input facts available to metadata transformers."""
+
+    input_path: Path | None
+    media_type: MediaType | None
+    working_dir: Path | None
+    files: tuple[Path, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class MetadataTransformContext:
+    """Isolated processing context exposed to a metadata transformer."""
+
+    media_input: MetadataInputContext
+    media_search: MediaSearchPayload
+
+
+@dataclass(frozen=True, slots=True)
+class MetadataTransformRequest:
+    """An isolated payload and context snapshot supplied to a transformer."""
+
+    config: ConfigManager
+    context: MetadataTransformContext
+    payload: MediaSearchPayload
+    timeout: int
+
+
+class MetadataTransformer(Protocol):
+    def __call__(
+        self, request: MetadataTransformRequest, /
+    ) -> MediaSearchPayload | None: ...
+
+
+class FlatFilter(Protocol):
+    def __call__(self, value: str, *args: Any) -> str: ...
+
+
+@dataclass(frozen=True, slots=True)
+class DuplicateCheckRequest:
+    """Inputs supplied to a duplicate-checker plugin, once per tracker."""
+
+    config: ConfigManager
+    tracker: TrackerSelection
+    media_input: MediaInputPayload
+    media_search: MediaSearchPayload
+    timeout: int
+    source_available: bool = True
+
+
+class DuplicateChecker(Protocol):
+    def __call__(
+        self, request: DuplicateCheckRequest, /
+    ) -> Sequence[TrackerSearchResult]: ...
+
+
+@dataclass(frozen=True, slots=True)
+class CustomEditionContribution:
+    """A plugin-contributed entry recognized by the `{edition}`/`{cut}` tokens.
+
+    Merged with the built-in `EDITION_INFO`/`CUT_EDITION_NAMES` tables
+    (`nfoforge.backend.utils.rename_normalizations`) that back those two tokens.
+    `entry.normalized` is the display value the token resolves to when this
+    entry matches; `entry.re_gex` are case-insensitive regexes checked
+    against the filename and guessit's parsed edition field, the same way
+    every built-in entry is. `is_cut` mirrors `CUT_EDITION_NAMES`: `True`
+    keeps this entry in `{cut}` (so it survives on trackers whose title
+    format switched to `{cut}`, e.g. Aither); `False` makes it Edition-only
+    -- it appears in `{edition}` but is omitted from `{cut}`, matching how
+    marketing-style built-in Editions (Criterion, Deluxe, Special, ...)
+    already behave.
+    """
+
+    entry: RenameNormalization
+    is_cut: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class PluginDefinition:
+    """The single typed object exported by an NfoForge plugin."""
+
+    display_name: str
+    version: str
+    api_version: int = PLUGIN_API_VERSION
+    description: str = ""
+    wizard_page: type[BaseWizardPage] | None = None
+    token_replacer: TokenReplacer | None = None
+    pre_upload: PreUploadProcessor | None = None
+    post_upload: PostUploadProcessor | None = None
+    metadata_transformer: MetadataTransformer | None = None
+    image_host_uploader: BaseImageHostUploader | None = None
+    duplicate_checker: DuplicateChecker | None = None
+    jinja2_filters: Mapping[str, Callable[..., Any]] = field(default_factory=dict)
+    jinja2_functions: Mapping[str, Callable[..., Any]] = field(default_factory=dict)
+    flat_filters: Mapping[str, FlatFilter] = field(default_factory=dict)
+    custom_editions: Sequence[CustomEditionContribution] = field(default_factory=tuple)
+
+
+@dataclass(frozen=True, slots=True)
+class PluginRecord:
+    """A validated plugin and its stable application identity."""
+
+    plugin_id: str
+    definition: PluginDefinition
+    source: str

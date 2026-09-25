@@ -12,7 +12,7 @@ import sys
 
 import pytest
 
-from src.backend.utils.working_dir import asset_root
+from nfoforge.backend.utils.working_dir import asset_root
 
 
 def test_asset_root_comes_from_the_bundle_when_frozen(

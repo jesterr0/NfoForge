@@ -4,7 +4,7 @@ from typing import Any
 import pytest
 import tomlkit
 
-from src.config.migrations import (
+from nfoforge.config.migrations import (
     migrate_unversioned_to_v2,
     migrate_v2_to_v3,
     migrate_v3_to_v4,

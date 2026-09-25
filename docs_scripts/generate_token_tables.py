@@ -26,7 +26,7 @@ def write_token_out(
 
 
 def main() -> None:
-    from src.backend.tokens import FileToken, NfoToken, Tokens
+    from nfoforge.backend.tokens import FileToken, NfoToken, Tokens
 
     generated_templates_dir = Path("docs/snippets/generated_templates")
     generated_templates_dir.mkdir(exist_ok=True, parents=True)

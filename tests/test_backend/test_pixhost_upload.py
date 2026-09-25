@@ -6,13 +6,13 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
 
-from src.backend.image_host_uploading.base_image_host import ImageUploadRequest
-from src.backend.image_host_uploading.pixhost import (
+from nfoforge.backend.image_host_uploading.base_image_host import ImageUploadRequest
+from nfoforge.backend.image_host_uploading.pixhost import (
     PixhostUploader,
     _full_size_url,
     pixhost_upload,
 )
-from src.packages.custom_types import ImageUploadData
+from nfoforge.packages.custom_types import ImageUploadData
 
 
 class _MockResponse:

@@ -14,8 +14,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from src.config.paths import AppPaths
-from src.exceptions import ConfigError, ConfigSchemaError
+from nfoforge.config.paths import AppPaths
+from nfoforge.exceptions import ConfigError, ConfigSchemaError
 import start_ui
 from tests.repo_paths import build_app_paths
 

@@ -4,15 +4,15 @@ The dialog is the only place a run can be steered past a partial image
 failure, so what its buttons hand back is the whole of its contract.
 """
 
-from src.backend.upload_retry import (
+from nfoforge.backend.upload_retry import (
     IMAGE_UPLOAD_ATTEMPTS,
     ImageRetryAction,
     ImageUploadFailure,
 )
-from src.enums.image_host import ImageHost
-from src.enums.tracker_selection import TrackerSelection
-from src.frontend.custom_widgets.image_retry_dialog import ImageRetryDialog
-from src.packages.custom_types import ImageHostRef
+from nfoforge.enums.image_host import ImageHost
+from nfoforge.enums.tracker_selection import TrackerSelection
+from nfoforge.frontend.custom_widgets.image_retry_dialog import ImageRetryDialog
+from nfoforge.packages.custom_types import ImageHostRef
 
 PIXHOST = ImageHostRef(ImageHost.PIXHOST)
 LENSDUMP = ImageHostRef(ImageHost.LENSDUMP)

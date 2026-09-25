@@ -6,10 +6,10 @@ from PySide6.QtWidgets import QMessageBox, QWidget
 import pytest
 import tomlkit
 
-from src.config.config import ConfigManager
-from src.config.paths import ConfigPaths
-from src.enums.media_search_mode import MediaSearchMode
-from src.frontend.stacked_windows.settings.general import GeneralSettings
+from nfoforge.config.config import ConfigManager
+from nfoforge.config.paths import ConfigPaths
+from nfoforge.enums.media_search_mode import MediaSearchMode
+from nfoforge.frontend.stacked_windows.settings.general import GeneralSettings
 from tests.repo_paths import build_app_paths
 
 
@@ -29,7 +29,7 @@ def _make_general_settings(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> tuple[GeneralSettings, ConfigManager]:
     monkeypatch.setattr(
-        "src.config.config.FindDependencies.update_dependencies",
+        "nfoforge.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
     )
     # `_swap_config` surfaces a modal QMessageBox on failure; stub it out so
@@ -154,7 +154,7 @@ def test_a_successful_import_reloads_the_profile_list(
     offer names that no longer match the directory behind it."""
     widget, _ = _make_general_settings(tmp_path, monkeypatch)
     monkeypatch.setattr(
-        "src.frontend.stacked_windows.settings.general.import_configuration",
+        "nfoforge.frontend.stacked_windows.settings.general.import_configuration",
         lambda parent, config: SimpleNamespace(
             written=(config.paths.user_configs / "imported.toml",)
         ),
@@ -172,7 +172,7 @@ def test_a_cancelled_import_leaves_the_profile_list_alone(
 ) -> None:
     widget, _ = _make_general_settings(tmp_path, monkeypatch)
     monkeypatch.setattr(
-        "src.frontend.stacked_windows.settings.general.import_configuration",
+        "nfoforge.frontend.stacked_windows.settings.general.import_configuration",
         lambda parent, config: None,
     )
     reloaded: list[bool] = []
@@ -192,7 +192,7 @@ def test_replacing_the_active_profile_reloads_manager_and_settings_pages(
     imported["general"]["release_group"] = "IMPORTED"  # type: ignore[index]
     active.write_text(tomlkit.dumps(imported), encoding="utf-8")
     monkeypatch.setattr(
-        "src.frontend.stacked_windows.settings.general.import_configuration",
+        "nfoforge.frontend.stacked_windows.settings.general.import_configuration",
         lambda parent, config: SimpleNamespace(written=(active,)),
     )
     reload_calls: list[bool] = []

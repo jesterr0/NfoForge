@@ -2,9 +2,9 @@ from datetime import datetime
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from src.config.paths import default_paths
-from src.enums.logging_settings import LogSource
-from src.logger.nfo_forge_logger import Logger, default_log_file
+from nfoforge.config.paths import default_paths
+from nfoforge.enums.logging_settings import LogSource
+from nfoforge.logger.nfo_forge_logger import Logger, default_log_file
 
 
 def _session_log(log_dir: Path, timestamp: str, suffix: str) -> Path:

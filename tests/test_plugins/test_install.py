@@ -13,7 +13,7 @@ import zipfile
 
 import pytest
 
-from src.plugins.install import (
+from nfoforge.plugins.install import (
     ARCHIVE_DIR_NAME,
     PluginInstallError,
     extracted_archive,
@@ -21,8 +21,8 @@ from src.plugins.install import (
     install,
     resolve_conflict,
 )
-from src.plugins.loader import PluginLoader
-from src.plugins.manager import PluginManager
+from nfoforge.plugins.loader import PluginLoader
+from nfoforge.plugins.manager import PluginManager
 from tests.repo_paths import build_app_paths
 
 MANIFEST = """\
@@ -407,7 +407,7 @@ def test_a_failed_update_copy_leaves_the_installed_plugin_in_place(
     def fail_copy(*args, **kwargs):
         raise OSError("simulated copy failure")
 
-    monkeypatch.setattr("src.plugins.install.shutil.copytree", fail_copy)
+    monkeypatch.setattr("nfoforge.plugins.install.shutil.copytree", fail_copy)
 
     with pytest.raises(PluginInstallError, match="simulated copy failure"):
         install(inspect_folder(source), paths)
@@ -456,7 +456,7 @@ def test_an_update_keeps_the_folder_name_rather_than_suffixing_it(
 
 
 LOADABLE_MODULE = """\
-from src.plugins.api import PluginDefinition, TokenReplaceRequest
+from nfoforge.plugins.api import PluginDefinition, TokenReplaceRequest
 
 
 def _replace(request: TokenReplaceRequest) -> str:

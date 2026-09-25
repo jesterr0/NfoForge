@@ -5,15 +5,18 @@ from PySide6.QtCore import QCoreApplication, Qt
 from PySide6.QtWidgets import QMessageBox, QTreeWidget, QTreeWidgetItem
 import pytest
 
-from src.config.config import ConfigManager
-from src.config.paths import ConfigPaths
-from src.context.processing_context import ProcessingContext
-from src.enums.media_type import MediaType
-from src.enums.series import EpisodeFormat
-from src.frontend.custom_widgets.series_episode_mapper import SeriesEpisodeMapper
-from src.frontend.wizards.series_match import SeriesMatch, _incomplete_mapping_message
-from src.payloads.media_inputs import MediaInputPayload
-from src.payloads.media_search import MediaSearchPayload
+from nfoforge.config.config import ConfigManager
+from nfoforge.config.paths import ConfigPaths
+from nfoforge.context.processing_context import ProcessingContext
+from nfoforge.enums.media_type import MediaType
+from nfoforge.enums.series import EpisodeFormat
+from nfoforge.frontend.custom_widgets.series_episode_mapper import SeriesEpisodeMapper
+from nfoforge.frontend.wizards.series_match import (
+    SeriesMatch,
+    _incomplete_mapping_message,
+)
+from nfoforge.payloads.media_inputs import MediaInputPayload
+from nfoforge.payloads.media_search import MediaSearchPayload
 from tests.repo_paths import build_app_paths
 
 
@@ -884,7 +887,7 @@ def _make_series_match_page(
     mappings: dict[Path, dict[str, object]],
 ) -> SeriesMatch:
     monkeypatch.setattr(
-        "src.config.config.FindDependencies.update_dependencies",
+        "nfoforge.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
     )
     manager = ConfigManager("test", _paths(tmp_path))

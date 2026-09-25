@@ -4,18 +4,18 @@ from threading import Lock
 
 import pytest
 
-from src.config.paths import DATA_DIR_ENV_VAR, DEV_PLUGINS_ENV_VAR
-from src.exceptions import PluginError, PluginExecutionError
-from src.payloads.media_search import MediaSearchPayload
-from src.plugins.api import (
+from nfoforge.config.paths import DATA_DIR_ENV_VAR, DEV_PLUGINS_ENV_VAR
+from nfoforge.exceptions import PluginError, PluginExecutionError
+from nfoforge.payloads.media_search import MediaSearchPayload
+from nfoforge.plugins.api import (
     MetadataInputContext,
     MetadataTransformContext,
     MetadataTransformRequest,
     PluginDefinition,
     TokenReplaceRequest,
 )
-from src.plugins.loader import PluginLoader
-from src.plugins.manager import PluginManager
+from nfoforge.plugins.loader import PluginLoader
+from nfoforge.plugins.manager import PluginManager
 
 
 def _metadata_context(payload: MediaSearchPayload) -> MetadataTransformContext:
@@ -56,7 +56,7 @@ def test_load_plugins_skips_failures_and_continues(
         "good",
         "test.good",
         "nfoforge_test_good",
-        "from src.plugins.api import PluginDefinition\n"
+        "from nfoforge.plugins.api import PluginDefinition\n"
         "def sample(value): return value\n"
         "plugin = PluginDefinition(display_name='Good', version='1.0.0', "
         "jinja2_filters={'sample': sample})\n",
@@ -143,7 +143,7 @@ def test_local_plugin_import_does_not_expose_its_root_on_sys_path(
         "test.scoped",
         module_name,
         "import secrets\n"
-        "from src.plugins.api import PluginDefinition\n"
+        "from nfoforge.plugins.api import PluginDefinition\n"
         "def secrets_source(): return secrets.__file__ or ''\n"
         "plugin = PluginDefinition(display_name='Scoped', version='1.0.0', "
         "jinja2_functions={'secrets_source': secrets_source})\n",
@@ -174,7 +174,7 @@ def test_local_plugin_package_can_use_relative_imports(
         "relative",
         "test.relative",
         module_name,
-        "from src.plugins.api import PluginDefinition\n"
+        "from nfoforge.plugins.api import PluginDefinition\n"
         "from .helper import plugin_value\n"
         "plugin = PluginDefinition(display_name='Relative', version='1.0.0', "
         "jinja2_functions={'plugin_value': plugin_value})\n",
@@ -310,7 +310,7 @@ def test_a_local_plugin_wins_an_id_collision_with_an_entry_point(
         "local",
         "collide.example",
         "nfoforge_test_collision_local",
-        "from src.plugins.api import PluginDefinition\n"
+        "from nfoforge.plugins.api import PluginDefinition\n"
         "def collision_value(): return 'local'\n"
         "plugin = PluginDefinition(display_name='Local', version='1.0.0', "
         "jinja2_functions={'collision_value': collision_value})\n",
@@ -592,7 +592,7 @@ def test_shipped_examples_load_alongside_the_users_own_plugins(
         "mine",
         "test.mine",
         "nfoforge_test_mine",
-        "from src.plugins.api import PluginDefinition\n"
+        "from nfoforge.plugins.api import PluginDefinition\n"
         "def sample(value): return value\n"
         "plugin = PluginDefinition(display_name='Mine', version='1.0.0', "
         "jinja2_filters={'sample': sample})\n",
@@ -602,7 +602,7 @@ def test_shipped_examples_load_alongside_the_users_own_plugins(
         "example",
         "test.example",
         "nfoforge_test_example",
-        "from src.plugins.api import PluginDefinition\n"
+        "from nfoforge.plugins.api import PluginDefinition\n"
         "def sample(value): return value\n"
         "plugin = PluginDefinition(display_name='Example', version='1.0.0', "
         "jinja2_filters={'example_sample': sample})\n",
@@ -631,7 +631,7 @@ def test_a_users_plugin_wins_a_collision_with_a_shipped_example(
         "theirs",
         "test.shared",
         "nfoforge_test_theirs",
-        "from src.plugins.api import PluginDefinition\n"
+        "from nfoforge.plugins.api import PluginDefinition\n"
         "def sample(value): return value\n"
         "plugin = PluginDefinition(display_name='Theirs', version='9.9.9', "
         "jinja2_filters={'sample': sample})\n",
@@ -641,7 +641,7 @@ def test_a_users_plugin_wins_a_collision_with_a_shipped_example(
         "ours",
         "test.shared",
         "nfoforge_test_ours",
-        "from src.plugins.api import PluginDefinition\n"
+        "from nfoforge.plugins.api import PluginDefinition\n"
         "def sample(value): return value\n"
         "plugin = PluginDefinition(display_name='Ours', version='1.0.0', "
         "jinja2_filters={'sample': sample})\n",
@@ -702,7 +702,7 @@ def _where_plugin(where: str, name: str = "where") -> str:
     these at once has to keep them apart.
     """
     return (
-        "from src.plugins.api import PluginDefinition\n"
+        "from nfoforge.plugins.api import PluginDefinition\n"
         f"def {name}(): return {where!r}\n"
         "plugin = PluginDefinition(display_name='Sample', version='1.0.0', "
         f"jinja2_functions={{{name!r}: {name}}})\n"

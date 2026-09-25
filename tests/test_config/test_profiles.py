@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from src.config.paths import AppPaths, ConfigPaths
-from src.config.profiles import (
+from nfoforge.config.paths import AppPaths, ConfigPaths
+from nfoforge.config.profiles import (
     profile_working_dir,
     profile_working_dirs,
     unique_working_dirs,

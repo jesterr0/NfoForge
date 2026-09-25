@@ -14,15 +14,19 @@ import wave
 from pymediainfo import MediaInfo
 import pytest
 
-from src.backend.job_queue import DupeCheckResult, JobQueueRunner, QueuedJobResult
-from src.backend.jobs import store
-from src.backend.jobs.models import JobSummary
-from src.backend.process import ProcessBackEnd
-from src.backend.upload_retry import TrackerRunOutcome
-from src.context.processing_context import ProcessingContext
-from src.enums.image_host import ImageHost, ImageSource
-from src.enums.tracker_selection import TrackerSelection
-from src.packages.custom_types import ImageHostRef, ImageUploadData, ImageUploadFromTo
+from nfoforge.backend.job_queue import DupeCheckResult, JobQueueRunner, QueuedJobResult
+from nfoforge.backend.jobs import store
+from nfoforge.backend.jobs.models import JobSummary
+from nfoforge.backend.process import ProcessBackEnd
+from nfoforge.backend.upload_retry import TrackerRunOutcome
+from nfoforge.context.processing_context import ProcessingContext
+from nfoforge.enums.image_host import ImageHost, ImageSource
+from nfoforge.enums.tracker_selection import TrackerSelection
+from nfoforge.packages.custom_types import (
+    ImageHostRef,
+    ImageUploadData,
+    ImageUploadFromTo,
+)
 
 
 def test_an_archived_base_makes_missing_original_media_usable(tmp_path: Path) -> None:
@@ -104,7 +108,7 @@ def _save(
     still has to upload them), which together with `destination` is what
     decides whether local screenshot files are still needed.
     """
-    from src.backend.jobs.codec import context_to_dict
+    from nfoforge.backend.jobs.codec import context_to_dict
 
     context = ProcessingContext()
     context.media_input.input_path = media

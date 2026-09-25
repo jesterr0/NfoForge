@@ -26,7 +26,7 @@ from PySide6.QtWidgets import QApplication, QDialog
 import pytest
 from torf import Torrent
 
-from src.backend.jobs import (
+from nfoforge.backend.jobs import (
     SavedJob,
     base_torrent_snapshot,
     build_job,
@@ -37,21 +37,21 @@ from src.backend.jobs import (
     job_dir,
     save_job,
 )
-from src.backend.jobs.models import JobSummary
-from src.backend.utils.example_parsed_movie_data import (
+from nfoforge.backend.jobs.models import JobSummary
+from nfoforge.backend.utils.example_parsed_movie_data import (
     EXAMPLE_MEDIA_INPUT_PAYLOAD as MOVIE_EXAMPLE_PAYLOAD,
 )
-from src.backend.utils.example_parsed_series_data import (
+from nfoforge.backend.utils.example_parsed_series_data import (
     EXAMPLE_MEDIA_INPUT_PAYLOAD as SERIES_EXAMPLE_PAYLOAD,
 )
-from src.backend.utils.media_info_utils import clear_restored_mediainfo
-from src.config.paths import DATA_DIR_ENV_VAR, DEV_PLUGINS_ENV_VAR
-from src.context.processing_context import ProcessingContext
-from src.enums.image_host import ImageHost, ImageSource
-from src.enums.media_type import MediaType
-from src.enums.tracker_selection import TrackerSelection
-from src.frontend.global_signals import GlobalSignals
-from src.packages.custom_types import ImageUploadData, ImageUploadFromTo
+from nfoforge.backend.utils.media_info_utils import clear_restored_mediainfo
+from nfoforge.config.paths import DATA_DIR_ENV_VAR, DEV_PLUGINS_ENV_VAR
+from nfoforge.context.processing_context import ProcessingContext
+from nfoforge.enums.image_host import ImageHost, ImageSource
+from nfoforge.enums.media_type import MediaType
+from nfoforge.enums.tracker_selection import TrackerSelection
+from nfoforge.frontend.global_signals import GlobalSignals
+from nfoforge.packages.custom_types import ImageUploadData, ImageUploadFromTo
 
 
 @pytest.fixture(scope="session", autouse=True)

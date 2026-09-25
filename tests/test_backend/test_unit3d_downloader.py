@@ -4,10 +4,10 @@ from unittest.mock import ANY, MagicMock, patch
 import pytest
 from tenacity.wait import wait_none
 
-from src.backend.trackers.huno import HunoUploader
-from src.backend.trackers.unit3d_base import Unit3dBaseUploader
-from src.enums.media_type import MediaType
-from src.exceptions import TrackerError
+from nfoforge.backend.trackers.huno import HunoUploader
+from nfoforge.backend.trackers.unit3d_base import Unit3dBaseUploader
+from nfoforge.enums.media_type import MediaType
+from nfoforge.exceptions import TrackerError
 
 
 def _uploader(torrent_file: Path) -> HunoUploader:
@@ -202,7 +202,7 @@ def test_unit3d_download_retry_does_not_repeat_upload_post(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     monkeypatch.setattr(
-        "src.backend.trackers.unit3d_base.wait_exponential",
+        "nfoforge.backend.trackers.unit3d_base.wait_exponential",
         lambda **_kwargs: wait_none(),
     )
     torrent_file = tmp_path / "release.torrent"

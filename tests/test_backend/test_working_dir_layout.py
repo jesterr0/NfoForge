@@ -6,8 +6,8 @@ import re
 
 import pytest
 
-from src.backend.utils import working_dir
-from src.backend.utils.working_dir import (
+from nfoforge.backend.utils import working_dir
+from nfoforge.backend.utils.working_dir import (
     JOBS_DIR_NAME,
     PROCESSING_DIR_NAME,
     cleanable_items,
@@ -16,7 +16,7 @@ from src.backend.utils.working_dir import (
     normalise_path,
     processing_dir,
 )
-from src.config.paths import DATA_DIR_ENV_VAR
+from nfoforge.config.paths import DATA_DIR_ENV_VAR
 from tests.repo_paths import REPO_ROOT
 
 
@@ -292,7 +292,7 @@ def test_nothing_in_the_application_reads_the_old_mutable_tree() -> None:
     What can be is that no module here uses it.
     """
     offenders = []
-    sources = [REPO_ROOT / "start_ui.py", *(REPO_ROOT / "src").rglob("*.py")]
+    sources = [REPO_ROOT / "start_ui.py", *(REPO_ROOT / "nfoforge").rglob("*.py")]
     for source in sources:
         if source.name == "working_dir.py":
             continue  # where the compatibility shim necessarily names it

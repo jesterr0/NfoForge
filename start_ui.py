@@ -6,7 +6,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from src.backend.utils.working_dir import (
+from nfoforge.backend.utils.working_dir import (
     CURRENT_DIR,
     IS_FROZEN,
     asset_root,
@@ -41,27 +41,27 @@ from PySide6.QtGui import QFont, QFontDatabase, QIcon
 from PySide6.QtWidgets import QApplication, QMessageBox
 import tomlkit
 
-from src.backend.utils.template_token_migration import (
+from nfoforge.backend.utils.template_token_migration import (
     migrate_templates,
     scan_template_dir,
 )
-from src.config.config import ConfigManager
-from src.config.layout_apply import (
+from nfoforge.config.config import ConfigManager
+from nfoforge.config.layout_apply import (
     MigrationError,
     MigrationRun,
     startup_migration,
 )
-from src.config.layout_migration import LegacyInstall
-from src.config.layout_version import LayoutRecordError, migration_pending
-from src.config.paths import AppPaths, default_paths
-from src.exceptions import ConfigError, ConfigSchemaError
-from src.frontend.custom_widgets.scrollable_error_dialog import ScrollableErrorDialog
-from src.frontend.windows.main_window import MainWindow
-from src.frontend.windows.migration_prompt_dialog import MigrationPromptDialog
-from src.frontend.windows.migration_summary_dialog import MigrationSummaryDialog
-from src.frontend.windows.splash_screen import SplashScreen, SplashScreenLoader
-from src.frontend.windows.template_migration_dialog import TemplateMigrationDialog
-from src.logger.nfo_forge_logger import LOG
+from nfoforge.config.layout_migration import LegacyInstall
+from nfoforge.config.layout_version import LayoutRecordError, migration_pending
+from nfoforge.config.paths import AppPaths, default_paths
+from nfoforge.exceptions import ConfigError, ConfigSchemaError
+from nfoforge.frontend.custom_widgets.scrollable_error_dialog import ScrollableErrorDialog
+from nfoforge.frontend.windows.main_window import MainWindow
+from nfoforge.frontend.windows.migration_prompt_dialog import MigrationPromptDialog
+from nfoforge.frontend.windows.migration_summary_dialog import MigrationSummaryDialog
+from nfoforge.frontend.windows.splash_screen import SplashScreen, SplashScreenLoader
+from nfoforge.frontend.windows.template_migration_dialog import TemplateMigrationDialog
+from nfoforge.logger.nfo_forge_logger import LOG
 
 
 class _GuiThreadRelay(QObject):

@@ -1,6 +1,6 @@
 import pytest
 
-from src.backend.torrents.piece_size import (
+from nfoforge.backend.torrents.piece_size import (
     _PIECE_SIZE_CURVE,
     MAX_PIECE_EXPONENT,
     piece_exponent,
