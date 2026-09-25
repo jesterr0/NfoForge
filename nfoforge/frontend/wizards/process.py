@@ -1,4 +1,3 @@
-import asyncio
 from collections.abc import Sequence
 from copy import deepcopy
 from html import escape
@@ -33,7 +32,7 @@ from nfoforge.backend.jobs import (
     update_prepared_archive,
 )
 from nfoforge.backend.process import ProcessBackEnd
-from nfoforge.backend.tracker_run_data import build_tracker_data, image_host_label
+from nfoforge.backend.tracker_run_data import image_host_label
 from nfoforge.backend.upload_retry import (
     ImageRetryAction,
     ImageRetryDecision,
@@ -46,6 +45,11 @@ from nfoforge.backend.upload_retry import (
 from nfoforge.backend.utils.file_utilities import open_explorer
 from nfoforge.config.config import ConfigManager
 from nfoforge.context.processing_context import ProcessingContext
+from nfoforge.core.workflow.upload import (
+    DupeCheckResult,
+    check_dupes_blocking,
+    run_tracker_data,
+)
 from nfoforge.enums.image_host import ImageHost, ImageSource
 from nfoforge.enums.tracker_selection import TrackerSelection
 from nfoforge.enums.upload_process import RunPhase, UploadProcessMode
@@ -67,7 +71,6 @@ from nfoforge.packages.custom_types import (
     ImageUploadFromTo,
 )
 from nfoforge.payloads.image_hosts import ImagePayloadBase
-from nfoforge.payloads.tracker_search_result import TrackerSearchResult
 from nfoforge.utils.secret_redaction import scrub_secrets
 
 if TYPE_CHECKING:
@@ -118,21 +121,11 @@ class DupeWorker(BaseWorker):
         self.processing_queue = processing_queue
 
     def run(self) -> None:
-        async_loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(async_loop)
-        try:
-            dupes = async_loop.run_until_complete(
-                self.backend.dupe_checks(
-                    processing_queue=self.processing_queue,
-                    media_input_payload=self.context.media_input,
-                    media_search_payload=self.context.media_search,
-                )
-            )
-            self.results.emit(dupes)
-        except Exception as e:
-            self.job_failed.emit(str(e), traceback.format_exc())
-        finally:
-            async_loop.close()
+        # `check_dupes` never raises; a check that fell over entirely comes
+        # back with `failure` set, which the page reports as a failure
+        self.results.emit(
+            check_dupes_blocking(self.backend, self.context, self.processing_queue)
+        )
 
 
 class _TokenPromptWaiter(QObject):
@@ -763,55 +756,49 @@ class ProcessPage(BaseWizardPage):
         self._run_outcomes[tracker] = outcome
 
     @Slot(object)
-    def _on_dupe_results(
-        self,
-        dupes: dict[
-            TrackerSelection,
-            tuple[TrackerSelection, bool, list[TrackerSearchResult] | str],
-        ],
-    ) -> None:
-        if dupes:
-            total_dupes = 0
-            duplicates = ""
-            for tracker, result in dupes.items():
-                _, success, data = result
-                if success:
-                    if isinstance(data, list) and data:
-                        total_dupes += len(data)
-                        duplicates += (
-                            "<div style='border: 1px solid #d4d4d4; border-radius: 6px; "
-                            "margin: 10px 0 16px 0; padding: 8px 10px;'>"
-                            f"<b style='font-size: 1.08em;'>{tracker}</b>"
-                            "<table style='border-collapse:collapse; margin-top:6px;'>"
-                        )
-                        for item in data:
-                            duplicates += (
-                                "<tr>"
-                                "<td style='padding: 10px 4px; border-bottom: 1px solid #eee;'>"
-                                f'📄 <a href="{item.url}" rel="noreferrer nofollow" style="color: #1976d2; '
-                                f'text-decoration: underline; font-weight: bold;">{item.name}</a>'
-                                "</td>"
-                                "</tr>"
-                            )
-                        duplicates += "</table></div>"
-                else:
-                    # error string
-                    duplicates += (
-                        f"<div style='border: 1px solid #d4d4d4; border-radius: 6px; "
-                        "margin: 10px 0 16px 0; padding: 8px 10px;'>"
-                        f"<b style='font-size: 1.08em;'>{tracker}</b>"
-                        f"<br /><span style='color: red;'>Error: {data}</span>"
-                        "</div>"
-                    )
-            if total_dupes == 0 and not duplicates:
-                self._on_text_update("<br /><span>✅ No duplicates found</span>")
-            else:
-                self._on_text_update(
-                    f"<br /><span>⚠️ Total potential dupes found: {total_dupes}</span>"
-                    + duplicates
+    def _on_dupe_results(self, result: DupeCheckResult) -> None:
+        if result.failure:
+            self._on_dupes_failed(result.failure, "")
+            return
+
+        total_dupes = 0
+        duplicates = ""
+        for tracker in result.found:
+            matches = result.matches.get(tracker, [])
+            total_dupes += len(matches)
+            duplicates += (
+                "<div style='border: 1px solid #d4d4d4; border-radius: 6px; "
+                "margin: 10px 0 16px 0; padding: 8px 10px;'>"
+                f"<b style='font-size: 1.08em;'>{tracker}</b>"
+                "<table style='border-collapse:collapse; margin-top:6px;'>"
+            )
+            for item in matches:
+                duplicates += (
+                    "<tr>"
+                    "<td style='padding: 10px 4px; border-bottom: 1px solid #eee;'>"
+                    f'📄 <a href="{item.url}" rel="noreferrer nofollow" style="color: #1976d2; '
+                    f'text-decoration: underline; font-weight: bold;">{item.name}</a>'
+                    "</td>"
+                    "</tr>"
                 )
-        else:
+            duplicates += "</table></div>"
+        for tracker in result.unverified:
+            duplicates += (
+                f"<div style='border: 1px solid #d4d4d4; border-radius: 6px; "
+                "margin: 10px 0 16px 0; padding: 8px 10px;'>"
+                f"<b style='font-size: 1.08em;'>{tracker}</b>"
+                f"<br /><span style='color: red;'>Error: "
+                f"{result.errors.get(tracker, '')}</span>"
+                "</div>"
+            )
+
+        if total_dupes == 0 and not duplicates:
             self._on_text_update("<br /><span>✅ No duplicates found</span>")
+        else:
+            self._on_text_update(
+                f"<br /><span>⚠️ Total potential dupes found: {total_dupes}</span>"
+                + duplicates
+            )
 
         self.processing_mode = UploadProcessMode.UPLOAD
         self._job_ended()
@@ -1522,16 +1509,10 @@ class ProcessPage(BaseWizardPage):
         self._sync_tracker_image_hosts()
 
     def _gather_tracker_data(self, detected_input: Path) -> dict[str, Any] | None:
-        process_dir = self.context.media_input.working_dir
-        if not process_dir:
+        del detected_input
+        if not self.context.media_input.working_dir:
             raise ValueError("Failed to detect MediaInputPayload.working_dir")
-
-        tracker_data = build_tracker_data(
-            working_dir=process_dir,
-            input_path=detected_input,
-            tracker_image_hosts=self.context.shared_data.tracker_image_hosts,
-            input_is_directory=self.context.media_input.input_is_directory(),
-        )
+        tracker_data = run_tracker_data(self.context)
 
         # the prompt is the one part that needs a user, so it stays here rather
         # than in the shared builder the queue also calls

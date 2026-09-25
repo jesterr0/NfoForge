@@ -14,12 +14,13 @@ import wave
 from pymediainfo import MediaInfo
 import pytest
 
-from nfoforge.backend.job_queue import DupeCheckResult, JobQueueRunner, QueuedJobResult
+from nfoforge.backend.job_queue import JobQueueRunner, QueuedJobResult
 from nfoforge.backend.jobs import store
 from nfoforge.backend.jobs.models import JobSummary
 from nfoforge.backend.process import ProcessBackEnd
 from nfoforge.backend.upload_retry import TrackerRunOutcome
 from nfoforge.context.processing_context import ProcessingContext
+from nfoforge.core.workflow.upload import DupeCheckResult
 from nfoforge.enums.image_host import ImageHost, ImageSource
 from nfoforge.enums.tracker_selection import TrackerSelection
 from nfoforge.packages.custom_types import (
