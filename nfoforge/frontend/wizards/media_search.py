@@ -4,13 +4,11 @@ import asyncio
 from collections import OrderedDict
 from collections.abc import Callable, Sequence
 from contextlib import suppress
-from copy import deepcopy
-from dataclasses import dataclass
 from pathlib import Path
 import re
 import traceback
 from types import MethodType
-from typing import Any, Protocol
+from typing import Any
 from urllib import parse as url_parse
 from weakref import WeakMethod
 import webbrowser
@@ -47,14 +45,21 @@ from PySide6.QtWidgets import (
 from qtawesome import IconWidget
 
 from nfoforge.backend.media_search import MediaSearchBackEnd, TmdbAlternativeTitle
-from nfoforge.backend.utils.title_inference import MediaTitleInferer
-from nfoforge.backend.utils.tmdb_reference import TmdbReference, parse_tmdb_reference
+from nfoforge.backend.utils.tmdb_reference import parse_tmdb_reference
 from nfoforge.backend.utils.working_dir import asset_root
 from nfoforge.config.config import ConfigManager
 from nfoforge.context.processing_context import ProcessingContext
-from nfoforge.enums.media_search_mode import MediaSearchMode
+from nfoforge.core.metadata.resolve import (
+    MediaSearchJobResult,
+    ReleaseIds,
+    apply_search_result,
+    lookup_metadata,
+    metadata_errors,
+    metadata_transformer_id,
+    run_media_search,
+    run_tmdb_id_lookup,
+)
 from nfoforge.enums.media_type import MediaType
-from nfoforge.enums.tmdb_genres import TMDBGenreIDsMovies, TMDBGenreIDsSeries
 from nfoforge.exceptions import (
     MediaFileNotFoundError,
     MediaSearchError,
@@ -76,192 +81,48 @@ from nfoforge.frontend.utils.general_worker import GeneralWorker
 from nfoforge.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
 from nfoforge.frontend.wizards.wizard_base_page import BaseWizardPage
 from nfoforge.logger.nfo_forge_logger import LOG
-from nfoforge.plugins.api import (
-    MetadataInputContext,
-    MetadataTransformContext,
-    MetadataTransformRequest,
-)
-from nfoforge.utils.super_sub import normalize_super_sub
-
-
-class _MediaSearchBackend(Protocol):
-    def _parse_tmdb_api(
-        self, media_str: str, search_mode: MediaSearchMode
-    ) -> dict[str, dict[str, Any]]: ...
-
-    def resolve_tmdb_reference(
-        self,
-        tmdb_id: str,
-        media_type: MediaType | None,
-        search_mode: MediaSearchMode,
-    ) -> dict[str, dict[str, Any]]: ...
-
-
-@dataclass(frozen=True, slots=True)
-class MediaSearchJobResult:
-    """Combined title-inference and TMDB search result."""
-
-    query: str | None
-    results: OrderedDict[str, Any]
-    title_error: str | None = None
-    preferred_result_key: str | None = None
-
-
-def _run_media_search_job(
-    backend: _MediaSearchBackend,
-    query: str | None,
-    input_path: Path | None,
-    selected_files: tuple[Path, ...],
-    search_mode: MediaSearchMode = MediaSearchMode.BOTH,
-) -> MediaSearchJobResult:
-    """Infer an automatic query and perform the network search in one worker."""
-
-    if query is None:
-        if input_path is None:
-            return MediaSearchJobResult(
-                query=None,
-                results=OrderedDict(),
-                title_error="Failed to load the selected media path.",
-            )
-
-        try:
-            inference = MediaTitleInferer().infer(
-                input_path,
-                video_files=selected_files,
-            )
-        except Exception as error:
-            return MediaSearchJobResult(
-                query=None,
-                results=OrderedDict(),
-                title_error=str(error) or "Unable to determine a media title.",
-            )
-
-        query = inference.title
-        LOG.info(
-            LOG.LOG_SOURCE.BE,
-            f"Inferred media search title {query!r} "
-            f"(confidence: {inference.confidence:.1%})",
-        )
-
-    results = OrderedDict(backend._parse_tmdb_api(query, search_mode))
-    return MediaSearchJobResult(
-        query=query,
-        results=results,
-        preferred_result_key=MediaSearchBackEnd.best_match_key(query, results),
-    )
-
-
-def _run_tmdb_id_lookup_job(
-    backend: _MediaSearchBackend,
-    reference: TmdbReference,
-    search_mode: MediaSearchMode = MediaSearchMode.BOTH,
-) -> MediaSearchJobResult:
-    """Resolve a TMDB URL/ID pulled directly out of the search box.
-
-    A `MediaSearchError` (bad ID, no such record, missing release date, ...)
-    is reported the same way a zero-hit text search already is -- an empty
-    result set -- rather than a special error path. A
-    `MediaSearchUnavailableError` (network outage) is left to propagate so
-    `GeneralWorker` reports it exactly like a failed text search does today.
-    """
-    try:
-        results = backend.resolve_tmdb_reference(
-            reference.tmdb_id, reference.media_type, search_mode
-        )
-    except MediaSearchUnavailableError:
-        raise
-    except MediaSearchError:
-        results = {}
-
-    return MediaSearchJobResult(query=None, results=OrderedDict(results))
 
 
 class IDParseWorker(QThread):
+    """Runs `lookup_metadata` off the UI thread."""
+
     job_finished = Signal(object)
     job_failed = Signal(object)
 
     def __init__(
         self,
         backend: MediaSearchBackEnd,
-        media_type: MediaType,
-        imdb_id: str,
-        tmdb_title: str,
-        tmdb_year: int,
-        original_language: str,
-        tmdb_genres: Sequence[TMDBGenreIDsMovies | TMDBGenreIDsSeries],
-        tmdb_id: str = "",
-        tvdb_id: str = "",
+        item_data: dict[str, Any],
+        ids: ReleaseIds,
+        config: ConfigManager,
+        context: ProcessingContext,
         metadata_transformer_id: str | None = None,
-        config: ConfigManager | None = None,
-        context: ProcessingContext | None = None,
         parent: QObject | None = None,
     ) -> None:
         super().__init__(parent=parent)
         self.backend = backend
-        self.media_type = media_type
-        self.imdb_id = imdb_id
-        self.tmdb_title = tmdb_title
-        self.tmdb_year = tmdb_year
-        self.original_language = original_language
-        self.tmdb_genres = tmdb_genres
-        self.tmdb_id = tmdb_id
-        self.tvdb_id = tvdb_id
-        self.metadata_transformer_id = metadata_transformer_id
+        self.item_data = item_data
+        self.ids = ids
         self.config = config
         self.context = context
+        self.metadata_transformer_id = metadata_transformer_id
 
     def run(self) -> None:
         async_loop = asyncio.new_event_loop()
         asyncio.set_event_loop(async_loop)
         try:
-            parse_other_ids = async_loop.run_until_complete(
-                self.backend.parse_other_ids(
-                    self.media_type,
-                    self.imdb_id,
-                    self.tmdb_title,
-                    self.tmdb_year,
-                    self.original_language,
-                    self.tmdb_genres,
-                    self.tmdb_id,
-                    self.tvdb_id,
+            self.job_finished.emit(
+                async_loop.run_until_complete(
+                    lookup_metadata(
+                        self.backend,
+                        self.item_data,
+                        self.ids,
+                        config=self.config,
+                        context=self.context,
+                        transformer_id=self.metadata_transformer_id,
+                    )
                 )
             )
-            if (
-                self.metadata_transformer_id
-                and self.config is not None
-                and self.context is not None
-            ):
-                payload = deepcopy(self.context.media_search)
-                payload.apply_lookup_results(parse_other_ids)
-                payload.populate_from_tmdb()
-                try:
-                    transformed = self.config.plugin_manager.transform_metadata(
-                        self.metadata_transformer_id,
-                        MetadataTransformRequest(
-                            config=self.config,
-                            context=MetadataTransformContext(
-                                media_input=MetadataInputContext(
-                                    input_path=self.context.media_input.input_path,
-                                    media_type=self.context.media_input.media_type,
-                                    working_dir=self.context.media_input.working_dir,
-                                    files=tuple(self.context.media_input.file_list),
-                                ),
-                                media_search=payload,
-                            ),
-                            payload=payload,
-                            timeout=self.backend.timeout,
-                        ),
-                    )
-                    parse_other_ids["metadata_transformation"] = {
-                        "success": True,
-                        "result": transformed,
-                    }
-                except Exception as error:
-                    parse_other_ids["metadata_transformation"] = {
-                        "success": False,
-                        "error": str(error),
-                    }
-            self.job_finished.emit(parse_other_ids)
         except Exception as e:
             LOG.error(
                 LOG.LOG_SOURCE.BE,
@@ -892,15 +753,7 @@ class MediaSearch(BaseWizardPage):
         self.context.media_search.tvdb_data = None
 
     def _get_metadata_transformer_id(self) -> str | None:
-        if not self.config.settings.general.enable_plugins:
-            return None
-        plugin_id = self.config.settings.plugins.metadata_transformer
-        if not plugin_id:
-            return None
-        record = self.config.plugin_manager.get(plugin_id)
-        if record is None or record.definition.metadata_transformer is None:
-            return None
-        return plugin_id
+        return metadata_transformer_id(self.config.settings, self.config.plugin_manager)
 
     def _search_other_ids(self) -> None:
         GSigs().main_window_set_disabled.emit(True)
@@ -914,36 +767,13 @@ class MediaSearch(BaseWizardPage):
             # Establish the canonical base payload before the worker receives an
             # isolated copy for optional plugin transformation.
             self._update_payload_data()
-            media_type = item_data.get("media_type")
-            title = item_data.get("title")
-            year = item_data.get("year")
-            raw_data = item_data.get("raw_data")
-            genre_ids = item_data.get("genre_ids")
             self.id_parse_worker = IDParseWorker(
                 backend=self.backend,
-                media_type=MediaType.search_type(str(media_type)) or MediaType.MOVIE,
-                imdb_id=self.imdb_id_entry.text().strip(),
-                tmdb_title=str(title or ""),
-                tmdb_year=int(year) if isinstance(year, int | str) else 0,
-                original_language=(
-                    str(raw_data.get("original_language") or "")
-                    if isinstance(raw_data, dict)
-                    else ""
-                ),
-                tmdb_genres=(
-                    [
-                        genre
-                        for genre in genre_ids
-                        if isinstance(genre, TMDBGenreIDsMovies | TMDBGenreIDsSeries)
-                    ]
-                    if isinstance(genre_ids, list)
-                    else []
-                ),
-                tmdb_id=self.tmdb_id_entry.text().strip(),
-                tvdb_id=self.tvdb_id_entry.text().strip(),
-                metadata_transformer_id=self._get_metadata_transformer_id(),
+                item_data=item_data,
+                ids=self._entered_ids(),
                 config=self.config,
                 context=self.context,
+                metadata_transformer_id=self._get_metadata_transformer_id(),
                 parent=self,
             )
             self.id_parse_worker.job_finished.connect(self._detected_id_data)
@@ -1007,10 +837,8 @@ class MediaSearch(BaseWizardPage):
         if not media_data:
             return True
 
-        transformer_error = self._result_error(
-            media_data.get("metadata_transformation")
-        )
-        tvdb_error = self._result_error(media_data.get("tvdb_data"))
+        errors = metadata_errors(media_data)
+        transformer_error, tvdb_error = errors.transformer, errors.tvdb
 
         if transformer_error:
             LOG.warning(
@@ -1040,13 +868,6 @@ class MediaSearch(BaseWizardPage):
             )
         return True
 
-    @staticmethod
-    def _result_error(result: object) -> str | None:
-        if not isinstance(result, dict) or result.get("success") is not False:
-            return None
-        error = result.get("error")
-        return str(error) if error else "Unknown metadata error"
-
     def _ask_to_continue_without_tvdb(self, details: str) -> bool:
         message_box = QMessageBox(self)
         message_box.setIcon(QMessageBox.Icon.Warning)
@@ -1060,6 +881,13 @@ class MediaSearch(BaseWizardPage):
         message_box.exec()
         return message_box.clickedButton() is continue_button
 
+    def _entered_ids(self) -> ReleaseIds:
+        return ReleaseIds(
+            imdb_id=self.imdb_id_entry.text().strip(),
+            tmdb_id=self.tmdb_id_entry.text().strip(),
+            tvdb_id=self.tvdb_id_entry.text().strip(),
+        )
+
     def _update_payload_data(self, media_data: dict[str, Any] | None = None) -> None:
         current_item_widget = self.listbox.currentItem()
         if current_item_widget is None:
@@ -1069,194 +897,25 @@ class MediaSearch(BaseWizardPage):
         if not item_data:
             raise MediaSearchError("Failed to parse TMDB")
 
-        prompted_anilist_data: dict[str, Any] | None = None
-        # Read before the ID entries are rewritten below: `_selected_alternative_title`
-        # refuses to answer once the combo and the TMDB ID entry disagree.
-        selected_alternative_title = self._selected_alternative_title()
-
-        # update both payloads with the correct MediaType
-        self.context.media_input.media_type = self.context.media_search.media_type = (
-            MediaType.strict_search_type(str(item_data.get("media_type") or ""))
-        )
-        self.context.media_search.imdb_id = self.imdb_id_entry.text().strip() or None
-        self.context.media_search.tmdb_id = self.tmdb_id_entry.text().strip() or None
-        self.context.media_search.tvdb_id = self.tvdb_id_entry.text().strip() or None
-        self.context.media_search.tmdb_data = item_data.get("raw_data")
-        self.context.media_search.tvdb_data = None
-
-        # TMDB's own title for the record, unless the user picked one of TMDB's
-        # alternatives on this page. `populate_from_tmdb` below resolves the two.
-        self.context.media_search.title = item_data.get("title")
-        self.context.media_search.title_override = selected_alternative_title
-        year_value = item_data.get("year")
-        self.context.media_search.year = (
-            int(year_value)
-            if isinstance(year_value, int | str)
-            and not isinstance(year_value, bool)
-            and str(year_value).isdecimal()
-            else None
-        )
-        original_title = item_data.get("original_title")
-        self.context.media_search.original_title = (
-            normalize_super_sub(original_title) if original_title else None
+        transformed = apply_search_result(
+            self.context,
+            item_data,
+            self._entered_ids(),
+            # read before the ID entries are rewritten below:
+            # `_selected_alternative_title` refuses to answer once the combo and
+            # the TMDB ID entry disagree
+            alternative_title=self._selected_alternative_title(),
+            media_data=media_data,
+            ask_mal_id=lambda: self._ask_user_for_id("MAL"),
         )
 
-        if media_data:
-            # handle complete TMDB data first
-            tmdb_complete_data = media_data.get("tmdb_complete_data")
-            if tmdb_complete_data and tmdb_complete_data.get("success") is True:
-                complete_tmdb_result = tmdb_complete_data.get("result")
-                # use complete TMDB data as the primary tmdb_data
-                self.context.media_search.tmdb_data = complete_tmdb_result
-
-            resolved_ids = media_data.get("resolved_ids")
-            if resolved_ids and resolved_ids.get("success") is True:
-                resolved_result = resolved_ids.get("result")
-                if isinstance(resolved_result, dict):
-                    resolved_imdb_id = resolved_result.get("imdb_id")
-                    resolved_tvdb_id = resolved_result.get("tvdb_id")
-                    if resolved_imdb_id:
-                        self.context.media_search.imdb_id = str(resolved_imdb_id)
-                        self.imdb_id_entry.setText(str(resolved_imdb_id))
-                    if resolved_tvdb_id:
-                        self.context.media_search.tvdb_id = str(resolved_tvdb_id)
-                        self.tvdb_id_entry.setText(str(resolved_tvdb_id))
-
-            tvdb_data = media_data.get("tvdb_data")
-            ani_list_data = media_data.get("ani_list_data")
-
-            # tvdb data
-            if tvdb_data and tvdb_data.get("success") is True:
-                tvdb_data_result = tvdb_data.get("result")
-                if isinstance(tvdb_data_result, dict):
-                    self.context.media_search.tvdb_data = tvdb_data_result
-                    tvdb_result_id = tvdb_data_result.get("id")
-                    if tvdb_result_id:
-                        self.context.media_search.tvdb_id = str(tvdb_result_id)
-                        self.tvdb_id_entry.setText(str(tvdb_result_id))
-
-            # anilist data
-            if ani_list_data and ani_list_data.get("success") is True:
-                ani_list_data_result = ani_list_data.get("result")
-                if not ani_list_data_result:
-                    mal_value = self._ask_user_for_id("MAL")
-                    if mal_value is not None:
-                        ani_list_data_result = {
-                            "id": str(mal_value),
-                            "idMal": str(mal_value),
-                        }
-                        prompted_anilist_data = ani_list_data_result
-                if isinstance(ani_list_data_result, dict):
-                    self._apply_anilist_data(ani_list_data_result)
-                    if self.context.media_search.mal_id:
-                        self.mal_id_entry.setText(self.context.media_search.mal_id)
-        else:
-            LOG.info(
-                LOG.LOG_SOURCE.FE,
-                f"Using TMDB title '{self.context.media_search.title}'"
-                + (
-                    " (alternative title chosen by the user)"
-                    if selected_alternative_title
-                    else ""
-                ),
-            )
-
-        # `genres` must agree with `genre_names`, which `populate_from_tmdb`
-        # (below) rewrites from `tmdb_data`. Computing it here -- after any
-        # complete TMDB record fetched for a manually entered ID has already
-        # replaced `tmdb_data` above -- keeps the two in sync. Reading the
-        # listbox row directly left them disagreeing after a manual ID
-        # entry, and downstream genre-aware logic reads `genres`.
-        self.context.media_search.genres = self._genre_enums_from_tmdb(
-            self.context.media_search.tmdb_data, item_data
-        )
-
-        self.context.media_search.populate_from_tmdb()
-        if media_data:
-            transformed_result = media_data.get("metadata_transformation")
-            if (
-                isinstance(transformed_result, dict)
-                and transformed_result.get("success") is True
-            ):
-                transformed_payload = transformed_result.get("result")
-                if isinstance(transformed_payload, type(self.context.media_search)):
-                    self.context.media_search.copy_from(transformed_payload)
-
-                    # The transformer ran on a worker snapshot created before
-                    # the GUI could prompt for a missing MAL ID. Explicit user
-                    # input therefore takes precedence over that stale copy.
-                    if prompted_anilist_data is not None:
-                        self._apply_anilist_data(prompted_anilist_data)
-
-                    # Same rule for a title picked by hand on this page: it was
-                    # chosen for this upload, so it outranks a title the
-                    # transformer derived. Untouched when nothing was picked,
-                    # which leaves the transformer authoritative as before.
-                    if selected_alternative_title:
-                        self.context.media_search.title_override = (
-                            selected_alternative_title
-                        )
-                        self.context.media_search.title = normalize_super_sub(
-                            selected_alternative_title
-                        )
-
-                    transformed = self.context.media_search
-                    if transformed.media_type is not None:
-                        self.context.media_input.media_type = transformed.media_type
-                    self.imdb_id_entry.setText(transformed.imdb_id or "")
-                    self.tmdb_id_entry.setText(transformed.tmdb_id or "")
-                    self.tvdb_id_entry.setText(transformed.tvdb_id or "")
-                    self.mal_id_entry.setText(transformed.mal_id or "")
-
-    def _genre_enums_from_tmdb(
-        self,
-        tmdb_data: dict[str, Any] | None,
-        item_data: dict[str, Any] | None,
-    ) -> list[TMDBGenreIDsMovies | TMDBGenreIDsSeries]:
-        """Genre enums from the fetched record, falling back to the search row.
-
-        A complete TMDB record carries `genres` as objects with an `id`; a
-        search result carries `genre_ids` as already-resolved genre enums.
-        Prefer the former since it reflects a manually entered TMDB ID, and
-        only fall back to the row when the record has no usable `genres` key
-        at all. TMDB legitimately returns `genres: []` for some titles, and
-        that empty-but-present list must be accepted as-is rather than
-        treated as "missing" and backfilled from an unrelated search row.
-        """
-        enum_class: type[TMDBGenreIDsMovies] | type[TMDBGenreIDsSeries] = (
-            TMDBGenreIDsSeries
-            if self.context.media_search.media_type is MediaType.SERIES
-            else TMDBGenreIDsMovies
-        )
-
-        if tmdb_data:
-            raw_genres = tmdb_data.get("genres")
-            if isinstance(raw_genres, list):
-                resolved: list[TMDBGenreIDsMovies | TMDBGenreIDsSeries] = []
-                for entry in raw_genres:
-                    if not isinstance(entry, dict) or "id" not in entry:
-                        continue
-                    try:
-                        resolved.append(enum_class(entry["id"]))
-                    except ValueError:
-                        resolved.append(enum_class.UNDEFINED)
-                return resolved
-
-        if item_data:
-            genre_ids = item_data.get("genre_ids")
-            if isinstance(genre_ids, list):
-                return [genre for genre in genre_ids if isinstance(genre, enum_class)]
-
-        return []
-
-    def _apply_anilist_data(self, anilist_data: dict[str, Any]) -> None:
-        self.context.media_search.anilist_data = anilist_data
-        anilist_id = anilist_data.get("id")
-        mal_id = anilist_data.get("idMal")
-        self.context.media_search.anilist_id = (
-            str(anilist_id) if anilist_id is not None else None
-        )
-        self.context.media_search.mal_id = str(mal_id) if mal_id is not None else None
+        # show what the lookup settled on
+        media_search = self.context.media_search
+        self.imdb_id_entry.setText(media_search.imdb_id or "")
+        self.tmdb_id_entry.setText(media_search.tmdb_id or "")
+        self.tvdb_id_entry.setText(media_search.tvdb_id or "")
+        if transformed or media_search.mal_id:
+            self.mal_id_entry.setText(media_search.mal_id or "")
 
     def _ask_user_for_id(self, id_source: str) -> int | None:
         ask_user_id, ask_user_ok = QInputDialog.getInt(
@@ -1356,7 +1015,7 @@ class MediaSearch(BaseWizardPage):
 
         if tmdb_reference is not None:
             worker = GeneralWorker(
-                _run_tmdb_id_lookup_job,
+                run_tmdb_id_lookup,
                 self,
                 self.backend,
                 tmdb_reference,
@@ -1364,7 +1023,7 @@ class MediaSearch(BaseWizardPage):
             )
         else:
             worker = GeneralWorker(
-                _run_media_search_job,
+                run_media_search,
                 self,
                 self.backend,
                 query,
