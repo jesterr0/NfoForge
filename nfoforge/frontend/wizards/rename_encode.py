@@ -38,20 +38,27 @@ from nfoforge.backend.utils.rename_normalizations import (
     FRAME_SIZE_INFO,
     LOCALIZATION_INFO,
     RE_RELEASE_INFO,
-    is_imax,
 )
-from nfoforge.backend.utils.resolution import VideoResolutionAnalyzer
 from nfoforge.backend.utils.streaming_services import (
     STREAMING_SERVICE_CHOICES,
 )
 from nfoforge.config.config import ConfigManager
 from nfoforge.context.processing_context import ProcessingContext
+from nfoforge.core.rename.movie import (
+    MovieRenameChoices,
+    commit_movie_rename,
+    detect_movie_choices,
+    movie_name_problems,
+    movie_quality_problem,
+    movie_rename_map,
+    render_movie_name,
+)
 from nfoforge.enums.rename import QualitySelection
 from nfoforge.frontend.custom_widgets.combo_box import CustomComboBox
 from nfoforge.frontend.custom_widgets.rename_preview_dialog import RenamePreviewDialog
 from nfoforge.frontend.custom_widgets.token_table import TokenTable
 from nfoforge.frontend.global_signals import GSigs
-from nfoforge.frontend.utils import apply_plugin_override, build_h_line
+from nfoforge.frontend.utils import build_h_line
 from nfoforge.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
 from nfoforge.frontend.utils.rename_operation import RenameOperationController
 from nfoforge.frontend.wizards.wizard_base_page import BaseWizardPage
@@ -327,36 +334,30 @@ class RenameEncode(BaseWizardPage):
     def initializePage(self) -> None:
         # this is a movie so there's only ever 1 to rename, grab it with index 0
         media_file = self.context.media_input.file_list[0]
-        release_group_name = self.config.settings.general.release_group
-
         self.media_label.setText(media_file.stem)
         self.media_label.setToolTip(media_file.stem)
 
-        claims = self._pre_load_attribute_combos(media_file.stem)
-
-        apply_plugin_override(
-            self.context.shared_data.dynamic_data,
-            "localization_override",
-            self.localization_combo,
-        )
+        choices = detect_movie_choices(self.context, self.config.settings)
+        for combo, value in (
+            (self.edition_combo, choices.edition),
+            (self.frame_size_combo, choices.frame_size),
+            (self.localization_combo, choices.localization),
+            (self.re_release_combo, choices.re_release),
+            (self.service_combo, choices.streaming_service),
+        ):
+            idx = combo.findText(value)
+            combo.setCurrentIndex(idx if idx > -1 else 0)
+        self.remux_checkbox.setChecked(choices.remux)
+        self.hybrid_checkbox.setChecked(choices.hybrid)
 
         self.token_override.setText(self.config.settings.movie.filename_token)
 
-        comp_pair = self.context.media_input.comparison_pair
-        get_quality = self.backend.get_quality(
-            media_input=media_file, source_input=comp_pair.source if comp_pair else None
-        )
-        if get_quality:
-            quality_idx = self.quality_combo.findText(get_quality)
+        if choices.quality:
+            quality_idx = self.quality_combo.findText(str(choices.quality))
             if quality_idx > -1:
                 self.quality_combo.setCurrentIndex(quality_idx)
 
-        # The settings value is the user's group tag; the detected one is the
-        # source group, meaning whoever made the input file. Configured wins,
-        # and with parsing off there is nothing to fall back to -- the
-        # renderer has no filename parse of its own, so what this field shows
-        # is what the output carries.
-        self.release_group_entry.setText(release_group_name or claims.release_group)
+        self.release_group_entry.setText(choices.release_group)
 
         self.update_generated_name()
 
@@ -367,55 +368,30 @@ class RenameEncode(BaseWizardPage):
         if self._rename_operation.is_running:
             return False
 
-        file_input = self.context.media_input.file_list[0]
-        if file_input:
-            if not self._name_validations() or not self._quality_validations():
-                return False
-            output_name = self.output_entry.text().strip()
-            renamed_output = file_input.parent / f"{output_name}{file_input.suffix}"
-            rename_map = {file_input: renamed_output}
-
-            # if user opened a folder (not a single file), rename the folder to match the movie
-            if (
-                self.context.media_input.input_path
-                and self.context.media_input.input_path.is_dir()
-                and file_input.parent == self.context.media_input.input_path
-            ):
-                # rename folder to match the renamed file's stem
-                old_folder = file_input.parent
-                new_folder = old_folder.parent / self.output_entry.text().strip()
-
-                # update the renamed_output to be in the new folder
-                renamed_output = new_folder / f"{output_name}{file_input.suffix}"
-                rename_map[file_input] = renamed_output
-
-            # determine if there are any effective renames (source != target).
-            effective_renames = {
-                src: trg
-                for src, trg in rename_map.items()
-                if str(src.absolute()) != str(trg.absolute())
-            }
-
-            # If there are no actual renames, skip the preview and worker.
-            if not effective_renames:
-                return self._complete_validation()
-
-            try:
-                plan = RenamePlan.build(
-                    effective_renames,
-                    self.context.media_input.input_path,
-                )
-            except ValueError as error:
-                QMessageBox.warning(self, "Invalid Rename", str(error))
-                return False
-
-            preview_dialog = RenamePreviewDialog(self)
-            preview_dialog.set_renames(plan.file_targets)
-            if preview_dialog.exec() != QDialog.DialogCode.Accepted:
-                return False
-
-            self._rename_operation.start(plan, "Renaming media...")
+        if not self._name_validations() or not self._quality_validations():
             return False
+        effective_renames = movie_rename_map(
+            self.context.media_input, self.output_entry.text().strip()
+        )
+        # If there are no actual renames, skip the preview and worker.
+        if not effective_renames:
+            return self._complete_validation()
+
+        try:
+            plan = RenamePlan.build(
+                effective_renames,
+                self.context.media_input.input_path,
+            )
+        except ValueError as error:
+            QMessageBox.warning(self, "Invalid Rename", str(error))
+            return False
+
+        preview_dialog = RenamePreviewDialog(self)
+        preview_dialog.set_renames(plan.file_targets)
+        if preview_dialog.exec() != QDialog.DialogCode.Accepted:
+            return False
+
+        self._rename_operation.start(plan, "Renaming media...")
         return False
 
     @Slot(object)
@@ -466,60 +442,20 @@ class RenameEncode(BaseWizardPage):
             QMessageBox.warning(self, "Media Files Unavailable", str(error))
             return False
 
-        edition_combo_text = self.edition_combo.currentText()
-        if edition_combo_text:
-            self.context.shared_data.dynamic_data["edition_override"] = (
-                edition_combo_text
-            )
-
-        frame_size_text = self.frame_size_combo.currentText()
-        if frame_size_text:
-            self.context.shared_data.dynamic_data["frame_size_override"] = (
-                frame_size_text
-            )
-
-        self.context.shared_data.dynamic_data["override_tokens"] = (
-            self.backend.override_tokens
+        commit_movie_rename(
+            self.context,
+            MovieRenameChoices(
+                edition=self.edition_combo.currentText(),
+                frame_size=self.frame_size_combo.currentText(),
+                repack_reason=self.repack_reason_combo.currentText(),
+                proper_reason=self.proper_reason_combo.currentText(),
+            ),
+            self.backend.override_tokens,
+            self.output_entry.text(),
         )
-        self._re_release_reason_tokens_update()
         self._close_token_window()
         super().validatePage()
         return True
-
-    def _pre_load_attribute_combos(self, filename: str) -> FilenameClaims:
-        """Pre-fill the claim controls from stage 1, and return what it found.
-
-        The detection itself lives in `detect_filename_claims`, which the
-        settings preview also calls, so what this page shows and what the
-        preview shows cannot diverge. Everything here is presentation.
-
-        Preselecting the streaming service changes no output -- the token
-        detects it independently. It makes the detection visible, which is
-        the only way a user can tell it read the release wrong and correct
-        it before uploading to a tracker that requires the abbreviation.
-
-        The claims come back so the caller can reuse them without detecting
-        twice -- the release group seed needs the same result.
-        """
-        claims = detect_filename_claims(
-            [filename],
-            self.config.settings.movie.claims,
-            self.context.custom_edition_info,
-        )
-
-        for combo, value in (
-            (self.edition_combo, claims.edition),
-            (self.frame_size_combo, claims.frame_size),
-            (self.localization_combo, claims.localization),
-            (self.re_release_combo, claims.re_release),
-            (self.service_combo, claims.streaming_service),
-        ):
-            idx = combo.findText(value)
-            combo.setCurrentIndex(idx if idx > -1 else 0)
-
-        self.remux_checkbox.setChecked(bool(claims.remux))
-        self.hybrid_checkbox.setChecked(bool(claims.hybrid))
-        return claims
 
     def _detected_claims(self) -> FilenameClaims:
         """The film's claims -- the film's alone.
@@ -609,98 +545,30 @@ class RenameEncode(BaseWizardPage):
 
     def _name_validations(self) -> bool:
         output_name = self.output_entry.text().strip()
-        if not output_name:
-            QMessageBox.warning(
-                self,
-                "Invalid Rename",
-                "The generated filename is empty. Choose a token template that "
-                "produces a filename before continuing.",
-            )
-            return False
-        if self._input_ext is None:
+        if output_name and self._input_ext is None:
             QMessageBox.warning(
                 self,
                 "Invalid Rename",
                 "A valid filename could not be generated from the selected media.",
             )
             return False
-        if not self.context.media_input.file_list[0].suffix:
-            QMessageBox.warning(
-                self,
-                "Invalid Rename",
-                "The input media has no file extension to preserve.",
-            )
-            return False
-
-        renamed_output_lowered = output_name.lower()
-        if "subbed" in renamed_output_lowered and "dubbed" in renamed_output_lowered:
-            QMessageBox.warning(
-                self, "Error", "Both 'Subbed' and 'Dubbed' should not be used together."
-            )
-            return False
-        if is_imax(renamed_output_lowered) and re.search(
-            r"open[\s|\.]*matte", renamed_output_lowered, flags=re.I
-        ):
-            QMessageBox.warning(
-                self,
-                "Error",
-                "Both 'IMAX' and 'Open Matte' should not be used together.",
-            )
+        problems = movie_name_problems(
+            output_name, self.context.media_input.file_list[0]
+        )
+        if problems:
+            QMessageBox.warning(self, "Invalid Rename", problems[0])
             return False
         return True
 
     def _quality_validations(self) -> bool:
-        cur_quality = (
-            QualitySelection(self.quality_combo.currentText())
-            if self.quality_combo.currentText()
-            else None
+        text = self.quality_combo.currentText()
+        problem = movie_quality_problem(
+            QualitySelection(text) if text else None, self.context.media_input
         )
-        if not cur_quality:
-            return True
-        elif cur_quality in {QualitySelection.DVD, QualitySelection.SDTV}:
-            first_file = self.context.media_input.require_first_file()
-            mi_obj = (
-                self.context.media_input.file_list_mediainfo.get(first_file)
-                if self.context.media_input.file_list_mediainfo
-                else None
-            )
-            if not mi_obj:
-                raise FileNotFoundError("Failed to parse MediaInfo")
-            detect_resolution = VideoResolutionAnalyzer(mi_obj).get_resolution(
-                remove_scan=True
-            )
-            if detect_resolution:
-                if int(detect_resolution) > 576:
-                    QMessageBox.warning(
-                        self,
-                        "Error",
-                        f"Cannot utilize quality {cur_quality} with a resolution above 576p.",
-                    )
-                    return False
+        if problem:
+            QMessageBox.warning(self, "Error", problem)
+            return False
         return True
-
-    def _re_release_reason_tokens_update(self) -> None:
-        """
-        Updates Jinja global variables for repack or proper reasons based on the current combo box selections
-        and the content of the output text.
-        """
-        combo_to_global_map = {
-            "repack_reason": (self.repack_reason_combo.currentText(), r"(repack\d*)"),
-            "proper_reason": (self.proper_reason_combo.currentText(), r"(proper\d*)"),
-        }
-
-        final_output_text = self.output_entry.text()
-
-        for global_name, (combo_text, pattern) in combo_to_global_map.items():
-            if combo_text:
-                self.context.jinja_engine.add_global(global_name, combo_text, True)
-                match = re.search(pattern, final_output_text, flags=re.I)
-                if match:
-                    self.context.jinja_engine.add_global(
-                        global_name.replace("_reason", "_n"), match.group(1), True
-                    )
-                # ensure only one combo box is processed
-                break
 
     @Slot(int)
     def _update_edition_combo(self, _: int | None = None) -> None:
@@ -803,20 +671,8 @@ class RenameEncode(BaseWizardPage):
             self.release_group_entry.text().strip()
         )
 
-        user_tokens = {
-            k: v
-            for k, (v, t) in self.config.settings.user_tokens.tokens.items()
-            if TokenSelection(t) is TokenSelection.FILE_TOKEN
-        }
-
-        get_file_name = self.backend.media_renamer(
-            media_input_obj=self.context.media_input,
-            mvr_token=token,
-            mvr_colon_replacement=self.config.settings.movie.filename_colon_replace,
-            media_search_payload=self.context.media_search,
-            title_clean_rules=self.config.settings.global_management.title_clean_rules,
-            video_dynamic_range=self.config.settings.global_management.video_dynamic_range,
-            user_tokens=user_tokens,
+        get_file_name = render_movie_name(
+            self.context, self.config.settings, self.backend, token
         )
 
         if get_file_name and self.backend.token_replacer:
