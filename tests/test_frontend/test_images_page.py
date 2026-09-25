@@ -92,7 +92,9 @@ def _make_images_page(
 
     # the source and encode differ in resolution, which is what puts the crop
     # logic in play at all
-    monkeypatch.setattr(ImagesPage, "_compare_resolutions", lambda self: False)
+    monkeypatch.setattr(
+        "nfoforge.core.screenshots.plan.compare_resolutions", lambda *_: False
+    )
 
     generated: list[ScriptValues | None] = []
     monkeypatch.setattr(

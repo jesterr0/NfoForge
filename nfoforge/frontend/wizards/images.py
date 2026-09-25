@@ -1,8 +1,6 @@
-from os import PathLike
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from pymediainfo import MediaInfo
 from PySide6.QtCore import QObject, QSize, Qt, QThread, Signal, SignalInstance, Slot
 from PySide6.QtWidgets import (
     QApplication,
@@ -21,18 +19,19 @@ from PySide6.QtWidgets import (
 
 from nfoforge.backend.images import ImagesBackEnd
 from nfoforge.backend.utils.images import (
-    compare_resolutions,
-    determine_sub_size,
     extract_images_from_str,
 )
-from nfoforge.backend.utils.script_parser import ScriptParser
 from nfoforge.config.config import ConfigManager
 from nfoforge.context.processing_context import ProcessingContext
-from nfoforge.enums.cropping import Cropping
-from nfoforge.enums.image_plugin import ImagePlugin
-from nfoforge.enums.indexer import Indexer
+from nfoforge.core.screenshots.plan import (
+    CropSource,
+    ScreenshotPlan,
+    generate_screenshots,
+    plan_screenshots,
+    resolve_crop,
+    screenshot_mode,
+)
 from nfoforge.enums.screen_shot_mode import ScreenShotMode
-from nfoforge.enums.subtitles import SubtitleAlignment
 from nfoforge.exceptions.utils import get_full_traceback
 from nfoforge.frontend.custom_widgets.custom_splitter import CustomSplitter
 from nfoforge.frontend.custom_widgets.dnd_factory import (
@@ -46,7 +45,6 @@ from nfoforge.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
 from nfoforge.frontend.windows.image_viewer import ImageViewer
 from nfoforge.frontend.wizards.wizard_base_page import BaseWizardPage
 from nfoforge.logger.nfo_forge_logger import LOG
-from nfoforge.packages.custom_types import SubNames
 from nfoforge.payloads.script import ScriptValues
 
 if TYPE_CHECKING:
@@ -54,189 +52,31 @@ if TYPE_CHECKING:
 
 
 class QueuedWorker(QThread):
+    """Runs one `ScreenshotPlan` off the UI thread."""
+
     job_finished = Signal(int)
     job_failed = Signal(str)
 
     def __init__(
         self,
         backend: ImagesBackEnd,
-        ss_mode: ScreenShotMode,
-        media_file: Path,
-        media_file_mi_obj: MediaInfo,
-        output_directory: Path,
-        total_images: int,
-        trim: tuple[int, int],
-        subtitle_color: str,
-        subtitle_outline_color: str,
-        sub_names: SubNames | None,
-        sub_size: int,
-        subtitle_alignment: SubtitleAlignment,
-        crop_mode: Cropping,
-        script_values: ScriptValues | None,
-        re_sync: int,
-        indexer: Indexer | None,
-        image_plugin: ImagePlugin | None,
-        ffmpeg_path: Path,
-        frame_forge_path: Path | None,
+        plan: ScreenshotPlan,
         progress_signal: SignalInstance,
-        source_file: Path | None = None,
-        source_file_mi_obj: MediaInfo | None = None,
         parent: QObject | None = None,
-        index_cache_root: Path | None = None,
-        protected_media_root: Path | None = None,
     ) -> None:
-        """
-        Generate images and emit progress signals.
-
-        Parameters:
-            backend (ImagesBackEnd): Backend class to handle image generation.
-            ss_mode (ScreenShotMode): Selected ScreenShotMode.
-            media_file (Path): The input file path.
-            media_file_mi_obj (MediaInfo): MediaInfo object of the input file.
-            output_directory (Path): The output directory path.
-            total_images (int): The total number of images to generate.
-            trim (tuple[int, int]): The percentage of the file to trim from start and end.
-            subtitle_color (str): Hex color.
-            subtitle_outline_color (str): Hex color.
-            sub_names (Optional[SubNames]): Subtitle names.
-            sub_size (int): Subtitle size.
-            subtitle_alignment (SubtitleAlignment): Subtitle alignment.
-            crop_mode (Cropping): Crop mode.
-            script_values (Optional[ScriptValues]): Script values.
-            re_sync (int): Re_sync value.
-            indexer (Optional[Indexer]): Indexer used for FrameForge.
-            image_plugin (Optional[ImagePlugin]): Plugin used for image generation in FrameForge.
-            ffmpeg_path (Path): Path to FFMPEG executable.
-            frame_forge_path (Path): Path to FFMPEG executable.
-            progress_signal (SignalInstance[str, float]): The signal used to emit progress updates.
-            source_file (Optional[Path]): The input file path for the source.
-            source_file_mi_obj (Optional[Path]): MediaInfo object of the input file.
-            index_cache_root (Optional[Path]): Base directory for FrameForge's
-                private index cache.
-            protected_media_root (Optional[Path]): Upload tree that the private
-                FrameForge encode index must remain outside.
-        """
         super().__init__(parent=parent)
         self.backend = backend
-        self.ss_mode = ss_mode
-        self.media_file = media_file
-        self.media_file_mi_obj = media_file_mi_obj
-        self.output_directory = output_directory
-        self.total_images = total_images
-        self.trim = trim
-        self.subtitle_color = subtitle_color
-        self.subtitle_outline_color = subtitle_outline_color
-        self.sub_names = sub_names
-        self.sub_size = sub_size
-        self.subtitle_alignment = subtitle_alignment
-        self.crop_mode = crop_mode
-        self.crop_values = script_values.crop_values if script_values else None
-        self.advanced_resize = script_values.advanced_resize if script_values else None
-        self.re_sync = re_sync
-        self.indexer = indexer
-        self.image_plugin = image_plugin
-        self.ffmpeg_path = ffmpeg_path
-        self.frame_forge_path = frame_forge_path
+        self.plan = plan
         self.progress_signal = progress_signal
-        self.source_file = source_file
-        self.source_file_mi_obj = source_file_mi_obj
-        self.index_cache_root = index_cache_root
-        self.protected_media_root = protected_media_root
 
     def run(self) -> None:
         try:
-            if self.ss_mode == ScreenShotMode.BASIC_SS_GEN:
-                self._basic_generation()
-            elif self.ss_mode == ScreenShotMode.SIMPLE_SS_COMP:
-                if not self.source_file:
-                    self.job_failed.emit("Must have 'source_input' for this profile")
-                    return
-                self._comparison_generation()
-            elif self.ss_mode == ScreenShotMode.ADV_SS_COMP:
-                if not self.source_file:
-                    self.job_failed.emit("Must have 'source_input' for this profile")
-                    return
-                self._adv_comparison_generation()
+            self.job_finished.emit(
+                generate_screenshots(self.plan, self.backend, self.progress_signal)
+            )
         except Exception as e:
             LOG.error(LOG.LOG_SOURCE.FE, get_full_traceback(e))
             self.job_failed.emit(f"Error: Please check logs for more details ({e})")
-
-    def _basic_generation(self) -> None:
-        job = self.backend.basic_image_generation(
-            self.media_file,
-            self.output_directory,
-            self.media_file_mi_obj,
-            self.total_images,
-            self.trim,
-            self.ffmpeg_path,
-            self.progress_signal,
-        )
-        self.job_finished.emit(job)
-
-    def _comparison_generation(self) -> None:
-        if not self.source_file or not self.source_file_mi_obj:
-            raise RuntimeError(
-                "Failed to execute comparison image generation: source_file and/or source_file_mi_obj is missing"
-            )
-        job = self.backend.comparison_image_generation(
-            self.source_file,
-            self.source_file_mi_obj,
-            self.media_file,
-            self.media_file_mi_obj,
-            self.output_directory,
-            self.total_images,
-            self.trim,
-            self.subtitle_color,
-            self.subtitle_outline_color,
-            self.sub_names,
-            self.sub_size,
-            self.crop_mode,
-            self.crop_values,
-            self.ffmpeg_path,
-            self.progress_signal,
-            self.re_sync,
-        )
-        self.job_finished.emit(job)
-
-    def _adv_comparison_generation(self) -> None:
-        if (
-            not self.source_file
-            or not self.source_file_mi_obj
-            or not self.indexer
-            or not self.image_plugin
-            or not self.frame_forge_path
-        ):
-            raise RuntimeError(
-                "Failed to execute comparison image generation: one or all of "
-                f"({self.source_file=}, {self.source_file_mi_obj=}, {self.indexer=}, "
-                f"{self.image_plugin=}, {self.frame_forge_path=}) is missing"
-            )
-        job = self.backend.frame_forge_image_generation(
-            self.source_file,
-            self.source_file_mi_obj,
-            self.media_file,
-            self.media_file_mi_obj,
-            self.output_directory,
-            self.total_images,
-            self.trim,
-            self.subtitle_color,
-            self.subtitle_outline_color,
-            self.sub_names,
-            self.sub_size,
-            self.subtitle_alignment,
-            self.crop_mode,
-            self.crop_values,
-            self.advanced_resize,
-            self.re_sync,
-            self.indexer,
-            self.image_plugin,
-            self.frame_forge_path,
-            self.ffmpeg_path,
-            self.progress_signal,
-            index_cache_root=self.index_cache_root,
-            protected_media_root=self.protected_media_root,
-        )
-        self.job_finished.emit(job)
 
 
 class ImagesPage(BaseWizardPage):
@@ -268,8 +108,6 @@ class ImagesPage(BaseWizardPage):
         self.progress_signal_generation.connect(self._progress_callback)
 
         self.image_viewer: ImageViewer | None = None
-        self.source_file: Path | None = None
-        self.media_file: Path | None = None
         self.image_dir: Path | None = None
         self.script_values: ScriptValues | None = None
 
@@ -423,60 +261,24 @@ class ImagesPage(BaseWizardPage):
             )
             return
 
-        ss_mode = self.config.settings.screenshots.mode
-        crop_mode = self.config.settings.screenshots.crop_mode
+        crop_source, script_values = resolve_crop(self.context, self.config.settings)
+        if crop_source is CropSource.SCRIPT:
+            self._execute_image_generation(script_values=script_values)
+            return
 
-        # if ScreenShotMode is not basic we can run comparison logic
-        if ss_mode is not ScreenShotMode.BASIC_SS_GEN:
-            # if the user didn't provide a comparison pair we'll just generated via basic
+        if crop_source is CropSource.MANUAL:
+            dlg = CropWidgetDialog(self)
+            # if we have the script pre-load it to work from
             comp_pair = self.context.media_input.comparison_pair
-            if not comp_pair:
-                self._execute_image_generation()
+            if comp_pair and comp_pair.script:
+                dlg.load_script(comp_pair.script)
+            script_values = dlg.exec_crop()
+            if script_values:
+                self._execute_image_generation(script_values=script_values)
                 return
 
-            if not self._compare_resolutions():
-                # a comparison script is the source of truth for cropping, so when
-                # it carries usable values apply them directly rather than asking
-                # the user to confirm crops they already described in the script
-                if crop_mode is not Cropping.DISABLED and comp_pair.script:
-                    parse_script = ScriptParser(
-                        comp_pair.script.read_text(encoding="utf-8")
-                    ).get_data()
-                    if not parse_script.all_zeros():
-                        self._execute_image_generation(script_values=parse_script)
-                        return
-
-                # without a script (or with one that has no crops in it) manual
-                # mode prompts the crop dialog widget
-                if crop_mode is Cropping.MANUAL:
-                    dlg = CropWidgetDialog(self)
-                    # if we have the script pre-load it to work from
-                    if comp_pair.script:
-                        dlg.load_script(comp_pair.script)
-                    script_values = dlg.exec_crop()
-                    if script_values:
-                        self._execute_image_generation(script_values=script_values)
-                        return
-
-        # if comparison logic was not needed just fall back to regular generation
-        # allowing it to detect the correct flow
+        # nothing to crop (or the crop dialog was cancelled): generate as-is
         self._execute_image_generation()
-
-    def _compare_resolutions(self) -> bool:
-        comp_pair = self.context.media_input.comparison_pair
-        mi_list = self.context.media_input.file_list_mediainfo
-        if not comp_pair or not mi_list:
-            raise AttributeError("Failed to get data from comparison pair")
-        if not compare_resolutions(
-            mi_list[comp_pair.source],
-            mi_list[comp_pair.media],
-        ):
-            return False
-        return True
-
-    def _read_advanced_script(self, script: PathLike[str]) -> str:
-        with open(script, encoding="utf-8") as read_script:
-            return read_script.read()
 
     @Slot()
     def _execute_image_generation(
@@ -484,7 +286,6 @@ class ImagesPage(BaseWizardPage):
         script_values: ScriptValues | None = None,
         re_sync: int = 0,
     ) -> None:
-        crop_mode = self.config.settings.screenshots.crop_mode
         if script_values:
             self.script_values = script_values
 
@@ -492,26 +293,12 @@ class ImagesPage(BaseWizardPage):
             return
 
         try:
-            self.context.media_input.require_existing_media_paths(
-                include_comparison=True
+            plan = plan_screenshots(
+                self.context,
+                self.config.settings,
+                script_values=script_values,
+                re_sync=re_sync,
             )
-            ss_mode, source_file_mi_obj, media_file_mi_obj, comparison_subs = (
-                self._generate_job_args()
-            )
-            self._set_image_directory()
-
-            subtitle_color = self.config.settings.screenshots.subtitle_color
-            subtitle_outline_color = (
-                self.config.settings.screenshots.subtitle_outline_color
-            )
-            sub_names = self._get_sub_names(comparison_subs)
-            sub_size = determine_sub_size(
-                media_file_mi_obj.video_tracks[0].height,
-                self.config.settings.screenshots.subtitle_height_720,
-                self.config.settings.screenshots.subtitle_height_1080,
-                self.config.settings.screenshots.subtitle_height_2160,
-            )
-            subtitle_alignment = self.config.settings.screenshots.subtitle_alignment
         except (FileNotFoundError, KeyError, RuntimeError) as error:
             QMessageBox.critical(
                 self,
@@ -519,28 +306,17 @@ class ImagesPage(BaseWizardPage):
                 f"Could not prepare image generation:\n\n{error}",
             )
             return
+        self.image_dir = plan.output_directory
 
         GSigs().main_window_set_disabled.emit(True)
         self.text_box.clear()
         self.thumbnail_listbox.clear()
         self._disable_generate_images_button()
         self._update_loading_state(False)
-        self._update_text_box(f"Starting image generation (Mode: {ss_mode}).")
+        self._update_text_box(f"Starting image generation (Mode: {plan.mode}).")
 
         try:
-            self._start_queued_worker(
-                ss_mode,
-                media_file_mi_obj,
-                source_file_mi_obj,
-                subtitle_color,
-                subtitle_outline_color,
-                sub_names,
-                sub_size,
-                subtitle_alignment,
-                crop_mode,
-                script_values,
-                re_sync,
-            )
+            self._start_queued_worker(plan)
         except Exception as error:
             self._complete_loading()
             QMessageBox.critical(
@@ -556,84 +332,7 @@ class ImagesPage(BaseWizardPage):
         self.loading_complete = state
         self.completeChanged.emit()
 
-    def _generate_job_args(
-        self,
-    ) -> tuple[ScreenShotMode, MediaInfo | None, MediaInfo, bool]:
-        """Determine image generation args."""
-        file_list = self.context.media_input.file_list
-        mi_file_list = self.context.media_input.file_list_mediainfo
-        if not file_list or not mi_file_list:
-            raise AttributeError(
-                "No files detected in file_list or file_list_mediainfo"
-            )
-
-        comp_pair = self.context.media_input.comparison_pair
-        ss_mode = self._determine_ss_mode()
-        # no comparison generation
-        if not comp_pair:
-            # access index 0 since no comparison pair
-            self.media_file = file_list[0]
-            return (
-                ss_mode,
-                None,
-                mi_file_list[self.media_file],
-                False,
-            )
-
-        # comparison generation
-        else:
-            self.source_file = comp_pair.source
-            self.media_file = comp_pair.media
-            return (
-                ss_mode,
-                mi_file_list[self.source_file],
-                mi_file_list[self.media_file],
-                self.config.settings.screenshots.comparison_subtitles,
-            )
-
-    def _set_image_directory(self) -> None:
-        if not self.context.media_input.working_dir:
-            raise FileNotFoundError(
-                "Failed to locate path to 'working directory for media'"
-            )
-        self.image_dir = self.context.media_input.working_dir / "images"
-
-    def _protected_media_root(self) -> Path:
-        """Return the directory tree that must remain free of encode indexes."""
-        input_path = self.context.media_input.require_input_path()
-        return input_path if input_path.is_dir() else input_path.parent
-
-    def _get_sub_names(self, comparison_subs: bool) -> SubNames | None:
-        if comparison_subs:
-            return SubNames(
-                self.config.settings.screenshots.comparison_source_name,
-                self.config.settings.screenshots.comparison_encode_name,
-            )
-        return None
-
-    def _start_queued_worker(
-        self,
-        ss_mode: ScreenShotMode,
-        media_file_mi_obj: MediaInfo,
-        source_file_mi_obj: MediaInfo | None,
-        subtitle_color: str,
-        subtitle_outline_color: str,
-        sub_names: SubNames | None,
-        sub_size: int,
-        subtitle_alignment: SubtitleAlignment,
-        crop_mode: Cropping,
-        script_values: ScriptValues | None,
-        re_sync: int,
-    ) -> None:
-        if (
-            not self.media_file
-            or not self.image_dir
-            or not self.config.settings.dependencies.ffmpeg
-        ):
-            raise RuntimeError(
-                "Failed to execute image worker, missing one or more required inputs "
-                f"({self.media_file=}, {self.image_dir=}, {self.config.settings.dependencies.ffmpeg=})"
-            )
+    def _start_queued_worker(self, plan: ScreenshotPlan) -> None:
         if self.queued_worker is not None:
             # Safe: the only caller, `_execute_image_generation`, already
             # returned early if the previous worker's `isRunning()` was True,
@@ -642,32 +341,8 @@ class ImagesPage(BaseWizardPage):
             self.queued_worker.deleteLater()
         self.queued_worker = QueuedWorker(
             backend=self.backend,
-            ss_mode=ss_mode,
-            media_file=self.media_file,
-            media_file_mi_obj=media_file_mi_obj,
-            output_directory=self.image_dir,
-            total_images=self.config.settings.screenshots.count,
-            trim=(
-                self.config.settings.screenshots.trim_start,
-                self.config.settings.screenshots.trim_end,
-            ),
-            ffmpeg_path=self.config.settings.dependencies.ffmpeg,
-            frame_forge_path=self.config.settings.dependencies.frame_forge,
+            plan=plan,
             progress_signal=self.progress_signal_generation,
-            subtitle_color=subtitle_color,
-            subtitle_outline_color=subtitle_outline_color,
-            sub_names=sub_names,
-            sub_size=sub_size,
-            subtitle_alignment=subtitle_alignment,
-            crop_mode=crop_mode,
-            script_values=script_values,
-            re_sync=re_sync,
-            indexer=self.config.settings.screenshots.indexer,
-            image_plugin=self.config.settings.screenshots.image_plugin,
-            source_file=self.source_file,
-            source_file_mi_obj=source_file_mi_obj,
-            index_cache_root=self.config.settings.general.working_dir,
-            protected_media_root=self._protected_media_root(),
             parent=self,
         )
         self.queued_worker.job_finished.connect(self._generate_finished)
@@ -696,7 +371,7 @@ class ImagesPage(BaseWizardPage):
         # from a freeze. The viewer raises for real reasons (no frames
         # produced, an empty comparison set), so it cannot be assumed to open.
         try:
-            ss_mode = self._determine_ss_mode()
+            ss_mode = screenshot_mode(self.context, self.config.settings)
             if not self.image_dir:
                 raise RuntimeError("Failed to determine image_dir")
             self.image_viewer = ImageViewer(
@@ -822,20 +497,6 @@ class ImagesPage(BaseWizardPage):
             re_sync=offset,
         )
 
-    def _determine_ss_mode(self) -> ScreenShotMode:
-        comp_pair = self.context.media_input.comparison_pair
-        # no comparison generation
-        if not comp_pair:
-            return ScreenShotMode.BASIC_SS_GEN
-        # comparison generation
-        else:
-            return (
-                ScreenShotMode.SIMPLE_SS_COMP
-                if self.config.settings.screenshots.mode
-                is not ScreenShotMode.ADV_SS_COMP
-                else ScreenShotMode.ADV_SS_COMP
-            )
-
     def _complete_loading(self) -> None:
         GSigs().main_window_set_disabled.emit(False)
         self.generate_images.setEnabled(True)
@@ -843,7 +504,5 @@ class ImagesPage(BaseWizardPage):
         self._reset_vars()
 
     def _reset_vars(self) -> None:
-        self.source_file = None
-        self.media_file = None
         self.image_dir = None
         self.script_values = None
