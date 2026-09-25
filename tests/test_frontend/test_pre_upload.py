@@ -8,6 +8,7 @@ import pytest
 from nfoforge.config.config import ConfigManager
 from nfoforge.config.paths import ConfigPaths
 from nfoforge.context.processing_context import ProcessingContext
+from nfoforge.enums.media_type import MediaType
 from nfoforge.enums.torrent_client import (
     QBittorrentSavePathMode,
     TorrentClientSelection,
@@ -173,27 +174,80 @@ def test_concrete_client_editors_save_typed_settings() -> None:
     assert watch_folder.path == Path("C:/watch")
 
 
-def test_wizard_routes_trackers_through_pre_upload() -> None:
-    wizard = cast(
+def _routing_wizard(
+    media_type: MediaType | None,
+    *,
+    rename: bool = True,
+    screenshots: bool = True,
+) -> MainWindowWizard:
+    settings = SimpleNamespace(
+        movie=SimpleNamespace(enabled=rename),
+        series=SimpleNamespace(enabled=rename),
+        screenshots=SimpleNamespace(enabled=screenshots),
+    )
+    return cast(
         MainWindowWizard,
         SimpleNamespace(
-            _START_PAGES=(),
+            config=SimpleNamespace(settings=settings),
+            context=SimpleNamespace(
+                media_search=SimpleNamespace(media_type=media_type)
+            ),
         ),
     )
 
+
+def test_wizard_routes_trackers_through_pre_upload() -> None:
+    wizard = _routing_wizard(MediaType.MOVIE)
+
     assert (
-        MainWindowWizard._flow_production(
-            wizard,
-            WizardPages.TRACKERS_PAGE,
-        )
+        MainWindowWizard._flow_production(wizard, WizardPages.TRACKERS_PAGE)
         == WizardPages.PRE_UPLOAD_PAGE.value
     )
     assert (
-        MainWindowWizard._flow_production(
-            wizard,
-            WizardPages.PRE_UPLOAD_PAGE,
-        )
+        MainWindowWizard._flow_production(wizard, WizardPages.PRE_UPLOAD_PAGE)
         == WizardPages.PROCESS_PAGE.value
+    )
+    assert MainWindowWizard._flow_production(wizard, WizardPages.PROCESS_PAGE) == -1
+
+
+@pytest.mark.parametrize(
+    ("media_type", "expected"),
+    [
+        (MediaType.MOVIE, WizardPages.RENAME_ENCODE_MOVIES_PAGE),
+        (MediaType.SERIES, WizardPages.RENAME_ENCODE_SERIES_PAGE),
+    ],
+)
+def test_wizard_picks_the_rename_page_for_the_media_type(
+    media_type: MediaType, expected: WizardPages
+) -> None:
+    wizard = _routing_wizard(media_type)
+    before_rename = (
+        WizardPages.SERIES_MATCHER_PAGE
+        if media_type is MediaType.SERIES
+        else WizardPages.MEDIA_SEARCH_PAGE
+    )
+
+    assert MainWindowWizard._flow_production(wizard, before_rename) == expected.value
+
+
+@pytest.mark.parametrize(
+    "start", [WizardPages.INPUT_PAGE, WizardPages.PLUGIN_INPUT_PAGE]
+)
+def test_wizard_leaves_either_input_page_for_search(start: WizardPages) -> None:
+    wizard = _routing_wizard(None)
+
+    assert (
+        MainWindowWizard._flow_production(wizard, start)
+        == WizardPages.MEDIA_SEARCH_PAGE.value
+    )
+
+
+def test_wizard_skips_disabled_optional_pages() -> None:
+    wizard = _routing_wizard(MediaType.MOVIE, rename=False, screenshots=False)
+
+    assert (
+        MainWindowWizard._flow_production(wizard, WizardPages.MEDIA_SEARCH_PAGE)
+        == WizardPages.TRACKERS_PAGE.value
     )
 
 
