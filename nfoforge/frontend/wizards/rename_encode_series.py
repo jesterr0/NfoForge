@@ -34,38 +34,45 @@ from nfoforge.backend.tokens import FileToken, Tokens, TokenSelection, TokenType
 from nfoforge.backend.utils.filename_claims import (
     PER_FILE_CLAIM_KEYS,
     FilenameClaims,
-    detect_file_claims,
     detect_filename_claims,
 )
-from nfoforge.backend.utils.media_files import find_sidecars_for
 from nfoforge.backend.utils.rename_normalizations import (
     EDITION_INFO,
     FRAME_SIZE_INFO,
     LOCALIZATION_INFO,
     RE_RELEASE_INFO,
 )
-from nfoforge.backend.utils.resolution import VideoResolutionAnalyzer
 from nfoforge.backend.utils.streaming_services import (
     STREAMING_SERVICE_CHOICES,
 )
 from nfoforge.config.config import ConfigManager
-from nfoforge.config.tv_tokens import (
-    get_tvr_episode_token,
-    resolve_season_subfolder_token,
-)
 from nfoforge.context.processing_context import ProcessingContext
+from nfoforge.core.rename.choices import (
+    RenameChoices,
+    file_user_tokens,
+    quality_problem,
+)
+from nfoforge.core.rename.series import (
+    SeriesNotMappedError,
+    SeriesRenameError,
+    build_series_rename,
+    commit_series_rename,
+    detect_episode_claims,
+    detect_series_choices,
+    episode_token,
+    pack_folder_name,
+)
 from nfoforge.enums.rename import QualitySelection
 from nfoforge.frontend.custom_widgets.combo_box import CustomComboBox
 from nfoforge.frontend.custom_widgets.episode_claims_table import EpisodeClaimsTable
 from nfoforge.frontend.custom_widgets.rename_preview_dialog import RenamePreviewDialog
 from nfoforge.frontend.custom_widgets.token_table import TokenTable
 from nfoforge.frontend.global_signals import GSigs
-from nfoforge.frontend.utils import apply_plugin_override, build_h_line
+from nfoforge.frontend.utils import build_h_line
 from nfoforge.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
 from nfoforge.frontend.utils.rename_operation import RenameOperationController
 from nfoforge.frontend.wizards.wizard_base_page import BaseWizardPage
 from nfoforge.packages.custom_types import RenameNormalization
-from nfoforge.payloads.series import build_series_release_info
 
 if TYPE_CHECKING:
     from nfoforge.frontend.windows.main_window import MainWindow
@@ -419,59 +426,31 @@ class RenameEncodeSeries(BaseWizardPage):
 
     def initializePage(self) -> None:
         """Initialize the page with series data and load episode batch."""
-        media_files = self.context.media_input.file_list
-        release_group_name = self.config.settings.general.release_group
-
-        if not media_files:
-            raise FileNotFoundError("No files found in media input payload")
-
-        # The pack controls still read the pack: a claim every episode agrees
-        # on is the release's claim. What they no longer do is speak for the
-        # episodes, which now seed themselves from their own filenames.
-        claims = self._pre_load_attribute_combos(
-            [Path(path).stem for path in media_files]
-        )
+        # The pack controls read the pack: a claim every episode agrees on is
+        # the release's claim. They do not speak for the episodes, which seed
+        # themselves from their own filenames.
+        choices = detect_series_choices(self.context, self.config.settings)
+        for combo, value in (
+            (self.edition_combo, choices.edition),
+            (self.frame_size_combo, choices.frame_size),
+            (self.localization_combo, choices.localization),
+            (self.re_release_combo, choices.re_release),
+            (self.service_combo, choices.streaming_service),
+        ):
+            idx = combo.findText(value)
+            combo.setCurrentIndex(idx if idx > -1 else 0)
+        self.remux_checkbox.setChecked(choices.remux)
+        self.hybrid_checkbox.setChecked(choices.hybrid)
         self._load_episode_claims()
 
-        apply_plugin_override(
-            self.context.shared_data.dynamic_data,
-            "localization_override",
-            self.localization_combo,
-        )
+        self.token_override.setText(episode_token(self.context, self.config.settings))
 
-        # Use series token from config
-        series_token = get_tvr_episode_token(
-            self.config.settings.series,
-            self.context.media_input.series_episode_format,
+        quality_idx = (
+            self.quality_combo.findText(str(choices.quality)) if choices.quality else 0
         )
-        self.token_override.setText(series_token)
+        self.quality_combo.setCurrentIndex(max(quality_idx, 0))
 
-        # As with filename attributes, source quality is a pack-wide override only
-        # when every episode has the same detected value.
-        comp_pair = self.context.media_input.comparison_pair
-        detected_qualities = {
-            self.backend.get_quality(
-                media_input=Path(media_file),
-                source_input=comp_pair.source if comp_pair else None,
-            )
-            for media_file in media_files
-        }
-        common_quality = (
-            next(iter(detected_qualities)) if len(detected_qualities) == 1 else None
-        )
-        if common_quality:
-            quality_idx = self.quality_combo.findText(str(common_quality))
-            if quality_idx > -1:
-                self.quality_combo.setCurrentIndex(quality_idx)
-        else:
-            self.quality_combo.setCurrentIndex(0)
-
-        # The settings value is the user's group tag; the detected one is the
-        # source group, meaning whoever made the input files. Configured wins,
-        # and with parsing off there is nothing to fall back to -- the
-        # renderer has no filename parse of its own, so what this field shows
-        # is what the output carries.
-        self.release_group_entry.setText(release_group_name or claims.release_group)
+        self.release_group_entry.setText(choices.release_group)
 
         # Initial call to update_generated_name populates the override token
         # grid (using the first mapped episode as a representative preview)
@@ -485,178 +464,50 @@ class RenameEncodeSeries(BaseWizardPage):
         if self._rename_operation.is_running:
             return False
 
-        media_files = self.context.media_input.file_list
-
-        if not media_files:
+        if not self.context.media_input.file_list:
             QMessageBox.warning(self, "Error", "No episodes found to rename.")
             return False
 
         if not self._name_validations() or not self._quality_validations():
             return False
 
-        # Generate rename map for all episodes
         token = (
             self.token_override.text()
             if self.override_group.isChecked()
-            else get_tvr_episode_token(
-                self.config.settings.series,
-                self.context.media_input.series_episode_format,
-            )
+            else episode_token(self.context, self.config.settings)
         )
-
-        # Get user tokens
-        user_tokens = {
-            k: v
-            for k, (v, t) in self.config.settings.user_tokens.tokens.items()
-            if TokenSelection(t) is TokenSelection.FILE_TOKEN
-        }
-
-        if not self.context.media_input.series_episode_map:
-            QMessageBox.warning(
-                self,
-                "Incomplete Series Mapping",
-                "No episode mappings were found. Please return to the Series Match page and map each file to an episode.",
+        try:
+            targets = build_series_rename(
+                self.context,
+                self.config.settings,
+                self.backend,
+                token=token,
+                episode_claims=self._file_claim_overrides,
             )
+        except SeriesNotMappedError as error:
+            QMessageBox.warning(self, "Incomplete Series Mapping", str(error))
+            return False
+        except SeriesRenameError as error:
+            QMessageBox.warning(self, "Rename Failed", str(error))
             return False
 
-        rename_map: dict[Path, Path] = {}
-        failed_files: list[Path] = []
-        for (
-            media_file,
-            media_data,
-        ) in self.context.media_input.series_episode_map.items():
-            renamed_file = self.backend.series_renamer(
-                media_input_obj=self.context.media_input,
-                media_file=media_file,
-                file_claims=self._file_claim_overrides(media_file),
-                token=token,
-                colon_replacement=self.config.settings.series.filename_colon_replace,
-                media_search_payload=self.context.media_search,
-                title_clean_rules=self.config.settings.global_management.title_clean_rules,
-                video_dynamic_range=self.config.settings.global_management.video_dynamic_range,
-                user_tokens=user_tokens,
-                season_num=media_data["season"],
-                episode_num=media_data["episode"],
-                episode_format=self.context.media_input.series_episode_format,
-                multi_episode_style=self.config.settings.series.multi_episode_style,
-                # each renamed file belongs to exactly one season, so season_end
-                # matches season_num here (single-season, unchanged rendering);
-                # the multi-season {season_number} range only applies to the
-                # aggregate release title/NFO (see ProcessBackEnd).
-                season_end=media_data["season"],
-            )
-
-            if not renamed_file:
-                failed_files.append(media_file)
-                continue
-            # Get extension from original file
-            ext = media_file.suffix
-            renamed_output = media_file.parent / f"{renamed_file.stem}{ext}"
-            rename_map[media_file] = renamed_output
-
-        if failed_files:
-            names = "\n".join(f"  {path.name}" for path in failed_files)
-            if not rename_map:
-                QMessageBox.warning(
-                    self,
-                    "Rename Failed",
-                    "No filenames could be generated from the current token "
-                    f"template. Nothing was renamed.\n\n{names}",
-                )
-                return False
+        if targets.failed:
+            names = "\n".join(f"  {path.name}" for path in targets.failed)
             QMessageBox.warning(
                 self,
                 "Some Files Skipped",
-                f"{len(failed_files)} file(s) could not have a name generated "
+                f"{len(targets.failed)} file(s) could not have a name generated "
                 f"and will be left unchanged:\n\n{names}",
             )
 
-        # Subtitles and per-episode .nfo files are named after the episode they
-        # belong to, so they have to follow it -- otherwise the rename silently
-        # separates a pair the release depends on.
-        for media_file, sidecars in find_sidecars_for(rename_map).items():
-            renamed_output = rename_map[media_file]
-            for sidecar, suffix in sidecars.items():
-                rename_map[sidecar] = (
-                    renamed_output.parent / f"{renamed_output.stem}{suffix}"
-                )
-
-        # Rename the opened folder to a pack name, and each season subfolder
-        # within it to its own season's name. A pack spanning several seasons
-        # renders the root's {season_number} as a range (S01-S05); each season
-        # subfolder renders its own single season.
-        release_info = build_series_release_info(self.context.media_input)
-        root_folder_name = ""
-        season_folder_names: dict[int, str] = {}
-        file_seasons = {
-            media_file: media_data["season"]
-            for media_file, media_data in (
-                self.context.media_input.series_episode_map or {}
-            ).items()
-            if media_data.get("season") is not None
-        }
-        if release_info.season is not None:
-            folder_path = self.backend.series_folder_renamer(
-                media_input_obj=self.context.media_input,
-                token=self.config.settings.series.season_folder_token,
-                colon_replacement=self.config.settings.series.filename_colon_replace,
-                media_search_payload=self.context.media_search,
-                title_clean_rules=self.config.settings.global_management.title_clean_rules,
-                video_dynamic_range=self.config.settings.global_management.video_dynamic_range,
-                user_tokens=user_tokens,
-                season_num=release_info.season,
-                season_end=release_info.season_end,
-            )
-            if folder_path:
-                root_folder_name = folder_path.name
-
-            subfolder_token = resolve_season_subfolder_token(
-                self.config.settings.series.season_subfolder_token,
-                self.config.settings.series.season_folder_token,
-            )
-            for season in sorted(set(file_seasons.values())):
-                season_path = self.backend.series_folder_renamer(
-                    media_input_obj=self.context.media_input,
-                    token=subfolder_token,
-                    colon_replacement=self.config.settings.series.filename_colon_replace,
-                    media_search_payload=self.context.media_search,
-                    title_clean_rules=self.config.settings.global_management.title_clean_rules,
-                    video_dynamic_range=self.config.settings.global_management.video_dynamic_range,
-                    user_tokens=user_tokens,
-                    season_num=season,
-                    season_end=season,
-                )
-                if season_path:
-                    season_folder_names[season] = season_path.name
-
-        rename_map, directory_targets = self.backend.build_pack_rename_targets(
-            input_path=self.context.media_input.input_path,
-            rename_map=rename_map,
-            file_seasons=file_seasons,
-            root_folder_name=root_folder_name,
-            season_folder_names=season_folder_names,
-        )
-
-        # Check if there are any effective renames
-        effective_renames = {
-            src: trg
-            for src, trg in rename_map.items()
-            if str(src.absolute()) != str(trg.absolute())
-        }
-        effective_directories = {
-            src: trg
-            for src, trg in directory_targets.items()
-            if str(src.absolute()) != str(trg.absolute())
-        }
-
-        if not effective_renames and not effective_directories:
+        if targets.is_empty:
             return self._complete_validation()
 
         try:
             plan = RenamePlan.build(
-                effective_renames,
+                targets.files,
                 self.context.media_input.input_path,
-                directory_targets=effective_directories,
+                directory_targets=targets.directories,
             )
         except ValueError as error:
             QMessageBox.warning(self, "Invalid Rename", str(error))
@@ -718,90 +569,24 @@ class RenameEncodeSeries(BaseWizardPage):
             QMessageBox.warning(self, "Media Files Unavailable", str(error))
             return False
 
-        edition_combo_text = self.edition_combo.currentText()
-        if edition_combo_text:
-            self.context.shared_data.dynamic_data["edition_override"] = (
-                edition_combo_text
-            )
-
-        frame_size_text = self.frame_size_combo.currentText()
-        if frame_size_text:
-            self.context.shared_data.dynamic_data["frame_size_override"] = (
-                frame_size_text
-            )
-
-        self.context.shared_data.dynamic_data["override_tokens"] = (
-            self.backend.override_tokens
+        commit_series_rename(
+            self.context,
+            RenameChoices(
+                edition=self.edition_combo.currentText(),
+                frame_size=self.frame_size_combo.currentText(),
+                repack_reason=self.repack_reason_combo.currentText(),
+                proper_reason=self.proper_reason_combo.currentText(),
+            ),
+            self.backend.override_tokens,
         )
-        self._re_release_reason_tokens_update()
         self._close_token_window()
         super().validatePage()
         return True
 
-    # All the methods from RenameEncode, adapted for series
-    def _pre_load_attribute_combos(self, filenames: Sequence[str]) -> FilenameClaims:
-        """Pre-fill the claim controls from stage 1, and return what it found.
-
-        The detection itself lives in `detect_filename_claims`, which the
-        settings preview also calls, so what this page shows and what the
-        preview shows cannot diverge. Everything here is presentation: put
-        each detected value into the control that owns it.
-
-        The claims come back so the caller can reuse them without detecting
-        twice -- the release group seed needs the same result.
-        """
-        claims = detect_filename_claims(
-            filenames,
-            self.config.settings.series.claims,
-            self.context.custom_edition_info,
-        )
-
-        for combo, value in (
-            (self.edition_combo, claims.edition),
-            (self.frame_size_combo, claims.frame_size),
-            (self.localization_combo, claims.localization),
-            (self.re_release_combo, claims.re_release),
-            (self.service_combo, claims.streaming_service),
-        ):
-            idx = combo.findText(value)
-            combo.setCurrentIndex(idx if idx > -1 else 0)
-
-        # REMUX used to have its own bespoke pack-wide check and HYBRID had
-        # no pre-tick at all; both are ordinary claims now.
-        self.remux_checkbox.setChecked(bool(claims.remux))
-        self.hybrid_checkbox.setChecked(bool(claims.hybrid))
-        return claims
-
     def _load_episode_claims(self) -> None:
-        """Seed the episode table from each file's own name.
-
-        Ordered by season then episode rather than by however the files came
-        off disk: at several hundred rows across several seasons, filesystem
-        order is not how anyone reads a pack. The mapping is the source
-        because it is what `validatePage` iterates, so no row can exist
-        without somewhere to rename to.
-        """
-        episode_map = self.context.media_input.series_episode_map or {}
-        ordered = sorted(
-            episode_map.items(),
-            key=lambda item: (
-                item[1].get("season") or 0,
-                item[1].get("episode") or 0,
-                item[0].name,
-            ),
-        )
+        """Seed the episode table from each file's own name."""
         self.episode_claims.load(
-            [
-                (
-                    media_file,
-                    detect_file_claims(
-                        media_file.stem,
-                        self.config.settings.series.claims,
-                        self.context.custom_edition_info,
-                    ),
-                )
-                for media_file, _ in ordered
-            ]
+            detect_episode_claims(self.context, self.config.settings)
         )
 
     def _file_claim_overrides(self, media_file: Path) -> dict[str, str]:
@@ -904,50 +689,14 @@ class RenameEncodeSeries(BaseWizardPage):
 
     def _quality_validations(self) -> bool:
         """Validate quality selection."""
-        cur_quality = (
-            QualitySelection(self.quality_combo.currentText())
-            if self.quality_combo.currentText()
-            else None
+        text = self.quality_combo.currentText()
+        problem = quality_problem(
+            QualitySelection(text) if text else None, self.context.media_input
         )
-        if not cur_quality:
-            return True
-        elif cur_quality in {QualitySelection.DVD, QualitySelection.SDTV}:
-            # Check first file's mediainfo
-            first_file = self.context.media_input.require_first_file()
-            mi_obj = self.context.media_input.file_list_mediainfo.get(first_file)
-            if not mi_obj:
-                raise FileNotFoundError("Failed to parse MediaInfo")
-            detect_resolution = VideoResolutionAnalyzer(mi_obj).get_resolution(
-                remove_scan=True
-            )
-            if detect_resolution:
-                if int(detect_resolution) > 576:
-                    QMessageBox.warning(
-                        self,
-                        "Error",
-                        f"Cannot utilize quality {cur_quality} with a resolution above 576p.",
-                    )
-                    return False
+        if problem:
+            QMessageBox.warning(self, "Error", problem)
+            return False
         return True
-
-    def _re_release_reason_tokens_update(self) -> None:
-        """Update Jinja global variables for repack or proper reasons."""
-        combo_to_global_map = {
-            "repack_reason": (self.repack_reason_combo.currentText(), r"(repack\d*)"),
-            "proper_reason": (self.proper_reason_combo.currentText(), r"(proper\d*)"),
-        }
-
-        # For batch processing, we'll update the global variables
-        # The specific validation will happen during batch rename
-        for global_name, (combo_text, pattern) in combo_to_global_map.items():
-            if combo_text:
-                self.context.jinja_engine.add_global(global_name, combo_text, True)
-                # Store the pattern info for batch processing
-                self.context.jinja_engine.add_global(
-                    global_name.replace("_reason", "_pattern"), pattern, True
-                )
-                # Ensure only one combo box is processed
-                break
 
     # Signal handlers for combo boxes
     @Slot(int)
@@ -1044,38 +793,21 @@ class RenameEncodeSeries(BaseWizardPage):
             self.backend.override_tokens[k] = v
         self.update_generated_name()
 
-    def _update_pack_name_preview(self, user_tokens: dict[str, str]) -> None:
+    def _update_pack_name_preview(self) -> None:
         """Render the folder name the pack controls currently produce.
 
-        The same call `validatePage` makes, so what is shown is what will be
+        The same call the rename makes, so what is shown is what will be
         written. A pack with no resolvable season has no folder name to
         render, which is the one case the field goes empty.
         """
-        release_info = build_series_release_info(self.context.media_input)
-        if release_info.season is None:
-            self.pack_name_preview.clear()
-            return
-
-        folder_path = self.backend.series_folder_renamer(
-            media_input_obj=self.context.media_input,
-            token=self.config.settings.series.season_folder_token,
-            colon_replacement=self.config.settings.series.filename_colon_replace,
-            media_search_payload=self.context.media_search,
-            title_clean_rules=self.config.settings.global_management.title_clean_rules,
-            video_dynamic_range=self.config.settings.global_management.video_dynamic_range,
-            user_tokens=user_tokens,
-            season_num=release_info.season,
-            season_end=release_info.season_end,
+        self.pack_name_preview.setText(
+            pack_folder_name(self.context, self.config.settings, self.backend) or ""
         )
-        self.pack_name_preview.setText(folder_path.name if folder_path else "")
 
     @Slot(int)
     def update_generated_name(self, _: int | None = None) -> None:
         """Update the generated name based on current selections."""
-        token = get_tvr_episode_token(
-            self.config.settings.series,
-            self.context.media_input.series_episode_format,
-        )
+        token = episode_token(self.context, self.config.settings)
         if self.override_group.isChecked():
             token = self.token_override.text()
         else:
@@ -1099,16 +831,12 @@ class RenameEncodeSeries(BaseWizardPage):
 
         representative_path, media_data = next(iter(episode_map.items()))
 
-        user_tokens = {
-            k: v
-            for k, (v, t) in self.config.settings.user_tokens.tokens.items()
-            if TokenSelection(t) is TokenSelection.FILE_TOKEN
-        }
+        user_tokens = file_user_tokens(self.config.settings)
 
         # Before the episode render, not after: both renderers assign
         # `backend.token_replacer`, and the override grid below reads it
         # expecting the episode's tokens rather than the folder's.
-        self._update_pack_name_preview(user_tokens)
+        self._update_pack_name_preview()
 
         get_file_name = self.backend.series_renamer(
             media_input_obj=self.context.media_input,

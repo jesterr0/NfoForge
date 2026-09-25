@@ -10,7 +10,8 @@ from nfoforge.backend.rename_encode import RenameEncodeBackEnd
 from nfoforge.config.config import ConfigManager
 from nfoforge.config.paths import ConfigPaths
 from nfoforge.context.processing_context import ProcessingContext
-from nfoforge.core.rename.movie import detect_movie_choices, movie_override_tokens
+from nfoforge.core.rename.choices import rename_override_tokens
+from nfoforge.core.rename.movie import detect_movie_choices
 from nfoforge.enums.media_type import MediaType
 from nfoforge.frontend.wizards.rename_encode import RenameEncode
 from nfoforge.payloads.media_inputs import MediaInputPayload
@@ -314,7 +315,7 @@ def test_the_page_prefills_the_same_tokens_core_produces(
 
     page.initializePage()
 
-    expected = movie_override_tokens(
+    expected = rename_override_tokens(
         detect_movie_choices(page.context, page.config.settings)
     )
     assert page.backend.override_tokens == expected

@@ -10,6 +10,8 @@ from nfoforge.backend.utils.filename_claims import PER_FILE_CLAIM_KEYS
 from nfoforge.config.config import ConfigManager
 from nfoforge.config.paths import ConfigPaths
 from nfoforge.context.processing_context import ProcessingContext
+from nfoforge.core.rename.choices import rename_override_tokens
+from nfoforge.core.rename.series import detect_series_choices
 from nfoforge.enums.media_type import MediaType
 from nfoforge.enums.series import EpisodeFormat
 from nfoforge.frontend.custom_widgets.episode_claims_table import (
@@ -1122,3 +1124,38 @@ def test_every_per_file_claim_has_a_column() -> None:
     separately, so adding a field to `FilenameClaims` would otherwise give it
     a resolved value with nowhere on screen to set it."""
     assert set(CLAIM_COLUMNS) == PER_FILE_CLAIM_KEYS
+
+
+@pytest.mark.parametrize(
+    "files",
+    [
+        (
+            "Show.S01E01.REPACK.1080p.BluRay.REMUX-GRP.mkv",
+            "Show.S01E02.720p.WEB-DL-OTHER.mkv",
+        ),
+        (
+            "Show.S01E01.HYBRID.1080p.AMZN.WEB-DL.DDP5.1.H.264-GRP.mkv",
+            "Show.S01E02.HYBRID.1080p.AMZN.WEB-DL.DDP5.1.H.264-GRP.mkv",
+        ),
+    ],
+)
+def test_the_page_prefills_the_same_tokens_core_produces(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, files: tuple[str, str]
+) -> None:
+    """The GUI and a headless run must name a pack the same way."""
+    first, second = (Path(name) for name in files)
+    page = _make_series_rename_page(
+        tmp_path,
+        monkeypatch,
+        episode_map={
+            first: {"season": 1, "episode": 1},
+            second: {"season": 1, "episode": 2},
+        },
+    )
+
+    page.initializePage()
+
+    expected = rename_override_tokens(
+        detect_series_choices(page.context, page.config.settings)
+    )
+    assert page.backend.override_tokens == expected

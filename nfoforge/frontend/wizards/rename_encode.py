@@ -44,12 +44,11 @@ from nfoforge.backend.utils.streaming_services import (
 )
 from nfoforge.config.config import ConfigManager
 from nfoforge.context.processing_context import ProcessingContext
+from nfoforge.core.rename.choices import RenameChoices, quality_problem
 from nfoforge.core.rename.movie import (
-    MovieRenameChoices,
     commit_movie_rename,
     detect_movie_choices,
     movie_name_problems,
-    movie_quality_problem,
     movie_rename_map,
     render_movie_name,
 )
@@ -444,7 +443,7 @@ class RenameEncode(BaseWizardPage):
 
         commit_movie_rename(
             self.context,
-            MovieRenameChoices(
+            RenameChoices(
                 edition=self.edition_combo.currentText(),
                 frame_size=self.frame_size_combo.currentText(),
                 repack_reason=self.repack_reason_combo.currentText(),
@@ -562,7 +561,7 @@ class RenameEncode(BaseWizardPage):
 
     def _quality_validations(self) -> bool:
         text = self.quality_combo.currentText()
-        problem = movie_quality_problem(
+        problem = quality_problem(
             QualitySelection(text) if text else None, self.context.media_input
         )
         if problem:
