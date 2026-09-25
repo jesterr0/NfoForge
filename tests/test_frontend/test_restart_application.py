@@ -1,7 +1,7 @@
 import pytest
 
-import nfoforge.backend.main_window as main_window_module
-from nfoforge.backend.main_window import restart_application
+import nfoforge.frontend.utils.app_lifecycle as app_lifecycle
+from nfoforge.frontend.utils.app_lifecycle import restart_application
 
 
 class _FakeMainWindow:
@@ -23,25 +23,25 @@ class _FakeApp:
 
 
 def _patch_argv(monkeypatch: pytest.MonkeyPatch, argv: list[str]) -> None:
-    monkeypatch.setattr(main_window_module.sys, "argv", argv)
-    monkeypatch.setattr(main_window_module.sys, "executable", "C:/fake/python.exe")
+    monkeypatch.setattr(app_lifecycle.sys, "argv", argv)
+    monkeypatch.setattr(app_lifecycle.sys, "executable", "C:/fake/python.exe")
 
 
 def test_restart_application_relaunches_and_quits(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _patch_argv(monkeypatch, ["start_ui.py", "-c", "myprofile"])
-    monkeypatch.setattr(main_window_module, "IS_FROZEN", False)
+    monkeypatch.setattr(app_lifecycle, "IS_FROZEN", False)
 
     started: list[tuple[str, list[str]]] = []
     monkeypatch.setattr(
-        main_window_module.QProcess,
+        app_lifecycle.QProcess,
         "startDetached",
         staticmethod(lambda program, args: started.append((program, args)) or True),
     )
     fake_app = _FakeApp()
     monkeypatch.setattr(
-        main_window_module.QApplication, "instance", staticmethod(lambda: fake_app)
+        app_lifecycle.QApplication, "instance", staticmethod(lambda: fake_app)
     )
 
     main_window = _FakeMainWindow(close_result=True)
@@ -58,17 +58,17 @@ def test_restart_application_frozen_drops_argv0(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _patch_argv(monkeypatch, ["NfoForge.exe", "-c", "myprofile"])
-    monkeypatch.setattr(main_window_module, "IS_FROZEN", True)
-    monkeypatch.setattr(main_window_module.sys, "executable", "C:/fake/NfoForge.exe")
+    monkeypatch.setattr(app_lifecycle, "IS_FROZEN", True)
+    monkeypatch.setattr(app_lifecycle.sys, "executable", "C:/fake/NfoForge.exe")
 
     started: list[tuple[str, list[str]]] = []
     monkeypatch.setattr(
-        main_window_module.QProcess,
+        app_lifecycle.QProcess,
         "startDetached",
         staticmethod(lambda program, args: started.append((program, args)) or True),
     )
     monkeypatch.setattr(
-        main_window_module.QApplication, "instance", staticmethod(lambda: _FakeApp())
+        app_lifecycle.QApplication, "instance", staticmethod(lambda: _FakeApp())
     )
 
     main_window = _FakeMainWindow(close_result=True)
@@ -84,13 +84,13 @@ def test_restart_application_aborts_if_close_declined(
 ) -> None:
     started: list[object] = []
     monkeypatch.setattr(
-        main_window_module.QProcess,
+        app_lifecycle.QProcess,
         "startDetached",
         staticmethod(lambda *a, **k: started.append(1) or True),
     )
     quit_calls: list[object] = []
     monkeypatch.setattr(
-        main_window_module.QApplication,
+        app_lifecycle.QApplication,
         "instance",
         staticmethod(
             lambda: type("A", (), {"quit": lambda self: quit_calls.append(1)})()
@@ -109,15 +109,15 @@ def test_restart_application_does_not_quit_if_relaunch_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _patch_argv(monkeypatch, ["start_ui.py"])
-    monkeypatch.setattr(main_window_module, "IS_FROZEN", False)
+    monkeypatch.setattr(app_lifecycle, "IS_FROZEN", False)
     monkeypatch.setattr(
-        main_window_module.QProcess,
+        app_lifecycle.QProcess,
         "startDetached",
         staticmethod(lambda program, args: False),
     )
     fake_app = _FakeApp()
     monkeypatch.setattr(
-        main_window_module.QApplication, "instance", staticmethod(lambda: fake_app)
+        app_lifecycle.QApplication, "instance", staticmethod(lambda: fake_app)
     )
 
     main_window = _FakeMainWindow(close_result=True)

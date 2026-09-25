@@ -6,7 +6,6 @@ import subprocess
 from typing import Any
 
 from pymediainfo import MediaInfo
-from PySide6.QtCore import SignalInstance
 
 from nfoforge.backend.utils.frameforge_index_cache import FrameForgeIndexCache
 from nfoforge.backend.utils.images import (
@@ -23,6 +22,7 @@ from nfoforge.backend.utils.images import (
 )
 from nfoforge.backend.utils.subprocess_flags import get_subprocess_creation_flags
 from nfoforge.backend.utils.working_dir import asset_root
+from nfoforge.core.signals import ProgressSignal
 from nfoforge.enums.cropping import Cropping
 from nfoforge.enums.image_plugin import ImagePlugin
 from nfoforge.enums.indexer import Indexer
@@ -72,7 +72,7 @@ class ImageGeneration(ABC):
         raise NotImplementedError()
 
     def run_ffmpeg_command(
-        self, command: list[str], total_images: int, signal: "SignalInstance"
+        self, command: list[str], total_images: int, signal: ProgressSignal
     ) -> int:
         try:
             LOG.debug(
@@ -116,7 +116,7 @@ class ImageGeneration(ABC):
             return 1
 
     def run_frame_forge_command(
-        self, command: list[str], signal: SignalInstance
+        self, command: list[str], signal: ProgressSignal
     ) -> int:
         completed = False
         progress = 0
@@ -169,7 +169,7 @@ class BasicImageGeneration(ImageGeneration):
         total_images: int,
         trim: tuple[int, int],
         ffmpeg_path: Path,
-        signal: SignalInstance,
+        signal: ProgressSignal,
     ) -> int:
         """Basic image generation using direct seeks for optimal performance."""
 
@@ -296,7 +296,7 @@ class ComparisonImageGeneration(ImageGeneration):
         crop_mode: Cropping,
         crop_values: CropValues | None,
         ffmpeg_path: Path,
-        signal: SignalInstance,
+        signal: ProgressSignal,
         re_sync: int = 0,
     ) -> int:
         directories = create_directories(output_directory, sync_dir=True)
@@ -469,7 +469,7 @@ class ComparisonImageGeneration(ImageGeneration):
         subtitle_color: str,
         subtitle_outline_color: str,
         ffmpeg: Path,
-        signal: SignalInstance,
+        signal: ProgressSignal,
         ffmpeg_crop: str | None = None,
         width: int | None = None,
         height: int | None = None,
@@ -657,7 +657,7 @@ class ComparisonImageGeneration(ImageGeneration):
         subtitle_outline_color: str,
         sub_size: int,
         ffmpeg_path: Path,
-        signal: SignalInstance,
+        signal: ProgressSignal,
         ffmpeg_crop: str | None = None,
         width: int | None = None,
         height: int | None = None,
@@ -960,7 +960,7 @@ class FrameForgeImageGeneration(ImageGeneration):
         image_plugin: ImagePlugin,
         frame_forge_path: Path,
         ffmpeg_path: Path | None,
-        signal: SignalInstance,
+        signal: ProgressSignal,
         index_cache_root: Path | None = None,
         protected_media_root: Path | None = None,
     ) -> int:
@@ -1140,7 +1140,7 @@ class ImagesBackEnd:
         total_images: int,
         trim: tuple[int, int],
         ffmpeg_path: Path,
-        signal: SignalInstance,
+        signal: ProgressSignal,
     ) -> int:
         """
         Generate images and emit progress signals.
@@ -1152,7 +1152,7 @@ class ImagesBackEnd:
             total_images (int): The total number of images to generate.
             trim (tuple[int, int]): The percentage of the file to trim from start and end.
             ffmpeg_path (Path): Path to FFMPEG executable.
-            signal (SignalInstance[str, float]): The signal used to emit progress updates on the frontend.
+            signal (ProgressSignal): The signal used to emit progress updates on the frontend.
 
         """
         return BasicImageGeneration().generate_images(
@@ -1181,7 +1181,7 @@ class ImagesBackEnd:
         crop_mode: Cropping,
         crop_values: CropValues | None,
         ffmpeg_path: Path,
-        signal: SignalInstance,
+        signal: ProgressSignal,
         re_sync: int = 0,
     ) -> int:
         """
@@ -1202,7 +1202,7 @@ class ImagesBackEnd:
             crop_mode (Cropping): Crop mode.
             crop_values (Optional[CropValues]): Crop values.
             ffmpeg_path (Path): Path to FFMPEG executable.
-            signal (SignalInstance[str, float]): The signal used to emit progress updates on the frontend.
+            signal (ProgressSignal): The signal used to emit progress updates on the frontend.
 
         """
         return ComparisonImageGeneration().generate_images(
@@ -1246,7 +1246,7 @@ class ImagesBackEnd:
         image_plugin: ImagePlugin,
         frame_forge_path: Path,
         ffmpeg_path: Path | None,
-        signal: SignalInstance,
+        signal: ProgressSignal,
         index_cache_root: Path | None = None,
         protected_media_root: Path | None = None,
     ) -> int:
@@ -1274,7 +1274,7 @@ class ImagesBackEnd:
             image_plugin (ImagePlugin): Plugin used for image generation in FrameForge.
             frame_forge_path (Path): Path to FrameForge executable.
             ffmpeg_path (Optional[Path]): Path to FFMPEG executable.
-            signal (SignalInstance[str, float]): The signal used to emit progress updates on the frontend.
+            signal (ProgressSignal): The signal used to emit progress updates on the frontend.
             index_cache_root (Optional[Path]): Injectable base directory for FrameForge indexes.
             protected_media_root (Optional[Path]): Upload tree that the private
                 FrameForge encode index must remain outside.

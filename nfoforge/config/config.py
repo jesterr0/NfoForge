@@ -29,7 +29,18 @@ class ConfigManager(TypedTomlOperations):
         self,
         config_file: str | None,
         paths: ConfigPaths | None = None,
+        *,
+        read_only: bool = False,
     ):
+        """Load the program config and a profile.
+
+        `read_only` is for headless runs, which share the profile with a
+        desktop application that may be open at the same time. Nothing locks
+        the files, so a read-only manager never writes them: it does not make
+        the profile the current one, does not rewrite it on load, refuses a
+        profile that would need migrating or creating, and raises on `save`.
+        """
+        self.read_only = read_only
         self.paths = paths or default_paths()
         self.codec = TomlConfigCodec()
         self._program_snapshot: str | None = None
@@ -57,7 +68,8 @@ class ConfigManager(TypedTomlOperations):
         self._init_dependencies()
 
         # call save just in case some data is not up to date
-        self.save()
+        if not self.read_only:
+            self.save()
 
     def load_program(self, config_file: str | None) -> None:
         """
@@ -77,7 +89,8 @@ class ConfigManager(TypedTomlOperations):
         if config_file:
             self._program_conf_toml_data["current_config"] = config_file
         self.decode_program()
-        self.save_program()
+        if not self.read_only:
+            self.save_program()
 
     def decode_program(self) -> None:
         data = self._program_conf_toml_data
@@ -92,6 +105,7 @@ class ConfigManager(TypedTomlOperations):
 
     def save_program(self) -> None:
         """Converts config payload object to TOML and writes to a file"""
+        self._refuse_write_if_read_only()
         try:
             # update the toml object
             self._program_conf_toml_data["current_config"] = (
@@ -167,6 +181,12 @@ class ConfigManager(TypedTomlOperations):
                 loaded_version is not None
                 and loaded_version < self.codec.SCHEMA_VERSION
             ):
+                if self.read_only:
+                    raise ConfigError(
+                        f"Profile '{config_path.stem}' was written by an older "
+                        "NfoForge and needs migrating. Open it in NfoForge once "
+                        "to migrate it."
+                    )
                 self._migration_error = None
                 migrated_document = self._try_migrate_profile(
                     loaded_document, default_toml
@@ -216,8 +236,13 @@ class ConfigManager(TypedTomlOperations):
             # later, unrelated save.
             if config_file:
                 self.program.current_config = config_file
-            self.save(config_path)
+            if not self.read_only:
+                self.save(config_path)
         else:
+            if self.read_only:
+                raise ConfigError(
+                    f"Profile '{config_path.stem}' does not exist: {config_path}"
+                )
             atomic_write_text(config_path, default_toml)
             self._toml_data = tomlkit.parse(default_toml)
             self.decode(self._toml_data)
@@ -342,6 +367,16 @@ class ConfigManager(TypedTomlOperations):
             return None
 
         return migrated_document
+
+    def save(self, save_path: Path | None = None) -> None:
+        self._refuse_write_if_read_only()
+        super().save(save_path)
+
+    def _refuse_write_if_read_only(self) -> None:
+        if self.read_only:
+            raise ConfigError(
+                "This configuration was opened read-only and cannot be saved"
+            )
 
     def save_as(self, save_path: Path) -> None:
         """Save the current settings under a new profile name."""

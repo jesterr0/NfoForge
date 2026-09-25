@@ -15,7 +15,6 @@ from PySide6.QtWidgets import (
     QStatusBar,
 )
 
-from nfoforge.backend.main_window import kill_child_processes
 from nfoforge.backend.update_checker import UpdateCheckResult, check_for_updates_job
 from nfoforge.backend.utils.file_utilities import file_bytes_to_str
 from nfoforge.backend.utils.working_dir import cleanable_size
@@ -26,6 +25,7 @@ from nfoforge.enums.settings_window import SettingsTabs
 from nfoforge.frontend.custom_widgets.multi_prompt_dialog import MultiPromptDialog
 from nfoforge.frontend.global_signals import GSigs
 from nfoforge.frontend.stacked_windows.settings.settings import Settings
+from nfoforge.frontend.utils.app_lifecycle import kill_child_processes
 from nfoforge.frontend.utils.general_worker import GeneralWorker
 from nfoforge.frontend.utils.main_window_utils import MainWindowWorker
 from nfoforge.frontend.utils.scaling_manager import FontScalingManager

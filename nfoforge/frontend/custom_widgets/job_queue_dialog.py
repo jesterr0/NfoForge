@@ -40,6 +40,7 @@ from nfoforge.backend.job_queue import (
 )
 from nfoforge.backend.process import ProcessBackEnd
 from nfoforge.config.config import ConfigManager
+from nfoforge.frontend.utils import ask_ptp_2fa_code
 from nfoforge.logger.nfo_forge_logger import LOG
 from nfoforge.utils.secret_redaction import scrub_secrets
 
@@ -220,7 +221,7 @@ class JobQueueDialog(QDialog):
 
     def _start(self) -> None:
         self._thread = _QueueThread(
-            backend=ProcessBackEnd(self.config),
+            backend=ProcessBackEnd(self.config, prompt_2fa=ask_ptp_2fa_code),
             config=self.config,
             job_paths=self.job_paths,
             parent=self,

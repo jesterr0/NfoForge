@@ -19,7 +19,6 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from nfoforge.backend.main_window import restart_application
 from nfoforge.backend.utils.file_utilities import open_explorer
 from nfoforge.config.config import ConfigManager
 from nfoforge.config.models import PluginSettings as PluginSettingsPayload
@@ -27,6 +26,7 @@ from nfoforge.config.paths import DEV_PLUGINS_ENV_VAR, dev_plugin_dirs
 from nfoforge.frontend.custom_widgets.combo_box import CustomComboBox
 from nfoforge.frontend.stacked_windows.settings.base import BaseSettings
 from nfoforge.frontend.utils import build_h_line, create_form_layout
+from nfoforge.frontend.utils.app_lifecycle import restart_application
 from nfoforge.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
 from nfoforge.frontend.windows.plugin_install import (
     install_from_archive,

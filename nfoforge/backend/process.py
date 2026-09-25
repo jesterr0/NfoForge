@@ -6,7 +6,6 @@ import shutil
 import traceback
 from typing import Any, TypeVar
 
-from PySide6.QtCore import SignalInstance
 from tenacity import Retrying, retry_if_exception, stop_after_attempt
 from tenacity.wait import wait_exponential
 from torf import Torrent
@@ -89,6 +88,7 @@ from nfoforge.backend.trackers.media_support import (
     UNIT3D_TRACKERS,
     UNSUPPORTED_SERIES_TRACKERS,
 )
+from nfoforge.backend.trackers.passthepopcorn import TwoFactorPrompt
 from nfoforge.backend.trackers.title_render import normalise_title, render_tracker_title
 from nfoforge.backend.trackers.title_rules import TITLE_RULES, ReleaseProperties
 from nfoforge.backend.trackers.unit3d_base import Unit3dBaseSearch
@@ -120,6 +120,7 @@ from nfoforge.backend.utils.tvdb_episodes import season_episode_numbers
 from nfoforge.config.config import ConfigManager
 from nfoforge.config.tv_tokens import get_tvr_title_token
 from nfoforge.context.processing_context import ProcessingContext
+from nfoforge.core.signals import ErrorSignal
 from nfoforge.enums.image_host import ImageHost, ImageSource
 from nfoforge.enums.media_type import MediaType
 from nfoforge.enums.multi_episode_style import MultiEpisodeStyle
@@ -199,8 +200,16 @@ def _expected_image_count(context: ProcessingContext) -> int | None:
 
 
 class ProcessBackEnd:
-    def __init__(self, config: ConfigManager) -> None:
+    def __init__(
+        self,
+        config: ConfigManager,
+        *,
+        prompt_2fa: TwoFactorPrompt | None = None,
+    ) -> None:
         self.config = config
+        # Asks for a PassThePopcorn 2FA code when the stored TOTP secret's code
+        # is rejected. `None` means nobody can be asked, and the upload fails.
+        self.prompt_2fa = prompt_2fa
         self.template_selector_be = TemplateSelectorBackEnd()
         self.template_selector_be.load_templates()
 
@@ -771,7 +780,7 @@ class ProcessBackEnd:
         upload_request: Callable[[], Path | bool | str | None],
         queued_status_update: Callable[[str, str], None],
         queued_text_update: Callable[[str], None],
-        caught_error: SignalInstance,
+        caught_error: ErrorSignal,
         upload_retry_cb: Callable[[UploadFailure], UploadRetryAction] | None,
         record_outcome: Callable[[TrackerRunOutcome], None] | None = None,
     ) -> tuple[Path | bool | str | None, bool]:
@@ -930,7 +939,7 @@ class ProcessBackEnd:
         file_input: Path,
         queued_text_update: Callable[[str], None],
         queued_status_update: Callable[[str, str], None],
-        caught_error: SignalInstance,
+        caught_error: ErrorSignal,
         upload_retry_cb: Callable[[UploadFailure], UploadRetryAction] | None,
         qbittorrent_save_path: str | None = None,
     ) -> tuple[bool, str | None]:
@@ -1001,7 +1010,7 @@ class ProcessBackEnd:
         queued_text_update: Callable[[str], None],
         queued_text_update_replace_last_line: Callable[[str], None],
         progress_bar_cb: Callable[[float], None],
-        caught_error: SignalInstance,
+        caught_error: ErrorSignal,
         context: ProcessingContext,
         token_prompt_cb: Callable[[Sequence[str] | None], dict[str, str] | None]
         | None = None,
@@ -2777,6 +2786,7 @@ class ProcessBackEnd:
                 totp=ptp_payload.totp,
                 timeout=self.config.settings.general.timeout,
                 content_size=context.media_input.content_size,
+                prompt_2fa=self.prompt_2fa,
             )
         # Unit3d trackers
         elif tracker is TrackerSelection.REELFLIX:

@@ -19,8 +19,8 @@ from PySide6.QtWidgets import (
 )
 
 from nfoforge.backend.utils.working_dir import asset_root
+from nfoforge.frontend.custom_widgets.plugin_prompt_dialog import PluginPromptDialog
 from nfoforge.frontend.global_signals import GSigs
-from nfoforge.plugins.plugin_prompt_dialog import PluginPromptDialog
 
 
 def _application() -> QApplication:
@@ -334,6 +334,14 @@ def ask_thread_safe_prompt(title: str, prompt: str) -> tuple[bool, str]:
     result = q.get()
     q.task_done()
     return result
+
+
+def ask_ptp_2fa_code() -> str | None:
+    """Ask for a PassThePopcorn 2FA code. `None` if the prompt was declined."""
+    got_code, code = ask_thread_safe_prompt(
+        "2FA", "Enter your 2FA code for PassThePopcorn:"
+    )
+    return code if got_code and code else None
 
 
 def ask_thread_safe_multi_prompt(

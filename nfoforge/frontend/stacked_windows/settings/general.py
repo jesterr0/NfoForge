@@ -2,7 +2,7 @@ from pathlib import Path
 import shutil
 from typing import TYPE_CHECKING, cast
 
-from PySide6.QtCore import QEvent, QObject, QSize, QTimer, Slot
+from PySide6.QtCore import QEvent, QObject, QSize, Qt, QTimer, Slot
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -50,6 +50,13 @@ from nfoforge.logger.nfo_forge_logger import LOG
 if TYPE_CHECKING:
     from nfoforge.frontend.stacked_windows.settings.settings import Settings
     from nfoforge.frontend.windows.main_window import MainWindow
+
+# `None` leaves the choice to the operating system.
+_COLOR_SCHEMES: dict[NfoForgeTheme, Qt.ColorScheme | None] = {
+    NfoForgeTheme.AUTOMATIC: None,
+    NfoForgeTheme.LIGHT: Qt.ColorScheme.Light,
+    NfoForgeTheme.DARK: Qt.ColorScheme.Dark,
+}
 
 
 class GeneralSettings(BaseSettings):
@@ -518,9 +525,9 @@ class GeneralSettings(BaseSettings):
         app = cast(QApplication | None, QApplication.instance())
         if app is None:
             return
-        get_theme = NfoForgeTheme(self.theme_combo.currentData()).theme()
-        if get_theme:
-            app.styleHints().setColorScheme(get_theme)
+        color_scheme = _COLOR_SCHEMES[NfoForgeTheme(self.theme_combo.currentData())]
+        if color_scheme:
+            app.styleHints().setColorScheme(color_scheme)
         else:
             app.styleHints().unsetColorScheme()
 

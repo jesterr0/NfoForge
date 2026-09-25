@@ -168,10 +168,7 @@ def test_ptp_2fa_uses_interactive_prompt_after_automatic_code(
     monkeypatch.setattr(
         "nfoforge.backend.trackers.passthepopcorn.pyotp.TOTP", lambda _secret: totp
     )
-    monkeypatch.setattr(
-        "nfoforge.backend.trackers.passthepopcorn.ask_thread_safe_prompt",
-        lambda *_args: (True, "654321"),
-    )
+    uploader.prompt_2fa = lambda: "654321"
 
     data = {"username": "user", "password": "password"}
     response, tried_totp = uploader._handle_2fa(data, "secret", False)
@@ -184,6 +181,29 @@ def test_ptp_2fa_uses_interactive_prompt_after_automatic_code(
     assert tried_totp
     assert data["TfaCode"] == "654321"
     assert fake_session.post.call_args.kwargs["timeout"] == uploader.timeout
+
+
+def test_ptp_2fa_without_a_prompt_fails_once_the_generated_code_is_rejected(
+    tmp_path: Path,
+) -> None:
+    """Headless runs have nobody to ask, so the fallback prompt is an error."""
+    uploader = _uploader(tmp_path)
+    uploader.prompt_2fa = None
+    uploader._session = MagicMock()
+
+    with pytest.raises(TrackerError, match="nobody to ask"):
+        uploader._handle_2fa({}, "secret", tried_totp=True)
+
+    uploader._session.post.assert_not_called()
+
+
+def test_ptp_2fa_declined_prompt_fails(tmp_path: Path) -> None:
+    uploader = _uploader(tmp_path)
+    uploader.prompt_2fa = lambda: None
+    uploader._session = MagicMock()
+
+    with pytest.raises(TrackerError, match="2FA cancelled"):
+        uploader._handle_2fa({}, "secret", tried_totp=True)
 
 
 def test_ptp_2fa_attempts_are_bounded_and_backed_off(
@@ -211,10 +231,7 @@ def test_ptp_2fa_attempts_are_bounded_and_backed_off(
         "nfoforge.backend.trackers.passthepopcorn.pyotp.TOTP",
         lambda _secret: MagicMock(now=lambda: "123456"),
     )
-    monkeypatch.setattr(
-        "nfoforge.backend.trackers.passthepopcorn.ask_thread_safe_prompt",
-        lambda *_args: (True, "654321"),
-    )
+    uploader.prompt_2fa = lambda: "654321"
     sleeps: list[float] = []
     monkeypatch.setattr(
         "nfoforge.backend.trackers.passthepopcorn.time.sleep", sleeps.append

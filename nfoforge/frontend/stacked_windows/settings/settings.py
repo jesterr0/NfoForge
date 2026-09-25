@@ -14,7 +14,6 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from nfoforge.backend.main_window import restart_application
 from nfoforge.config.config import ConfigManager
 from nfoforge.config.dependencies import unavailable_screenshot_dependency
 from nfoforge.enums.dependencies import Dependencies
@@ -40,6 +39,7 @@ from nfoforge.frontend.stacked_windows.settings.series_management import (
 from nfoforge.frontend.stacked_windows.settings.templates import TemplatesSettings
 from nfoforge.frontend.stacked_windows.settings.trackers import TrackersSettings
 from nfoforge.frontend.stacked_windows.settings.user_tokens import UserTokenSettings
+from nfoforge.frontend.utils.app_lifecycle import restart_application
 
 if TYPE_CHECKING:
     from nfoforge.frontend.windows.main_window import MainWindow
