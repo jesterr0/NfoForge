@@ -1,12 +1,9 @@
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import date, datetime
 from pathlib import Path
-import re
 from typing import Any
 
-from guessit import guessit
 from PySide6.QtCore import QSize, Qt, Signal, Slot
 from PySide6.QtGui import QBrush, QColor
 from PySide6.QtWidgets import (
@@ -32,19 +29,25 @@ from PySide6.QtWidgets import (
 
 from nfoforge.backend.utils.episode_matching import (
     TITLE_DISAGREEMENT_FLOOR,
-    TITLE_SUGGESTION_FLOOR,
     ParsedFile,
     TitleCheck,
-    check_title_against_episode,
     claimed_season_episodes,
     episode_designator,
     episode_spec_text,
     expand_mapping_episodes,
     parse_episode_spec,
     rank_episode_orderings,
-    rank_title_candidates,
 )
 from nfoforge.config.tv_tokens import SUPPORTED_TVR_FORMATS
+from nfoforge.core.series.match import (
+    UNVERIFIED_PARSE_CONFIDENCE,
+    UNVERIFIED_PARSE_METHOD,
+    EpisodeData,
+    EpisodeMapping,
+    EpisodeMatcher,
+    method_label,
+    parsed_file_summary,
+)
 from nfoforge.enums.series import EpisodeFormat
 from nfoforge.frontend.custom_widgets.custom_splitter import CustomSplitter
 from nfoforge.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
@@ -57,135 +60,6 @@ NO_TVDB_EPISODE_DATA_MESSAGE = (
 )
 NO_TVDB_EPISODE_DATA_STYLE = "color: #b3261e; font-weight: bold;"
 TITLE_MISMATCH_STYLE = "color: #8a5300; font-weight: bold;"
-
-EpisodeData = dict[str, Any]
-EpisodeMapping = dict[str, Any]
-
-#: Assignment method for a season/episode the filename states plainly but the
-#: selected TVDB ordering does not list. The numbers are kept as parsed and
-#: flagged rather than discarded -- see ``_store_unverified_parse``.
-UNVERIFIED_PARSE_METHOD = "parsed (no TVDB match)"
-UNVERIFIED_PARSE_CONFIDENCE = 0.6
-
-
-def match_by_absolute(
-    files_parsed: dict[Any, int | None],
-    absolute_episodes: list[dict[str, Any]],
-) -> dict[Any, dict[str, Any]]:
-    """Match files to TVDB absolute-order episodes by absolute episode number.
-
-    This is a pure, Qt-free helper so it can be unit-tested without a widget.
-
-    Args:
-        files_parsed: maps an arbitrary, hashable file identifier (a
-            ``Path``, a filename string, a row index, etc. -- the caller
-            decides) to that file's parsed absolute episode number. This is
-            typically guessit's ``episode`` value for an anime/absolute
-            release that carries no season component, e.g.
-            ``"[Group] Show - 025.mkv"`` parses to ``25``. A value of
-            ``None`` means the file had no parseable number and is skipped.
-        absolute_episodes: the list of TVDB episode dicts for the
-            "Absolute Order" season type, i.e.
-            ``episodes_by_type[type_id]["episodes"]`` for the entry whose
-            ``type`` is ``"absolute"``. Each dict is expected to carry an
-            ``absoluteNumber`` key (and typically ``seasonNumber``/``number``
-            identifying where that absolute episode lives in aired order).
-
-    Returns:
-        A dict with the same keys as ``files_parsed``, but containing only
-        the keys that produced a match, mapped to the matched episode dict
-        from ``absolute_episodes``. Keys with no parseable number, or whose
-        number doesn't appear in ``absolute_episodes``, are omitted.
-    """
-    episodes_by_absolute_number: dict[int, dict[str, Any]] = {}
-    for episode_data in absolute_episodes:
-        absolute_number = episode_data.get("absoluteNumber")
-        if absolute_number is None:
-            continue
-        episodes_by_absolute_number.setdefault(absolute_number, episode_data)
-
-    matches: dict[Any, dict[str, Any]] = {}
-    for file_key, absolute_number in files_parsed.items():
-        if absolute_number is None:
-            continue
-        matched_episode = episodes_by_absolute_number.get(absolute_number)
-        if matched_episode is not None:
-            matches[file_key] = matched_episode
-    return matches
-
-
-def _normalize_air_date(value: Any) -> str | None:
-    """Normalize a date-like value to an ISO "YYYY-MM-DD" string.
-
-    Accepts ``datetime.date``/``datetime.datetime`` (what guessit returns
-    for a parsed filename date) as well as a string (what TVDB's ``aired``
-    field carries, e.g. ``"2024-05-01"``). Returns ``None`` if ``value`` is
-    ``None``, empty, or not a recognizable date.
-    """
-    if value is None:
-        return None
-    if isinstance(value, datetime):
-        return value.date().isoformat()
-    if isinstance(value, date):
-        return value.isoformat()
-    if isinstance(value, str):
-        text = value.strip()
-        if not text:
-            return None
-        try:
-            return date.fromisoformat(text[:10]).isoformat()
-        except ValueError:
-            return None
-    return None
-
-
-def match_by_air_date(
-    files_parsed: dict[Any, Any],
-    episodes: list[dict[str, Any]],
-) -> dict[Any, dict[str, Any]]:
-    """Match files to TVDB episodes by air date.
-
-    This is a pure, Qt-free helper so it can be unit-tested without a widget.
-    It mirrors ``match_by_absolute`` but keys on air date instead of
-    absolute episode number, for daily/date releases (e.g.
-    "Show.2024.05.01.mkv") that carry no season/episode component at all.
-
-    Args:
-        files_parsed: maps an arbitrary, hashable file identifier (a
-            ``Path``, a filename string, a row index, etc. -- the caller
-            decides) to that file's parsed date. This is typically
-            guessit's ``date`` value, a ``datetime.date`` (or
-            ``datetime.datetime``). A value of ``None`` means the file had
-            no parseable date and is skipped.
-        episodes: the list of TVDB episode dicts to search, each expected
-            to carry ``seasonNumber``/``number`` (identifying the episode)
-            and an ``aired`` date string (e.g. ``"2024-05-01"``).
-
-    Returns:
-        A dict with the same keys as ``files_parsed``, but containing only
-        the keys that produced a match, mapped to the matched episode dict
-        from ``episodes``. Keys with no parseable date, or whose date
-        doesn't match any episode's ``aired`` date, are omitted. Dates are
-        normalized (see ``_normalize_air_date``) before comparison so a
-        ``datetime.date``/``datetime.datetime`` parsed value compares equal
-        to TVDB's ISO date string.
-    """
-    episodes_by_date: dict[str, dict[str, Any]] = {}
-    for episode_data in episodes:
-        normalized_aired = _normalize_air_date(episode_data.get("aired"))
-        if normalized_aired is None:
-            continue
-        episodes_by_date.setdefault(normalized_aired, episode_data)
-
-    matches: dict[Any, dict[str, Any]] = {}
-    for file_key, parsed_date in files_parsed.items():
-        normalized_parsed = _normalize_air_date(parsed_date)
-        if normalized_parsed is None:
-            continue
-        matched_episode = episodes_by_date.get(normalized_parsed)
-        if matched_episode is not None:
-            matches[file_key] = matched_episode
-    return matches
 
 
 class EpisodeSpecTableItem(QTableWidgetItem):
@@ -358,6 +232,46 @@ class SeriesEpisodeMapper(QWidget):
             item.setBackground(QBrush())
             item.setForeground(QBrush())
 
+    @property
+    def available_episodes(self) -> dict[int, dict[int, EpisodeData]]:
+        return self.matcher.available_episodes
+
+    @available_episodes.setter
+    def available_episodes(self, value: dict[int, dict[int, EpisodeData]]) -> None:
+        self.matcher.available_episodes = value
+
+    @property
+    def episodes_by_type(self) -> dict[Any, EpisodeData]:
+        return self.matcher.episodes_by_type
+
+    @episodes_by_type.setter
+    def episodes_by_type(self, value: dict[Any, EpisodeData]) -> None:
+        self.matcher.episodes_by_type = value
+
+    @property
+    def file_episode_mappings(self) -> dict[Path, EpisodeMapping]:
+        return self.matcher.mappings
+
+    @file_episode_mappings.setter
+    def file_episode_mappings(self, value: dict[Path, EpisodeMapping]) -> None:
+        self.matcher.mappings = value
+
+    @property
+    def _guessit_cache(self) -> dict[Path, EpisodeData]:
+        return self.matcher.parsed
+
+    def _sync_matcher(self) -> EpisodeMatcher:
+        """Hand the matcher what this widget's controls currently say."""
+        matcher = self.matcher
+        matcher.order_type_id = self.episode_order_combo.currentData()
+        matcher.series_format = self.get_series_format()
+        matcher.show_title = (
+            self.media_search_payload.title if self.media_search_payload else None
+        )
+        matcher.fuzzy_enabled = self.enable_fuzzy_checkbox.isChecked()
+        matcher.fuzzy_threshold = float(self.fuzzy_threshold_spin.value())
+        return matcher
+
     def __init__(
         self,
         parent: QWidget | None = None,
@@ -368,12 +282,10 @@ class SeriesEpisodeMapper(QWidget):
         self.media_input_payload = None
         self.media_search_payload = None
 
-        # episode data and mappings
-        self.available_episodes: dict[int, dict[int, EpisodeData]] = {}
-        self.episodes_by_type: dict[Any, EpisodeData] = {}
-        self.file_episode_mappings: dict[Path, EpisodeMapping] = {}
+        # episode data and mappings: the matcher owns them, this widget shows
+        # them and forwards its controls to it
+        self.matcher = EpisodeMatcher()
         self.episode_items: list[EpisodeListItem] = []
-        self._guessit_cache: dict[Path, EpisodeData] = {}
         self._release_format_manually_selected = False
         self._loading_release_format_combo = False
 
@@ -735,38 +647,10 @@ class SeriesEpisodeMapper(QWidget):
         """
         if not self.media_input_payload or not self.media_input_payload.file_list:
             return []
-
-        parsed_files: list[ParsedFile] = []
-        for file_path in self.media_input_payload.file_list:
-            parsed_data = self._guessit_cache.get(file_path)
-            if parsed_data is None:
-                parsed_data = self._parse_file(file_path)
-                self._guessit_cache[file_path] = parsed_data
-
-            episode = parsed_data.get("episode")
-            if isinstance(episode, list):
-                episodes = tuple(
-                    number for number in sorted(episode) if isinstance(number, int)
-                )
-            elif isinstance(episode, int):
-                episodes = (episode,)
-            else:
-                episodes = ()
-
-            episode_title = parsed_data.get("episode_title")
-            if isinstance(episode_title, list):
-                episode_title = " ".join(
-                    value for value in episode_title if isinstance(value, str)
-                )
-
-            parsed_files.append(
-                ParsedFile(
-                    season=self._coerce_season(parsed_data.get("season")),
-                    episodes=episodes,
-                    title=episode_title if isinstance(episode_title, str) else None,
-                )
-            )
-        return parsed_files
+        return [
+            parsed_file_summary(self.matcher.parse(file_path))
+            for file_path in self.media_input_payload.file_list
+        ]
 
     def _committed_order_type_id(self) -> Any | None:
         """The ordering the rows already adopted were built against."""
@@ -854,8 +738,7 @@ class SeriesEpisodeMapper(QWidget):
             # GuessIt work on the GUI thread.
             parsed_data = self._guessit_cache.get(file_path)
             if parsed_data is None:
-                parsed_data = self._parse_file(file_path)
-                self._guessit_cache[file_path] = parsed_data
+                parsed_data = self.matcher.parse(file_path)
             else:
                 parsed_data = dict(parsed_data)
 
@@ -894,135 +777,6 @@ class SeriesEpisodeMapper(QWidget):
             method_item.setFlags(method_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
             self.files_table.setItem(row, self.COL_METHOD, method_item)
 
-    @staticmethod
-    def _parse_file(file_path: Path) -> EpisodeData:
-        """Parse one input file's season, episode and episode title.
-
-        The filename is parsed on its own, and as an episode, which is what
-        every other parse site in the app does. Handing GuessIt the whole
-        path instead let the directories above the file compete for the show
-        title: for a pack sitting in a folder that carries its own release
-        info, GuessIt read the grandparent as the show and the episode title
-        came back as the containing directory's name -- the same value for
-        every file in the pack. Season and episode were unaffected, so the
-        damage was invisible until something read the title, which fuzzy
-        matching does for any file the numbers cannot place.
-
-        The full path is still consulted for a season the filename omits,
-        because a pack may keep its episodes in ``Season NN`` subfolders with
-        bare names like ``ep01.mkv``. Only the season is taken from it.
-        """
-        try:
-            parsed: EpisodeData = dict(
-                guessit(file_path.name, options={"type": "episode"})
-            )
-        except Exception:
-            parsed = {}
-
-        if parsed.get("season") is None:
-            try:
-                from_path = dict(guessit(str(file_path), options={"type": "episode"}))
-            except Exception:
-                from_path = {}
-            season = from_path.get("season")
-            if season is not None:
-                parsed["season"] = season
-
-        return parsed
-
-    def _normalize_text(self, text: str) -> str:
-        """Normalize text for fuzzy matching"""
-        # remove common video terms and normalize
-        text = re.sub(
-            r"\b(720p|1080p|hdtv|webrip|bluray|dvdrip|x264|h264|x265|hevc)\b",
-            "",
-            text.lower(),
-        )
-        # remove season/episode patterns for fuzzy matching
-        text = re.sub(r"\bs\d+e\d+\b", "", text)  # remove S01E01 style
-        text = re.sub(r"\bseason\s*\d+\b", "", text)  # remove "season 1" style
-        text = re.sub(r"\bepisode\s*\d+\b", "", text)  # remove "episode 1" style
-        text = re.sub(r"\b\d+x\d+\b", "", text)  # remove 1x01 style
-        text = re.sub(r"[^a-z0-9\s]", " ", text)
-        text = re.sub(r"\s+", " ", text.strip())
-        return text
-
-    @staticmethod
-    def _coerce_season(value: Any) -> int | None:
-        """Return a parsed season number, including GuessIt's list form."""
-        if isinstance(value, list):
-            value = value[0] if value else None
-        return value if isinstance(value, int) else None
-
-    def _episode_title_candidates(
-        self, filename: str, parsed_data: EpisodeData | None
-    ) -> list[str]:
-        """Strings from one file that might be its episode title.
-
-        GuessIt's own ``episode_title`` is preferred and is passed through
-        unaltered, so the comparison sees the title as written -- stripping
-        punctuation here would throw away the ampersand in "Lost & Found",
-        which the comparison itself knows how to read. The filename-derived
-        fallback is for names GuessIt cannot parse, and does need the show
-        name and release terms taken off it first.
-        """
-        candidates: list[str] = []
-
-        if parsed_data:
-            parsed_episode_title = parsed_data.get("episode_title")
-            if isinstance(parsed_episode_title, list):
-                parsed_episode_title = " ".join(
-                    value
-                    for value in parsed_episode_title
-                    if isinstance(value, str) and value.strip()
-                )
-            if isinstance(parsed_episode_title, str) and parsed_episode_title.strip():
-                candidates.append(parsed_episode_title)
-
-        filename_clean = self._normalize_text(filename)
-        show_name_variations: list[str] = []
-        if (
-            self.media_search_payload
-            and isinstance(self.media_search_payload.title, str)
-            and self.media_search_payload.title.strip()
-        ):
-            show_title = self.media_search_payload.title.lower()
-            show_name_variations.append(self._normalize_text(show_title))
-            show_title_clean = re.sub(r"[^a-z0-9\s]", " ", show_title)
-            show_title_clean = re.sub(r"\s+", " ", show_title_clean.strip())
-            if show_title_clean and show_title_clean not in show_name_variations:
-                show_name_variations.append(show_title_clean)
-
-        filename_episode_title = filename_clean
-        for show_name in show_name_variations:
-            if show_name:
-                filename_episode_title = filename_episode_title.replace(
-                    show_name, ""
-                ).strip()
-
-        # remove common technical terms that don't help with episode matching
-        filename_episode_title = re.sub(
-            r"(web|dl|rip|bluray|dvd|hdtv|mkv|mp4|avi)",
-            "",
-            filename_episode_title,
-        )
-
-        # The group tag survives normalization as a bare word ("-G" -> "g")
-        # and counts as part of the title, which is enough to stop a part
-        # number being recognised as one.
-        release_group = (parsed_data or {}).get("release_group")
-        if isinstance(release_group, str) and release_group.strip():
-            filename_episode_title = re.sub(
-                rf"{re.escape(self._normalize_text(release_group))}",
-                "",
-                filename_episode_title,
-            )
-        filename_episode_title = re.sub(r"\s+", " ", filename_episode_title.strip())
-        if len(filename_episode_title) >= 3:
-            candidates.append(filename_episode_title)
-
-        return candidates
-
     def _fuzzy_match_episode_name(
         self,
         filename: str,
@@ -1031,113 +785,13 @@ class SeriesEpisodeMapper(QWidget):
         claimed_by: Path | None = None,
         min_score: float | None = None,
     ) -> tuple[int, tuple[int, ...], float] | None:
-        """Match a file to episodes by title, returning every episode it covers.
-
-        Answers with a tuple of episode numbers rather than one number: a
-        provider splits a two-part story into two episodes while a release
-        ships it as one file, so a file named after the story matches the
-        story. Matching only its first half left the second half with no file
-        to give it and no way to say so.
-
-        Episodes another file already covers are excluded before ranking, so
-        this cannot manufacture an overlap.
-        """
-        if not self.enable_fuzzy_checkbox.isChecked():
-            return None
-
-        title_candidates = self._episode_title_candidates(filename, parsed_data)
-        if not title_candidates:
-            return None
-
-        # ``min_score`` raises the bar above the user's general setting for
-        # a caller that is overriding harder evidence than a title.
-        threshold = float(self.fuzzy_threshold_spin.value())
-        if min_score is not None:
-            threshold = max(threshold, min_score)
-
-        # A number parsed with no season beside it is often a part number
-        # rather than an episode: "A.Moral.Star.1" is part one of a two-part
-        # story, not episode one.
-        parsed_episode = (parsed_data or {}).get("episode")
-        part_hint = parsed_episode if isinstance(parsed_episode, int) else None
-
-        # identity check, not truthiness -- season 0 is a valid TVDB season
-        # (specials), and `season == 0` is falsy in Python.
-        seasons_to_search = (
-            [season] if season is not None else list(self.available_episodes)
+        """See `EpisodeMatcher.fuzzy_match_episode_name`."""
+        return self._sync_matcher().fuzzy_match_episode_name(
+            filename, season, parsed_data, claimed_by, min_score
         )
 
-        best: tuple[int, tuple[int, ...], float] | None = None
-        for search_season in seasons_to_search:
-            season_episodes = self.available_episodes.get(search_season)
-            if not season_episodes:
-                continue
-
-            already_claimed = {
-                number
-                for number in season_episodes
-                if self._episode_is_claimed(search_season, number, claimed_by)
-            }
-
-            for title_candidate in title_candidates:
-                ranked = rank_title_candidates(
-                    title_candidate,
-                    season_episodes,
-                    exclude=already_claimed,
-                    threshold=threshold,
-                    part_hint=part_hint,
-                )
-                if not ranked:
-                    continue
-                candidate = ranked[0]
-                if best is None or candidate.score > best[2] * 100.0:
-                    best = (search_season, candidate.episodes, candidate.score / 100.0)
-
-        return best
-
-    def _get_absolute_order_episodes(
-        self,
-    ) -> tuple[Any | None, list[dict[str, Any]]]:
-        """Return TVDB's "Absolute Order" episode list and its type id.
-
-        This scans all season types the mapper knows about rather than only
-        the currently selected TVDB order, so absolute-number matching keeps
-        working even when the user is viewing episodes in Aired/DVD order
-        while the Anime/Absolute release format is selected -- the release
-        format only controls title/filename tokens and doesn't change which
-        TVDB order is displayed.
-
-        The type id comes back with the list because a mapping stored from
-        it did not come from the combo's ordering, and the row has to record
-        the list it actually used.
-        """
-        for type_id, type_data in self.episodes_by_type.items():
-            order_type = str(type_data.get("type", "")).lower()
-            order_name = str(type_data.get("type_name", "")).lower()
-            if "absolute" in order_type or "absolute" in order_name:
-                episodes = type_data.get("episodes", [])
-                if isinstance(episodes, list):
-                    return type_id, [
-                        dict(episode)
-                        for episode in episodes
-                        if isinstance(episode, dict)
-                    ]
-        return None, []
-
-    def _get_available_episodes_flat(self) -> list[dict[str, Any]]:
-        """Flatten ``self.available_episodes`` (season -> episode -> data)
-        into a single list of episode dicts, for matchers that key on a
-        field (like ``aired``) rather than the season/episode structure --
-        e.g. air-date matching for daily/date releases.
-        """
-        return [
-            episode_data
-            for season_episodes in self.available_episodes.values()
-            for episode_data in season_episodes.values()
-        ]
-
     def _auto_match_files(self, preserve_existing: bool = False) -> None:
-        """Enhanced auto-matching with fuzzy fallback.
+        """Match every file in the table, then show the result.
 
         ``preserve_existing`` leaves rows that already carry a mapping
         untouched and matches only the rest. Page load passes it so that
@@ -1149,307 +803,24 @@ class SeriesEpisodeMapper(QWidget):
         if not self.available_episodes:
             return
 
-        matched_count = 0
-        fuzzy_matched_count = 0
-
-        absolute_format_active = (
-            self.get_series_format() == EpisodeFormat.ANIME_ABSOLUTE
-        )
-        absolute_type_id, absolute_episodes = (
-            self._get_absolute_order_episodes()
-            if absolute_format_active
-            else (None, [])
-        )
-        daily_format_active = self.get_series_format() == EpisodeFormat.DAILY_DATE
-
-        for row in range(self.files_table.rowCount()):
-            filename_item = self.files_table.item(row, self.COL_FILENAME)
-            if not isinstance(filename_item, EnhancedFileTableItem):
-                continue
-
-            file_path = filename_item.file_path
-            parsed_data = filename_item.parsed_data
-
-            if preserve_existing and file_path in self.file_episode_mappings:
-                continue
-
-            # stage 1: try regex/guessit parsing (highest confidence)
-            season = self._coerce_season(parsed_data.get("season"))
-            episode = parsed_data.get("episode")
-
-            # guessit returns a list of episode numbers for files that span
-            # multiple episodes (e.g. "S01E01E02"). keep the lowest as the
-            # primary episode and carry the highest as the range end so a
-            # single file's multi-episode span isn't collapsed to episode 1.
-            # the whole list is kept alongside them: the expand styles name
-            # every episode the file holds, and "S01E01E05" is a span whose
-            # ends alone describe wrongly.
-            episode_end = None
-            episode_list: list[int] | None = None
-            if isinstance(episode, list):
-                if episode:
-                    sorted_episodes = sorted(episode)
-                    episode_list = sorted_episodes
-                    episode, episode_end = sorted_episodes[0], sorted_episodes[-1]
-                    if episode_end == episode:
-                        episode_end = None
-                else:
-                    episode = None
-
-            # this must use identity checks, not truthiness -- TVDB uses
-            # season 0 for specials, and `season == 0` is falsy in Python,
-            # so a truthiness check would skip a genuinely parsed "S00E05"
-            # even though `available_episodes` has that exact entry (it's
-            # populated with an `is not None` check, so season 0 is valid).
-            if (
-                season is not None
-                and episode is not None
-                and season in self.available_episodes
-                and episode in self.available_episodes[season]
-            ):
-                # high confidence regex match
-                episode_data = self.available_episodes[season][episode]
-                confidence = 0.95
-                method = "regex"
-
-                title_check = self._title_check_for(file_path, season, episode)
-                method = self._method_label(method, title_check)
-
-                self._update_file_row_assignment(
-                    row,
-                    self._store_mapping(
-                        file_path,
-                        season,
-                        episode,
-                        episode_data,
-                        confidence,
-                        method,
-                        episode_end=episode_end,
-                        episode_list=episode_list,
-                        episode_order_type_id=self.episode_order_combo.currentData(),
-                        title_check=title_check,
-                    ),
-                )
-                matched_count += 1
-                continue
-
-            # Stage 1a: the filename states a season and an episode plainly,
-            # but the selected ordering has no such episode. TVDB's list and
-            # the release's numbering disagree -- most often because a
-            # multi-part premiere is one entry there and two episodes here,
-            # which shortens every ordering that merges it.
-            #
-            # Keep what the filename says, flagged as unverified. Discarding
-            # it left the row blank and handed the file to fuzzy matching,
-            # which has no number to work from and would bind it to whichever
-            # episode title scored best -- in a full pack that is an episode
-            # another file already claims, so the pack failed validation as
-            # "not properly mapped" with every cell on screen filled in. It
-            # also made the auto path strictly worse than the manual one,
-            # which has always stored exactly these numbers when the user
-            # typed them by hand.
-            if season is not None and episode is not None:
-                # Before settling for the numbers alone, see whether this
-                # file's own episode title names an episode the ordering
-                # does have. That is the case where the numbering and the
-                # provider genuinely disagree -- a merged two-part premiere
-                # shifts every later episode -- and the title is then the
-                # better evidence of the two. The bar is deliberately higher
-                # than the user's general fuzzy threshold, because this
-                # overrides a number the filename states plainly.
-                rescued = self._fuzzy_match_episode_name(
-                    file_path.stem,
-                    season=season,
-                    parsed_data=parsed_data,
-                    claimed_by=file_path,
-                    min_score=TITLE_SUGGESTION_FLOOR,
-                )
-                if rescued is not None:
-                    matched_season, matched_episodes, confidence = rescued
-                    self._update_file_row_assignment(
-                        row,
-                        self._store_mapping(
-                            file_path,
-                            matched_season,
-                            matched_episodes[0],
-                            self.available_episodes[matched_season][
-                                matched_episodes[0]
-                            ],
-                            confidence,
-                            "title",
-                            episode_end=(
-                                matched_episodes[-1]
-                                if len(matched_episodes) > 1
-                                else None
-                            ),
-                            episode_list=list(matched_episodes),
-                            episode_order_type_id=self.episode_order_combo.currentData(),
-                        ),
-                    )
-                    matched_count += 1
-                    continue
-
-                self._store_unverified_parse(
-                    row,
-                    file_path,
-                    season,
-                    episode,
-                    episode_end=episode_end,
-                    episode_list=episode_list,
-                )
-                matched_count += 1
-                continue
-
-            # stage 1b: anime/absolute-numbered releases (e.g.
-            # "[Group] Show - 025.mkv") carry no season, just an absolute
-            # episode number, so stage 1 above never matches them. When the
-            # Anime/Absolute release format is active, match that number
-            # against TVDB's absolute-order episode list instead. The
-            # `season is None` guard is required: a file that DID parse a
-            # real season (e.g. "Show.S05E03.mkv" for a season TVDB has no
-            # data for) must fall through to fuzzy/unmatched instead of
-            # having its episode digit reinterpreted as an unrelated
-            # absolute number.
-            if (
-                absolute_format_active
-                and absolute_episodes
-                and episode is not None
-                and season is None
-            ):
-                absolute_match = match_by_absolute(
-                    {file_path: episode}, absolute_episodes
-                )
-                absolute_episode_data = absolute_match.get(file_path)
-                if absolute_episode_data is not None:
-                    matched_season = absolute_episode_data.get("seasonNumber")
-                    matched_episode = absolute_episode_data.get("number")
-                    if matched_season is not None and matched_episode is not None:
-                        confidence = 0.9
-                        method = "absolute"
-
-                        # translate the range end through the same absolute
-                        # index used for the primary episode, e.g. for
-                        # "[Group] Show - 025-026.mkv" (episode_end=26) so it
-                        # renders as the in-season end (S02E04) rather than
-                        # the raw absolute number. If the end number doesn't
-                        # resolve, or resolves into a different season than
-                        # the start, drop it rather than store a bogus value.
-                        #
-                        # The parsed episode list is deliberately not passed
-                        # on: it holds absolute numbers, and only its ends
-                        # have been translated into this season. _store_mapping
-                        # derives the in-season list from those instead.
-                        matched_episode_end = None
-                        if episode_end is not None:
-                            end_match = match_by_absolute(
-                                {file_path: episode_end}, absolute_episodes
-                            )
-                            end_episode_data = end_match.get(file_path)
-                            if end_episode_data is not None:
-                                end_season = end_episode_data.get("seasonNumber")
-                                end_number = end_episode_data.get("number")
-                                if (
-                                    end_season == matched_season
-                                    and end_number is not None
-                                ):
-                                    matched_episode_end = end_number
-
-                        self._update_file_row_assignment(
-                            row,
-                            self._store_mapping(
-                                file_path,
-                                matched_season,
-                                matched_episode,
-                                absolute_episode_data,
-                                confidence,
-                                method,
-                                episode_end=matched_episode_end,
-                                episode_order_type_id=absolute_type_id,
-                            ),
-                        )
-                        matched_count += 1
-                        continue
-
-            # stage 1c: daily/date releases (e.g. "Show.2024.05.01.mkv")
-            # carry no season/episode, just an air date (guessit's `date`
-            # key), so stage 1 above never matches them. When the
-            # Daily/Date release format is active, match that date against
-            # the currently loaded episode list's `aired` field instead.
-            # The `season is None and episode is None` guard mirrors stage
-            # 1b: a file that DID parse a real season/episode must fall
-            # through to fuzzy/unmatched instead of being reinterpreted by
-            # date. This must use identity checks, not truthiness -- TVDB
-            # uses season 0 for specials, and `season == 0` is falsy in
-            # Python, so a truthiness check would wrongly treat a genuinely
-            # parsed "S00E01" as season-and-episode-less and let it be
-            # hijacked by date.
-            parsed_date = parsed_data.get("date")
-            if (
-                daily_format_active
-                and parsed_date is not None
-                and season is None
-                and episode is None
-            ):
-                daily_episodes = self._get_available_episodes_flat()
-                daily_match = match_by_air_date(
-                    {file_path: parsed_date}, daily_episodes
-                )
-                daily_episode_data = daily_match.get(file_path)
-                if daily_episode_data is not None:
-                    matched_season = daily_episode_data.get("seasonNumber")
-                    matched_episode = daily_episode_data.get("number")
-                    if matched_season is not None and matched_episode is not None:
-                        confidence = 0.9
-                        method = "daily"
-
-                        self._update_file_row_assignment(
-                            row,
-                            self._store_mapping(
-                                file_path,
-                                matched_season,
-                                matched_episode,
-                                daily_episode_data,
-                                confidence,
-                                method,
-                                episode_order_type_id=self.episode_order_combo.currentData(),
-                            ),
-                        )
-                        matched_count += 1
-                        continue
-
-            # stage 2: try fuzzy matching (medium confidence)
-            fuzzy_result = self._fuzzy_match_episode_name(
-                file_path.stem,
-                season=season,
-                parsed_data=parsed_data,
-                claimed_by=file_path,
+        rows = {
+            item.file_path: row
+            for row in range(self.files_table.rowCount())
+            if isinstance(
+                item := self.files_table.item(row, self.COL_FILENAME),
+                EnhancedFileTableItem,
             )
-            if fuzzy_result:
-                matched_season, matched_episodes, confidence = fuzzy_result
-                episode_data = self.available_episodes[matched_season][
-                    matched_episodes[0]
-                ]
-                # A title match can cover a whole multi-part story, so the
-                # span is carried through exactly as a parsed "S01E01-E02"
-                # would be.
-                self._update_file_row_assignment(
-                    row,
-                    self._store_mapping(
-                        file_path,
-                        matched_season,
-                        matched_episodes[0],
-                        episode_data,
-                        confidence,
-                        "fuzzy",
-                        episode_end=(
-                            matched_episodes[-1] if len(matched_episodes) > 1 else None
-                        ),
-                        episode_list=list(matched_episodes),
-                        episode_order_type_id=self.episode_order_combo.currentData(),
-                    ),
-                )
-                fuzzy_matched_count += 1
-                continue
+        }
+        before = {path: self.file_episode_mappings.get(path) for path in rows}
+        self._sync_matcher().match_files(list(rows), preserve_existing)
+
+        # Repaint only the rows matching changed. A row it could not place
+        # keeps whatever is in its cells -- a season typed to narrow a later
+        # fuzzy match, say.
+        for file_path, row in rows.items():
+            mapping = self.file_episode_mappings.get(file_path)
+            if mapping is not None and mapping is not before[file_path]:
+                self._update_file_row_assignment(row, mapping)
 
         self._update_title_warning()
         self._update_all_stats()
@@ -1463,13 +834,7 @@ class SeriesEpisodeMapper(QWidget):
         matching runs, so it is equally right after an ordering change, which
         re-resolves rows in place instead of re-matching them.
         """
-        scores = [
-            mapping["title_match_score"]
-            for mapping in self.file_episode_mappings.values()
-            if isinstance(mapping.get("title_match_score"), (int, float))
-        ]
-        checked = len(scores)
-        disagreements = sum(1 for score in scores if score < TITLE_DISAGREEMENT_FLOOR)
+        checked, disagreements = self.matcher.title_disagreements()
 
         if checked < 2 or disagreements * 2 <= checked:
             self.title_warning_label.hide()
@@ -1537,39 +902,10 @@ class SeriesEpisodeMapper(QWidget):
                     season = int(season_text)
                 except ValueError:
                     season = None
-            if season is None:
-                season = self._coerce_season(filename_item.parsed_data.get("season"))
 
-            # try fuzzy matching
-            fuzzy_result = self._fuzzy_match_episode_name(
-                file_path.stem,
-                season=season,
-                parsed_data=filename_item.parsed_data,
-                claimed_by=file_path,
-            )
-            if fuzzy_result:
-                matched_season, matched_episodes, confidence = fuzzy_result
-                episode_data = self.available_episodes[matched_season][
-                    matched_episodes[0]
-                ]
-                # A title match can cover a whole multi-part story, so the
-                # span is carried through exactly as a parsed "S01E01-E02"
-                # would be.
+            if self._sync_matcher().fuzzy_match_file(file_path, season):
                 self._update_file_row_assignment(
-                    row,
-                    self._store_mapping(
-                        file_path,
-                        matched_season,
-                        matched_episodes[0],
-                        episode_data,
-                        confidence,
-                        "fuzzy",
-                        episode_end=(
-                            matched_episodes[-1] if len(matched_episodes) > 1 else None
-                        ),
-                        episode_list=list(matched_episodes),
-                        episode_order_type_id=self.episode_order_combo.currentData(),
-                    ),
+                    row, self.file_episode_mappings[file_path]
                 )
                 fuzzy_matched += 1
 
@@ -1577,156 +913,15 @@ class SeriesEpisodeMapper(QWidget):
         self._refresh_episodes_display()
         self.mapping_changed.emit()
 
-    def _store_mapping(
-        self,
-        file_path: Path,
-        season: int,
-        episode: int,
-        episode_data: EpisodeData,
-        confidence: float,
-        method: str,
-        episode_end: int | None = None,
-        episode_list: Sequence[int] | None = None,
-        episode_order_type_id: Any | None = None,
-        verified: bool = True,
-        title_check: TitleCheck | None = None,
-        episode_title_override: str | None = None,
-    ) -> EpisodeMapping:
-        """Store file-to-episode mapping, and return the stored row.
-
-        ``episode_end`` carries the last episode number for a file that spans
-        multiple episodes (e.g. a single "S01E01E02" file). It is ``None``
-        for a normal single-episode mapping.
-
-        ``episode_list`` names every episode the file covers. Callers pass it
-        when they parsed one, which is the only way a non-contiguous span
-        such as "S01E01E05" can be recorded; otherwise it is derived from
-        ``episode`` and ``episode_end``, so every row carries a list and no
-        reader has to special-case the single-episode file.
-
-        ``verified`` is False when ``episode_data`` is a synthesized stand-in
-        rather than a real episode from the selected ordering -- the filename
-        (or the user) named a season/episode TVDB does not list. Readers that
-        only need the numbers can ignore it; it exists so the UI can say which
-        rows TVDB has confirmed.
-
-        ``episode_order_type_id`` records which TVDB episode ordering
-        ``episode_data`` came from. TVDB serves several -- aired, DVD,
-        absolute -- and the same (season, episode) pair can name different
-        episodes in each, so a later lookup for a *different* episode of the
-        same file has to read the same list. ``None`` means the flat
-        ``tvdb_data["episodes"]`` list, which is what rows written before
-        this field existed mean.
-        """
-        if episode_list:
-            stored_episodes = sorted(episode_list)
-        elif episode_end is not None and episode_end > episode:
-            stored_episodes = list(range(episode, episode_end + 1))
-        else:
-            stored_episodes = [episode]
-
-        self.file_episode_mappings[file_path] = {
-            "season": season,
-            "episode": episode,
-            "episode_end": episode_end,
-            "episode_list": stored_episodes,
-            "episode_data": episode_data,
-            "episode_name": episode_data.get("name", "Unknown"),
-            "confidence": confidence,
-            "assignment_method": method,
-            "episode_order_type_id": episode_order_type_id,
-            "verified": verified,
-            "title_match_score": title_check.score if title_check else None,
-            "episode_title_override": episode_title_override or None,
-        }
-        return self.file_episode_mappings[file_path]
+    def _store_mapping(self, *args: Any, **kwargs: Any) -> EpisodeMapping:
+        """See `EpisodeMatcher.store_mapping`."""
+        return self.matcher.store_mapping(*args, **kwargs)
 
     def _title_check_for(
         self, file_path: Path, season: int, episode: int
     ) -> TitleCheck:
-        """Ask a filename's own episode title whether it agrees with the
-        episode its number landed on.
-
-        The number matching proves little on its own: every ordering of a
-        season has an episode 3, so a pack numbered against one ordering
-        binds cleanly to another and renames itself wrong at full
-        confidence.
-        """
-        parsed_data = self._guessit_cache.get(file_path) or {}
-        parsed_title = parsed_data.get("episode_title")
-        if isinstance(parsed_title, list):
-            parsed_title = " ".join(
-                value for value in parsed_title if isinstance(value, str)
-            )
-        return check_title_against_episode(
-            parsed_title if isinstance(parsed_title, str) else None,
-            self.available_episodes.get(season, {}),
-            episode,
-        )
-
-    @staticmethod
-    def _method_label(base: str, title_check: TitleCheck) -> str:
-        """Name the episode a row's own title belongs to, where it differs."""
-        if title_check.points_elsewhere:
-            return f"{base} (title -> E{title_check.suggested_episode:02d}?)"
-        return base
-
-    def _episode_is_claimed(
-        self, season: int, episode: int, claimed_by: Path | None = None
-    ) -> bool:
-        """Whether another file already covers this episode.
-
-        Matching used to be able to put two files on one episode: a file
-        whose number the ordering does not list fell through to fuzzy, which
-        has only a title to go on and in a complete pack lands on an episode
-        some other file already holds. The pack then failed to validate as
-        "not properly mapped", with every row on screen filled in.
-        """
-        for file_path, mapping in self.file_episode_mappings.items():
-            if file_path == claimed_by:
-                continue
-            if (season, episode) in claimed_season_episodes(mapping):
-                return True
-        return False
-
-    def _store_unverified_parse(
-        self,
-        row: int,
-        file_path: Path,
-        season: int,
-        episode: int,
-        episode_end: int | None = None,
-        episode_list: Sequence[int] | None = None,
-    ) -> None:
-        """Record a parsed season/episode the selected ordering cannot confirm.
-
-        Uses the same synthesized payload the manual-entry path builds for a
-        season/episode TVDB has no data for, so a number NfoForge parsed and a
-        number the user typed are stored identically and render identically.
-        The row is painted amber and labelled so it reads as "this is what the
-        filename says, unconfirmed" rather than as a verified match.
-        """
-        episode_data: EpisodeData = {
-            "season": season,
-            "episode": episode,
-            "name": None,
-            "aired": None,
-        }
-        self._update_file_row_assignment(
-            row,
-            self._store_mapping(
-                file_path,
-                season,
-                episode,
-                episode_data,
-                UNVERIFIED_PARSE_CONFIDENCE,
-                UNVERIFIED_PARSE_METHOD,
-                episode_end=episode_end,
-                episode_list=episode_list,
-                episode_order_type_id=self.episode_order_combo.currentData(),
-                verified=False,
-            ),
-        )
+        """See `EpisodeMatcher.title_check_for`."""
+        return self.matcher.title_check_for(file_path, season, episode)
 
     def _update_file_row_assignment(
         self, row: int, mapping: EpisodeMapping, rewrite_inputs: bool = True
@@ -2176,7 +1371,7 @@ class SeriesEpisodeMapper(QWidget):
                     mapping["assignment_method"] = UNVERIFIED_PARSE_METHOD
                     mapping["confidence"] = UNVERIFIED_PARSE_CONFIDENCE
                 else:
-                    mapping["assignment_method"] = self._method_label(base, title_check)
+                    mapping["assignment_method"] = method_label(base, title_check)
 
         self._render_all_rows()
         self._update_title_warning()
