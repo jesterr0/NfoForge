@@ -1,12 +1,9 @@
 """Coverage for saving a job and resuming it at the process page."""
 
 from pathlib import Path
-import struct
 from types import SimpleNamespace
 from typing import Any, cast
-import wave
 
-from pymediainfo import MediaInfo
 from PySide6.QtWidgets import (
     QDialog,
     QLabel,
@@ -17,7 +14,6 @@ from PySide6.QtWidgets import (
     QWizardPage,
 )
 import pytest
-from torf import Torrent
 
 from nfoforge.backend.jobs import (
     MediaFingerprint,
@@ -33,7 +29,6 @@ from nfoforge.backend.upload_retry import TrackerRunOutcome
 from nfoforge.backend.utils.media_info_utils import clear_full_mi_str_cache
 from nfoforge.context.processing_context import ProcessingContext
 from nfoforge.enums.image_host import ImageHost, ImageSource
-from nfoforge.enums.media_type import MediaType
 from nfoforge.enums.tracker_selection import TrackerSelection
 from nfoforge.enums.upload_process import UploadProcessMode
 from nfoforge.enums.wizard import WizardPages
@@ -50,6 +45,7 @@ from nfoforge.packages.custom_types import (
     ImageUploadFromTo,
 )
 from nfoforge.payloads.image_hosts import ImagePayloadBase
+from tests.job_helpers import populate_context, write_sample_media
 
 
 @pytest.fixture(autouse=True)
@@ -92,36 +88,7 @@ def _open_dialog(qapp: Any, active_profile: str | None) -> LoadJobDialog:
 
 @pytest.fixture
 def sample_media(tmp_path: Path) -> Path:
-    path = tmp_path / "Example.Movie.2024.wav"
-    with wave.open(str(path), "wb") as handle:
-        handle.setnchannels(2)
-        handle.setsampwidth(2)
-        handle.setframerate(48000)
-        handle.writeframes(struct.pack("<" + "h" * 2400, *([0] * 2400)))
-    return path
-
-
-def _populate(context: ProcessingContext, media: Path) -> None:
-    media_input = context.media_input
-    media_input.input_path = media
-    media_input.media_type = MediaType.MOVIE
-    media_input.working_dir = media.parent / "working"
-    media_input.file_list.append(media)
-    media_input.file_list_mediainfo[media] = MediaInfo.parse(  # pyright: ignore[reportArgumentType]
-        media, legacy_stream_display=True
-    )
-
-    context.media_search.media_type = MediaType.MOVIE
-    context.media_search.title = "Example"
-    context.media_search.year = 2024
-
-    shared = context.shared_data
-    shared.selected_trackers = [TrackerSelection.AITHER]
-    shared.loaded_images = [media.parent / "img1.png"]
-    shared.generated_images = True
-    shared.tracker_image_hosts[TrackerSelection.AITHER] = ImageUploadFromTo(
-        ImageSource.IMAGES, ImageHostRef(ImageHost.CHEVERETO_V3)
-    )
+    return write_sample_media(tmp_path)
 
 
 def _wizard_stub(
@@ -221,7 +188,7 @@ def test_saved_job_round_trips_through_the_store(
     sample_media: Path, working_dir: Path
 ) -> None:
     source = ProcessingContext()
-    _populate(source, sample_media)
+    populate_context(source, sample_media)
 
     job = store.build_job(
         name="Example (2024)",
@@ -244,300 +211,6 @@ def test_saved_job_round_trips_through_the_store(
     assert restored.media_input.require_mediainfo(sample_media).tracks  # pyright: ignore[reportAttributeAccessIssue]
 
 
-def test_completed_upload_is_kept_as_a_source_less_archive(
-    sample_media: Path, working_dir: Path
-) -> None:
-    context = ProcessingContext()
-    _populate(context, sample_media)
-    context.shared_data.tracker_release_data = {
-        TrackerSelection.AITHER: {"title": "Example", "nfo": "release nfo"}
-    }
-    image = context.shared_data.loaded_images[0]
-    image.write_bytes(b"screenshot")
-    context.media_input.require_working_dir().mkdir()
-    base = context.media_input.require_working_dir() / "Example.Movie.2024.base.torrent"
-    torrent = Torrent(path=sample_media, private=True)
-    torrent.generate()
-    torrent.write(base)
-
-    page = SimpleNamespace(
-        context=context,
-        config=SimpleNamespace(
-            settings=SimpleNamespace(general=SimpleNamespace(working_dir=working_dir)),
-            program=SimpleNamespace(current_config="config"),
-        ),
-        _run_phase=process_module.RunPhase.FULL,
-        _run_outcomes={TrackerSelection.AITHER: TrackerRunOutcome.UPLOADED},
-        _on_text_update=lambda _text: None,
-    )
-    page._default_job_name = lambda: ProcessPage._default_job_name(page)
-    page._first_generated_torrent = lambda: base
-    page._build_job_document = lambda directory, keep: ProcessPage._build_job_document(
-        page, directory, keep
-    )
-    page._job_summary = lambda keep=None: ProcessPage._job_summary(page, keep)
-
-    assert ProcessPage._archive_completed_run(page)  # pyright: ignore[reportArgumentType]
-    listings = store.list_jobs([working_dir])
-    assert len(listings) == 1
-    assert listings[0].archived
-    assert listings[0].source_less_ready
-    saved = store.load_job(listings[0].path)
-    assert saved.uploaded_trackers == [TrackerSelection.AITHER.name]
-
-    sample_media.unlink()
-
-    assert store.list_jobs([working_dir])[0].source_less_ready
-
-
-def test_adding_trackers_keeps_one_left_pending_by_an_earlier_run(
-    sample_media: Path, working_dir: Path
-) -> None:
-    """Adding a tracker must not discard what an earlier run left unfinished.
-
-    `_run_outcomes` only covers the trackers of the run that just ended, so
-    narrowing the archive to it drops a tracker that failed last time -- its
-    prepared title and NFO go with it, and the sidecars are pruned. The user
-    would have no way back except preparing that tracker over again, and no
-    indication it happened.
-    """
-    context = ProcessingContext()
-    _populate(context, sample_media)
-    context.shared_data.tracker_release_data = {
-        TrackerSelection.AITHER: {"title": "Example", "nfo": "aither nfo"},
-        TrackerSelection.HUNO: {"title": "Example", "nfo": "huno nfo"},
-    }
-    context.shared_data.loaded_images[0].write_bytes(b"screenshot")
-    context.media_input.require_working_dir().mkdir()
-    base = context.media_input.require_working_dir() / "Example.Movie.2024.base.torrent"
-    torrent = Torrent(path=sample_media, private=True)
-    torrent.generate()
-    torrent.write(base)
-
-    page = SimpleNamespace(
-        context=context,
-        config=SimpleNamespace(
-            settings=SimpleNamespace(general=SimpleNamespace(working_dir=working_dir)),
-            program=SimpleNamespace(current_config="config"),
-        ),
-        _run_phase=process_module.RunPhase.FULL,
-        _run_outcomes={
-            TrackerSelection.AITHER: TrackerRunOutcome.UPLOADED,
-            TrackerSelection.HUNO: TrackerRunOutcome.UPLOAD_FAILED,
-        },
-        _on_text_update=lambda _text: None,
-    )
-    page._default_job_name = lambda: ProcessPage._default_job_name(page)
-    page._first_generated_torrent = lambda: base
-    page._build_job_document = lambda directory, keep: ProcessPage._build_job_document(
-        page, directory, keep
-    )
-    page._job_summary = lambda keep=None: ProcessPage._job_summary(page, keep)
-
-    assert ProcessPage._archive_completed_run(page)  # pyright: ignore[reportArgumentType]
-    path = store.list_jobs([working_dir])[0].path
-    assert store.load_job(path).summary.trackers == [str(TrackerSelection.HUNO)]
-
-    # Now add LST to that archive. Resuming clears the image-host map and
-    # re-fills it with only the additions, exactly as `_load_job` does, so HUNO
-    # has no row in this run at all.
-    context.loaded_job_path = path
-    context.loaded_job_archived = True
-    context.loaded_uploaded_trackers = {TrackerSelection.AITHER}
-    context.shared_data.tracker_release_data[TrackerSelection.LST] = {
-        "title": "Example",
-        "nfo": "lst nfo",
-    }
-    context.shared_data.tracker_image_hosts.clear()
-    context.shared_data.tracker_image_hosts[TrackerSelection.LST] = ImageUploadFromTo(
-        ImageSource.IMAGES, ImageHostRef(ImageHost.CHEVERETO_V3)
-    )
-    page._run_outcomes = {TrackerSelection.LST: TrackerRunOutcome.UPLOADED}
-
-    assert ProcessPage._archive_completed_run(page)  # pyright: ignore[reportArgumentType]
-
-    saved = store.load_job(path)
-    assert set(saved.uploaded_trackers) == {
-        TrackerSelection.AITHER.name,
-        TrackerSelection.LST.name,
-    }
-    # HUNO was neither uploaded nor part of this run: it stays pending, keeps
-    # its frozen NFO, and remains visible to the picker.
-    assert saved.summary.trackers == [str(TrackerSelection.HUNO)]
-    shared = saved.context["shared_data"]
-    assert TrackerSelection.HUNO.name in shared["tracker_release_data"]
-    assert (Path(path) / store.JOB_NFO_DIR_NAME / "huno.txt").is_file()
-    # ...and it has to be runnable, not merely present. The summary saying the
-    # job still covers HUNO while `selected_trackers` omits it is a job the
-    # picker offers and the wizard then builds no tracker row for -- the
-    # prepared NFO survives on disk and is never reachable again.
-    assert shared["selected_trackers"] == [TrackerSelection.HUNO.name]
-
-
-def test_an_uncertain_tracker_keeps_everything_but_the_ability_to_run(
-    sample_media: Path, working_dir: Path
-) -> None:
-    """An upload nobody could confirm must stay resolvable.
-
-    Narrowing it out of the archive left only its name in
-    `uncertain_trackers`, so the picker went on offering "No, safe to upload"
-    for a tracker whose title, NFO sidecar and image host had already been
-    deleted -- a resolution the data could no longer support.
-    """
-    context = ProcessingContext()
-    _populate(context, sample_media)
-    context.shared_data.selected_trackers = [
-        TrackerSelection.AITHER,
-        TrackerSelection.HUNO,
-    ]
-    context.shared_data.tracker_image_hosts[TrackerSelection.HUNO] = ImageUploadFromTo(
-        ImageSource.IMAGES, ImageHostRef(ImageHost.PIXHOST)
-    )
-    context.shared_data.tracker_release_data = {
-        TrackerSelection.AITHER: {"title": "Example", "nfo": "aither nfo"},
-        TrackerSelection.HUNO: {"title": "Example", "nfo": "huno nfo"},
-    }
-    context.shared_data.loaded_images[0].write_bytes(b"screenshot")
-    context.media_input.require_working_dir().mkdir()
-
-    page = SimpleNamespace(
-        context=context,
-        config=SimpleNamespace(
-            settings=SimpleNamespace(general=SimpleNamespace(working_dir=working_dir)),
-            program=SimpleNamespace(current_config="config"),
-        ),
-        _run_phase=process_module.RunPhase.FULL,
-        _run_outcomes={
-            TrackerSelection.AITHER: TrackerRunOutcome.UPLOADED,
-            TrackerSelection.HUNO: TrackerRunOutcome.MAY_HAVE_UPLOADED,
-        },
-        _on_text_update=lambda _text: None,
-    )
-    page._default_job_name = lambda: ProcessPage._default_job_name(page)
-    page._first_generated_torrent = lambda: None
-    page._build_job_document = lambda directory, keep: ProcessPage._build_job_document(
-        page, directory, keep
-    )
-    page._job_summary = lambda keep=None: ProcessPage._job_summary(page, keep)
-
-    assert ProcessPage._archive_completed_run(page)  # pyright: ignore[reportArgumentType]
-
-    path = store.list_jobs([working_dir])[0].path
-    saved = store.load_job(path)
-    shared = saved.context["shared_data"]
-    assert saved.uncertain_trackers == [TrackerSelection.HUNO.name]
-    # cannot upload again...
-    assert shared["selected_trackers"] == []
-    # ...but everything a resolution needs is still here
-    assert shared["tracker_release_data"][TrackerSelection.HUNO.name]["title"] == (
-        "Example"
-    )
-    assert TrackerSelection.HUNO.name in shared["tracker_image_hosts"]
-    assert (Path(path) / store.JOB_NFO_DIR_NAME / "huno.txt").is_file()
-
-
-def test_a_fully_uploaded_archive_still_carries_its_image_urls(
-    sample_media: Path, working_dir: Path
-) -> None:
-    """URLs are the host's, not the tracker's, so narrowing must not take them.
-
-    Every per-tracker map goes when nothing is left pending, which left the
-    archive of a completely successful run holding no image URLs at all -- so
-    a tracker added to it later re-uploaded the same screenshots, or had
-    nothing to upload once `images/` was gone.
-    """
-    context = ProcessingContext()
-    _populate(context, sample_media)
-    context.shared_data.tracker_release_data = {
-        TrackerSelection.AITHER: {"title": "Example", "nfo": "aither nfo"}
-    }
-    context.shared_data.loaded_images[0].write_bytes(b"screenshot")
-    context.media_input.require_working_dir().mkdir()
-    uploaded = {0: ImageUploadData(url="https://pixhost/0.png", medium_url=None)}
-    context.shared_data.uploaded_images[TrackerSelection.AITHER] = dict(uploaded)
-    context.shared_data.uploaded_image_hosts[TrackerSelection.AITHER] = ImageHostRef(
-        ImageHost.PIXHOST
-    )
-    context.shared_data.uploaded_images_by_host[ImageHostRef(ImageHost.PIXHOST)] = dict(
-        uploaded
-    )
-
-    page = SimpleNamespace(
-        context=context,
-        config=SimpleNamespace(
-            settings=SimpleNamespace(general=SimpleNamespace(working_dir=working_dir)),
-            program=SimpleNamespace(current_config="config"),
-        ),
-        _run_phase=process_module.RunPhase.FULL,
-        _run_outcomes={TrackerSelection.AITHER: TrackerRunOutcome.UPLOADED},
-        _on_text_update=lambda _text: None,
-    )
-    page._default_job_name = lambda: ProcessPage._default_job_name(page)
-    page._first_generated_torrent = lambda: None
-    page._build_job_document = lambda directory, keep: ProcessPage._build_job_document(
-        page, directory, keep
-    )
-    page._job_summary = lambda keep=None: ProcessPage._job_summary(page, keep)
-
-    assert ProcessPage._archive_completed_run(page)  # pyright: ignore[reportArgumentType]
-
-    saved = store.load_job(store.list_jobs([working_dir])[0].path)
-    shared = saved.context["shared_data"]
-    assert shared["uploaded_images"] == {}
-    assert shared["uploaded_images_by_host"] == [
-        {
-            "name": "PIXHOST",
-            "type": "ImageHostRef",
-            # empty for every host but a Chevereto instance, the only kind
-            # that holds more than one site
-            "instance": "",
-            "images": {"0": {"url": "https://pixhost/0.png", "medium_url": None}},
-        }
-    ]
-
-
-def test_content_size_is_recorded_even_without_a_base_torrent(
-    sample_media: Path, working_dir: Path
-) -> None:
-    """Two trackers size a disc release off the filesystem when it is absent.
-
-    `beyondhd` and `passthepopcorn` both fall back to
-    `input_path.stat().st_size`, which a source-less run cannot do -- and save
-    time is the last moment the media is guaranteed to be there to measure.
-    """
-    context = ProcessingContext()
-    _populate(context, sample_media)
-    context.shared_data.loaded_images[0].write_bytes(b"screenshot")
-    directory = working_dir / "jobs" / "abc"
-    directory.mkdir(parents=True)
-
-    page = SimpleNamespace(context=context)
-    page._first_generated_torrent = lambda: None
-
-    document = ProcessPage._build_job_document(page, directory, None)  # pyright: ignore[reportArgumentType]
-
-    assert "base_torrent" not in document
-    assert document["media_input"]["content_size"] == sample_media.stat().st_size
-
-
-def test_a_prepared_plain_job_is_not_silently_overwritten(
-    sample_media: Path, working_dir: Path
-) -> None:
-    """Only an archive is updated in place.
-
-    Preparing an ordinary saved job keeps the named save it always had -- the
-    in-place path exists for archives, which may have no source left to capture
-    MediaInfo from.
-    """
-    context = ProcessingContext()
-    _populate(context, sample_media)
-    context.loaded_job_path = working_dir / "some-job"
-    context.loaded_job_archived = False
-    page = SimpleNamespace(context=context)
-
-    assert ProcessPage._save_prepared_archive(page) is False  # pyright: ignore[reportArgumentType]
-
-
 # --------------------------------------------------------------------------
 # process page repopulation
 # --------------------------------------------------------------------------
@@ -546,7 +219,7 @@ def test_restored_image_host_wins_over_the_last_used_preference(
 ) -> None:
     """A resumed job must reinstate its own choice, not the global default."""
     context = ProcessingContext()
-    _populate(context, sample_media)
+    populate_context(context, sample_media)
     page = _fake_page(
         context,
         last_used={TrackerSelection.AITHER: ImageHostRef(ImageHost.PIXHOST)},
@@ -565,7 +238,7 @@ def test_last_used_preference_still_applies_to_a_fresh_run(
     qapp: Any, sample_media: Path
 ) -> None:
     context = ProcessingContext()
-    _populate(context, sample_media)
+    populate_context(context, sample_media)
     context.shared_data.tracker_image_hosts.clear()
     page = _fake_page(
         context, last_used={TrackerSelection.AITHER: ImageHostRef(ImageHost.PIXHOST)}
@@ -588,7 +261,7 @@ def test_a_tracker_with_no_screenshots_only_offers_disabled_and_does_not_crash(
     used to crash unpacking `get_item_values()` before the row's own combo
     box was in `combo_box_map`."""
     context = ProcessingContext()
-    _populate(context, sample_media)
+    populate_context(context, sample_media)
     context.shared_data.loaded_images = None
     context.shared_data.generated_images = False
     context.shared_data.url_data.clear()
@@ -616,7 +289,7 @@ def test_a_source_less_archive_offers_the_hosts_it_already_uploaded_to(
     credentials are needed to offer it.
     """
     context = ProcessingContext()
-    _populate(context, sample_media)
+    populate_context(context, sample_media)
     context.shared_data.loaded_images = None
     context.shared_data.generated_images = False
     context.shared_data.url_data.clear()
@@ -647,7 +320,7 @@ def test_a_saved_host_that_is_gone_is_named_instead_of_silently_dropped(
     user had turned off on purpose.
     """
     context = ProcessingContext()
-    _populate(context, sample_media)  # saved against Chevereto v3
+    populate_context(context, sample_media)  # saved against Chevereto v3
     page = _fake_page(context)
     # the host the job chose is no longer offered by this config
     page.config.settings.image_hosts.by_selection = lambda: {}
@@ -673,7 +346,7 @@ def test_a_saved_host_replaced_by_the_global_preference_is_named_too(
     URLs it already holds for its own host unusable.
     """
     context = ProcessingContext()
-    _populate(context, sample_media)  # saved against Chevereto v3
+    populate_context(context, sample_media)  # saved against Chevereto v3
     page = _fake_page(
         context, last_used={TrackerSelection.AITHER: ImageHostRef(ImageHost.PIXHOST)}
     )
@@ -697,7 +370,7 @@ def test_a_host_that_is_still_offered_says_nothing(
     qapp: Any, sample_media: Path
 ) -> None:
     context = ProcessingContext()
-    _populate(context, sample_media)
+    populate_context(context, sample_media)
     page = _fake_page(context)
 
     ProcessPage.add_tracker_items(page)
@@ -711,7 +384,7 @@ def test_a_fresh_run_with_no_remembered_host_says_nothing(
 ) -> None:
     """`Disabled` is only worth reporting when it displaced something."""
     context = ProcessingContext()
-    _populate(context, sample_media)
+    populate_context(context, sample_media)
     context.shared_data.tracker_image_hosts.clear()
     page = _fake_page(context)
 
@@ -736,7 +409,7 @@ def test_sync_tracker_image_hosts_skips_a_row_missing_its_combo_data(
     (empty) header text because no combo box has been registered for it in
     `combo_box_map` yet."""
     context = ProcessingContext()
-    _populate(context, sample_media)
+    populate_context(context, sample_media)
     page = _fake_page(context)
     page.tracker_process_tree.add_row(headers=("Aither", "", "⌛ Queued"))
 
@@ -757,7 +430,7 @@ def test_a_run_with_no_trackers_clears_the_hosts_it_restored(
     tracker the user never saw listed.
     """
     context = ProcessingContext()
-    _populate(context, sample_media)
+    populate_context(context, sample_media)
     context.shared_data.selected_trackers = []
     page = _fake_page(context)
 
@@ -806,7 +479,7 @@ def test_gathered_tracker_data_comes_from_the_payload(
     qapp: Any, sample_media: Path
 ) -> None:
     context = ProcessingContext()
-    _populate(context, sample_media)
+    populate_context(context, sample_media)
     page = _fake_page(context)
     ProcessPage.add_tracker_items(page)
 
@@ -823,7 +496,7 @@ def test_gathered_tracker_data_comes_from_the_payload(
 
 def test_a_selection_change_reaches_the_payload(qapp: Any, sample_media: Path) -> None:
     context = ProcessingContext()
-    _populate(context, sample_media)
+    populate_context(context, sample_media)
     page = _fake_page(context)
     ProcessPage.add_tracker_items(page)
     combo = next(iter(page.tracker_process_tree.combo_box_map.values()))
@@ -952,31 +625,6 @@ def test_accepting_the_offer_saves_only_the_deferrable_trackers(
     assert saved == [
         {"keep_trackers": {TrackerSelection.HUNO, TrackerSelection.BEYOND_HD}}
     ]
-
-
-def test_a_deferred_job_only_stores_nfos_for_the_trackers_it_keeps(
-    qapp: Any, sample_media: Path, tmp_path: Path
-) -> None:
-    """A dropped tracker's NFO left in the folder implies the job still covers it."""
-    context = ProcessingContext()
-    _populate(context, sample_media)
-    context.shared_data.tracker_image_hosts[TrackerSelection.HUNO] = ImageUploadFromTo(
-        ImageSource.IMAGES, ImageHostRef(ImageHost.CHEVERETO_V3)
-    )
-    context.shared_data.tracker_release_data = {
-        TrackerSelection.AITHER: {"title": "a", "nfo": "already uploaded"},
-        TrackerSelection.HUNO: {"title": "h", "nfo": "still to go"},
-    }
-
-    page = SimpleNamespace(context=context)
-    page._first_generated_torrent = lambda: None
-    directory = tmp_path / "job"
-    directory.mkdir()
-
-    document = ProcessPage._build_job_document(page, directory, {TrackerSelection.HUNO})  # pyright: ignore[reportArgumentType]
-
-    assert set(document["shared_data"]["tracker_release_data"]) == {"HUNO"}
-    assert {path.name for path in (directory / "nfo").iterdir()} == {"huno.txt"}
 
 
 # --------------------------------------------------------------------------
@@ -1203,7 +851,7 @@ def test_a_job_whose_media_vanished_is_refused(
     qapp: Any, sample_media: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     context = ProcessingContext()
-    _populate(context, sample_media)
+    populate_context(context, sample_media)
     sample_media.unlink()
     monkeypatch.setattr(QMessageBox, "critical", lambda *_a, **_k: None)
 
@@ -1217,7 +865,9 @@ def test_missing_screenshots_are_surfaced_but_the_user_may_continue(
     qapp: Any, sample_media: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     context = ProcessingContext()
-    _populate(context, sample_media)  # loaded_images points at a file never created
+    populate_context(
+        context, sample_media
+    )  # loaded_images points at a file never created
     monkeypatch.setattr(
         QMessageBox, "question", lambda *_a, **_k: QMessageBox.StandardButton.Yes
     )
@@ -1234,7 +884,7 @@ def test_missing_screenshots_are_surfaced_but_the_user_may_continue(
 
 def test_intact_job_passes_validation(qapp: Any, sample_media: Path) -> None:
     context = ProcessingContext()
-    _populate(context, sample_media)
+    populate_context(context, sample_media)
     image = sample_media.parent / "img1.png"
     image.write_bytes(b"not really a png, but it exists")
 
@@ -1256,7 +906,7 @@ def test_the_source_less_notice_is_logged_once_per_run(
     already there.
     """
     context = ProcessingContext()
-    _populate(context, sample_media)
+    populate_context(context, sample_media)
     context.shared_data.base_torrent = tmp_path / "base.torrent"
     sample_media.unlink()
 
@@ -1286,7 +936,7 @@ def test_the_process_page_flags_a_source_less_run(
 ) -> None:
     """The banner and the log line have to agree, so they share this predicate."""
     context = ProcessingContext()
-    _populate(context, sample_media)
+    populate_context(context, sample_media)
     page = cast(Any, SimpleNamespace(context=context))
 
     # media present, no archive to fall back on
@@ -1313,7 +963,7 @@ def test_a_tracker_disabled_in_the_active_config_is_flagged(
 ) -> None:
     """Otherwise this only surfaces as a no-op partway through the upload."""
     context = ProcessingContext()
-    _populate(context, sample_media)
+    populate_context(context, sample_media)
     asked: list[str] = []
     monkeypatch.setattr(
         QMessageBox,
@@ -1343,7 +993,7 @@ def test_an_archive_being_extended_starts_at_the_trackers_page(
     both, and the run died reading a template nobody had assigned.
     """
     context = ProcessingContext()
-    _populate(context, sample_media)
+    populate_context(context, sample_media)
     # an archive can carry prepared work for trackers an earlier run left
     # pending, which reads as prepared even though the request is for new ones
     context.shared_data.tracker_release_data[TrackerSelection.AITHER] = {
@@ -1361,7 +1011,7 @@ def test_a_job_saved_before_it_was_prepared_starts_at_the_trackers_page(
     qapp: Any, sample_media: Path
 ) -> None:
     context = ProcessingContext()
-    _populate(context, sample_media)  # selected trackers, but no frozen NFOs
+    populate_context(context, sample_media)  # selected trackers, but no frozen NFOs
 
     assert (
         MainWindowWizard._resume_start_page(context, adding_trackers=False)
@@ -1374,7 +1024,7 @@ def test_a_prepared_job_still_resumes_straight_to_processing(
 ) -> None:
     """Its titles and NFOs are frozen, so there is nothing left to choose."""
     context = ProcessingContext()
-    _populate(context, sample_media)
+    populate_context(context, sample_media)
     context.shared_data.tracker_release_data[TrackerSelection.AITHER] = {
         "title": "Example 2024",
         "nfo": "the frozen nfo",
@@ -1399,7 +1049,7 @@ def test_an_archive_with_nothing_left_to_run_starts_at_the_trackers_page(
     generate tracker data" -- the run has to start where trackers are chosen.
     """
     context = ProcessingContext()
-    _populate(context, sample_media)
+    populate_context(context, sample_media)
     context.shared_data.selected_trackers = []
     context.shared_data.tracker_release_data[TrackerSelection.HUNO] = {
         "title": "Example 2024",
@@ -1417,7 +1067,7 @@ def test_a_missing_nfo_template_is_flagged(
     qapp: Any, sample_media: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     context = ProcessingContext()
-    _populate(context, sample_media)
+    populate_context(context, sample_media)
     asked: list[str] = []
     monkeypatch.setattr(
         QMessageBox,
@@ -1443,7 +1093,7 @@ def test_a_tracker_absent_from_the_active_config_is_flagged(
     qapp: Any, sample_media: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     context = ProcessingContext()
-    _populate(context, sample_media)
+    populate_context(context, sample_media)
     asked: list[str] = []
     monkeypatch.setattr(
         QMessageBox,
@@ -1469,7 +1119,7 @@ def test_a_template_edited_since_preparing_is_flagged(
 ) -> None:
     """Frozen NFOs win, so the change must at least be said out loud."""
     context = ProcessingContext()
-    _populate(context, sample_media)
+    populate_context(context, sample_media)
     context.shared_data.template_fingerprints["default"] = "a-stale-digest"
     selector = SimpleNamespace(read_template=lambda **_k: "the template changed")
 
@@ -1482,7 +1132,7 @@ def test_a_template_edited_since_preparing_is_flagged(
 
 def test_an_unchanged_template_is_not_flagged(qapp: Any, sample_media: Path) -> None:
     context = ProcessingContext()
-    _populate(context, sample_media)
+    populate_context(context, sample_media)
     body = "the template body"
     context.shared_data.template_fingerprints["default"] = template_fingerprint(body)
     selector = SimpleNamespace(read_template=lambda **_k: body)
@@ -1495,7 +1145,7 @@ def test_a_job_with_no_frozen_templates_is_not_flagged(
 ) -> None:
     """An unprepared job froze nothing, so there is nothing to go stale."""
     context = ProcessingContext()
-    _populate(context, sample_media)
+    populate_context(context, sample_media)
     selector = SimpleNamespace(read_template=lambda **_k: "anything")
 
     assert MainWindowWizard._stale_template_warnings(context, cast(Any, selector)) == []
@@ -1503,7 +1153,7 @@ def test_a_job_with_no_frozen_templates_is_not_flagged(
 
 def test_a_fully_served_job_asks_nothing(qapp: Any, sample_media: Path) -> None:
     context = ProcessingContext()
-    _populate(context, sample_media)
+    populate_context(context, sample_media)
 
     # no QMessageBox patch: a prompt here would fail the test by blocking
     assert MainWindowWizard._confirm_profile_can_serve_job(
@@ -1744,19 +1394,11 @@ def test_a_job_name_with_markup_is_rendered_as_plain_text_in_the_saved_box(
     # Mock the dependencies to reach the save success path.
     page = SimpleNamespace()
     page.context = ProcessingContext()
-    # A real directory, because `_save_job` really creates one: `build_job` and
-    # `save_job` are mocked below but `job_dir(..., ensure_exists=True)` is not,
-    # and it mkdirs. A hardcoded absolute path here resolves against the current
-    # drive on Windows and quietly writes outside the repo, while on Linux it
-    # raises PermissionError -- green locally, red on CI.
     page.config = SimpleNamespace(
         settings=SimpleNamespace(general=SimpleNamespace(working_dir=working_dir)),
         program=SimpleNamespace(current_config="test"),
     )
     page._announce_saved_job = lambda name: None
-    page._build_job_document = lambda *_: {}
-    page._job_summary = lambda *_: JobSummary()
-    page._default_job_name = lambda: "test"
     page._get_job_name = lambda *_: ("<b>bold</b> job", True)
     page._on_text_update = lambda *_: None
 
@@ -1766,16 +1408,13 @@ def test_a_job_name_with_markup_is_rendered_as_plain_text_in_the_saved_box(
         lambda *_, **__: None,
     )
 
-    monkeypatch.setattr(
-        "nfoforge.frontend.wizards.process.build_job",
-        lambda **_: SimpleNamespace(
-            name="<b>bold</b> job", job_id="test-id", context={}
-        ),
-    )
-    monkeypatch.setattr(
-        "nfoforge.frontend.wizards.process.save_job",
-        lambda *_: Path("/saved/job"),
-    )
+    saves: list[dict[str, Any]] = []
+
+    def fake_save_new_job(context: ProcessingContext, **kwargs: Any) -> Any:
+        saves.append(kwargs)
+        return SimpleNamespace(name=kwargs["name"]), Path("/saved/job")
+
+    monkeypatch.setattr(process_module, "save_new_job", fake_save_new_job)
 
     # Drive the success path of _save_job.
     context = page.context
@@ -1796,9 +1435,15 @@ def test_a_job_name_with_markup_is_rendered_as_plain_text_in_the_saved_box(
     # `saved_box` and never calling `.exec()` -- would leave every assertion
     # above green. This is what catches that.
     assert box.exec_called is True
-    # Pins the working directory to the fixture: revert it to a hardcoded path
-    # and this fails here rather than only on a Linux runner.
-    assert (working_dir / "jobs" / "test-id").is_dir()
+    # The page saves into the profile's working directory under the typed name.
+    assert saves == [
+        {
+            "name": "<b>bold</b> job",
+            "working_dir": working_dir,
+            "config_profile": "test",
+            "keep_trackers": None,
+        }
+    ]
 
 
 def test_the_save_job_button_does_not_pass_its_clicked_flag_as_trackers(
