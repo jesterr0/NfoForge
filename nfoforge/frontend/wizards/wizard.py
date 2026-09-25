@@ -30,6 +30,7 @@ from nfoforge.backend.utils.media_info_utils import clear_restored_mediainfo
 from nfoforge.config.config import ConfigManager
 from nfoforge.context.factory import create_processing_context
 from nfoforge.context.processing_context import ProcessingContext
+from nfoforge.core.workflow.stages import RoutingOptions, Stage, next_stage
 from nfoforge.enums.media_type import MediaType
 from nfoforge.enums.tracker_selection import TrackerSelection
 from nfoforge.enums.wizard import WizardPages
@@ -81,6 +82,31 @@ def tracker_profile_problems(
         if template and template not in available_templates:
             problems.append(f"{tracker}: NFO template '{template}' no longer exists")
     return problems
+
+
+# The plugin input page stands in for the input page, so both are the input
+# stage. Rename has a page per media type; `_flow_production` picks one.
+_PAGE_STAGES: dict[WizardPages, Stage] = {
+    WizardPages.INPUT_PAGE: Stage.INPUT,
+    WizardPages.PLUGIN_INPUT_PAGE: Stage.INPUT,
+    WizardPages.MEDIA_SEARCH_PAGE: Stage.SEARCH,
+    WizardPages.SERIES_MATCHER_PAGE: Stage.SERIES_MATCH,
+    WizardPages.RENAME_ENCODE_MOVIES_PAGE: Stage.RENAME,
+    WizardPages.RENAME_ENCODE_SERIES_PAGE: Stage.RENAME,
+    WizardPages.IMAGES_PAGE: Stage.SCREENSHOTS,
+    WizardPages.TRACKERS_PAGE: Stage.TRACKERS,
+    WizardPages.PRE_UPLOAD_PAGE: Stage.PRE_UPLOAD,
+    WizardPages.PROCESS_PAGE: Stage.PROCESS,
+}
+_STAGE_PAGES: dict[Stage, WizardPages] = {
+    Stage.INPUT: WizardPages.INPUT_PAGE,
+    Stage.SEARCH: WizardPages.MEDIA_SEARCH_PAGE,
+    Stage.SERIES_MATCH: WizardPages.SERIES_MATCHER_PAGE,
+    Stage.SCREENSHOTS: WizardPages.IMAGES_PAGE,
+    Stage.TRACKERS: WizardPages.TRACKERS_PAGE,
+    Stage.PRE_UPLOAD: WizardPages.PRE_UPLOAD_PAGE,
+    Stage.PROCESS: WizardPages.PROCESS_PAGE,
+}
 
 
 class MainWindowWizard(QWizard):
@@ -752,56 +778,28 @@ class MainWindowWizard(QWizard):
         self.currentIdChanged.connect(self._handle_page_change)
 
     def _flow_production(self, current_page: WizardPages) -> int:
-        if current_page in self._START_PAGES:
-            return WizardPages.MEDIA_SEARCH_PAGE.value
+        """The page after `current_page`, or -1 at the end.
 
-        elif current_page == WizardPages.MEDIA_SEARCH_PAGE:
-            # if series navigate to the series matcher page
-            if self.context.media_search.media_type is MediaType.SERIES:
-                return WizardPages.SERIES_MATCHER_PAGE.value
-            # movie
-            else:
-                if self.config.settings.movie.enabled:
-                    return WizardPages.RENAME_ENCODE_MOVIES_PAGE.value
-                elif (
-                    not self.config.settings.movie.enabled
-                    and self.config.settings.screenshots.enabled
-                ):
-                    return WizardPages.IMAGES_PAGE.value
-                return WizardPages.TRACKERS_PAGE.value
-
-        elif current_page == WizardPages.SERIES_MATCHER_PAGE:
-            if self.config.settings.series.enabled:
-                return WizardPages.RENAME_ENCODE_SERIES_PAGE.value
-            elif self.config.settings.screenshots.enabled:
-                return WizardPages.IMAGES_PAGE.value
-            return WizardPages.TRACKERS_PAGE.value
-
-        elif current_page == WizardPages.RENAME_ENCODE_MOVIES_PAGE:
-            if self.config.settings.screenshots.enabled:
-                return WizardPages.IMAGES_PAGE.value
-            else:
-                return WizardPages.TRACKERS_PAGE.value
-
-        elif current_page == WizardPages.RENAME_ENCODE_SERIES_PAGE:
-            if self.config.settings.screenshots.enabled:
-                return WizardPages.IMAGES_PAGE.value
-            else:
-                return WizardPages.TRACKERS_PAGE.value
-
-        elif current_page == WizardPages.IMAGES_PAGE:
-            return WizardPages.TRACKERS_PAGE.value
-
-        elif current_page == WizardPages.TRACKERS_PAGE:
-            return WizardPages.PRE_UPLOAD_PAGE.value
-
-        elif current_page == WizardPages.PRE_UPLOAD_PAGE:
-            return WizardPages.PROCESS_PAGE.value
-
-        elif current_page == WizardPages.PROCESS_PAGE:
+        The order is `plan_stages`'s; this only translates between its stages
+        and this wizard's pages.
+        """
+        media_type = self.context.media_search.media_type
+        following = next_stage(
+            _PAGE_STAGES[current_page],
+            media_type,
+            RoutingOptions.from_settings(self.config.settings),
+        )
+        if following is None:
             return -1
-
-        return -1
+        if following is Stage.RENAME:
+            page = (
+                WizardPages.RENAME_ENCODE_SERIES_PAGE
+                if media_type is MediaType.SERIES
+                else WizardPages.RENAME_ENCODE_MOVIES_PAGE
+            )
+        else:
+            page = _STAGE_PAGES[following]
+        return page.value
 
     def _generate_new_pages(self) -> list[BaseWizardPage]:
         """Helper method to generate wizard page instances and return them."""
