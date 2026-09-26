@@ -17,7 +17,6 @@ and everything here stays unit testable without one.
 
 from __future__ import annotations
 
-import asyncio
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum, auto
@@ -43,11 +42,15 @@ from nfoforge.backend.jobs import (
     write_job_document,
 )
 from nfoforge.backend.process import ProcessBackEnd
-from nfoforge.backend.tracker_run_data import build_tracker_data
 from nfoforge.backend.upload_retry import TrackerRunOutcome
 from nfoforge.backend.utils.media_info_utils import clear_restored_mediainfo
 from nfoforge.context.factory import create_processing_context
 from nfoforge.context.processing_context import ProcessingContext
+from nfoforge.core.workflow.upload import (
+    DupeCheckResult,
+    check_dupes_blocking,
+    run_tracker_data,
+)
 from nfoforge.enums.tracker_selection import TrackerSelection
 from nfoforge.logger.nfo_forge_logger import LOG
 from nfoforge.utils.secret_redaction import scrub_secrets
@@ -84,27 +87,6 @@ class JobDisposition(Enum):
 
     DELETED = auto()
     """Every tracker uploaded, so there was nothing left to keep."""
-
-
-@dataclass(frozen=True, slots=True)
-class DupeCheckResult:
-    """What the duplicate check could and could not establish."""
-
-    found: list[str] = field(default_factory=list)
-    """Trackers reporting a possible duplicate."""
-
-    unverified: list[str] = field(default_factory=list)
-    """Trackers whose check did not complete, so they proved nothing."""
-
-    def blocks_upload(self) -> bool:
-        """Whether this release may be uploaded unattended.
-
-        An unverified tracker counts the same as a found duplicate. The
-        interactive flow already stops and asks when a check fails; a queue has
-        nobody to ask, so it must not be the one path that uploads a release
-        nothing has actually cleared.
-        """
-        return bool(self.found or self.unverified)
 
 
 @dataclass(slots=True)
@@ -232,12 +214,7 @@ class JobQueueRunner:
                 detail=unusable,
             )
 
-        tracker_data = build_tracker_data(
-            working_dir=context.media_input.require_working_dir(),
-            input_path=context.media_input.require_input_path(),
-            tracker_image_hosts=context.shared_data.tracker_image_hosts,
-            input_is_directory=context.media_input.input_is_directory(),
-        )
+        tracker_data = run_tracker_data(context)
         if not tracker_data:
             return QueuedJobOutcome(
                 job_name=job.name,
@@ -346,43 +323,9 @@ class JobQueueRunner:
         A check that errors leaves that tracker *unverified*, which blocks the
         upload just as a found duplicate does -- see `DupeCheckResult`.
         """
-        all_trackers = [str(TrackerSelection(name)) for name in tracker_data]
-
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            results = loop.run_until_complete(
-                self.backend.dupe_checks(
-                    processing_queue=[TrackerSelection(x) for x in tracker_data],
-                    media_input_payload=context.media_input,
-                    media_search_payload=context.media_search,
-                )
-            )
-        except Exception as error:
-            LOG.error(
-                LOG.LOG_SOURCE.BE,
-                f"Queue dupe check failed: {scrub_secrets(str(error))}",
-            )
-            # the whole check fell over, so nothing at all was cleared
-            return DupeCheckResult(unverified=all_trackers)
-        finally:
-            loop.close()
-
-        found: list[str] = []
-        unverified: list[str] = []
-        checked = set()
-        for tracker, result in results.items():
-            _, succeeded, data = result
-            checked.add(str(tracker))
-            if not succeeded:
-                unverified.append(str(tracker))
-            elif isinstance(data, list) and data:
-                found.append(str(tracker))
-
-        # a tracker the check never reported on is unverified too, rather than
-        # silently assumed clean
-        unverified.extend(name for name in all_trackers if name not in checked)
-        return DupeCheckResult(found=found, unverified=unverified)
+        return check_dupes_blocking(
+            self.backend, context, [TrackerSelection(name) for name in tracker_data]
+        )
 
     def _upload(
         self,

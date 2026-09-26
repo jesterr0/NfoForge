@@ -25,7 +25,6 @@ from nfoforge.backend.rename_encode import RenameEncodeBackEnd
 from nfoforge.backend.rename_encode_series import RenameEncodeSeriesBackEnd
 from nfoforge.backend.rename_files import RenameExecutor, RenamePlan
 from nfoforge.backend.template_selector import TemplateSelectorBackEnd
-from nfoforge.backend.tracker_run_data import build_tracker_data
 from nfoforge.backend.upload_retry import TrackerRunOutcome
 from nfoforge.backend.utils.episode_matching import rank_episode_orderings
 from nfoforge.backend.utils.file_utilities import generate_unique_date_name
@@ -83,6 +82,7 @@ from nfoforge.core.workflow.decisions import (
 from nfoforge.core.workflow.events import EventSink, LogLevel, LogLine, ProgressEvent
 from nfoforge.core.workflow.request import ReleaseRequest
 from nfoforge.core.workflow.stages import Stage
+from nfoforge.core.workflow.upload import check_dupes, dupe_decision, run_tracker_data
 from nfoforge.enums.media_type import MediaType
 from nfoforge.enums.series import EpisodeFormat
 from nfoforge.enums.tracker_selection import TrackerSelection
@@ -677,42 +677,14 @@ def pre_upload(run: Run) -> None:
 # --------------------------------------------------------------------------
 def _check_dupes(run: Run, trackers: list[TrackerSelection]) -> list[TrackerSelection]:
     """The trackers still going ahead once possible duplicates are settled."""
-    try:
-        results = asyncio.run(
-            run.process_backend.dupe_checks(
-                processing_queue=trackers,
-                media_input_payload=run.context.media_input,
-                media_search_payload=run.context.media_search,
-            )
-        )
-    except Exception as error:  # the whole check fell over
-        run.log(f"Duplicate check failed: {error}", LogLevel.ERROR)
-        results = {}
+    result = asyncio.run(check_dupes(run.process_backend, run.context, trackers))
+    if result.failure:
+        run.log(f"Duplicate check failed: {result.failure}", LogLevel.ERROR)
 
     keep: list[TrackerSelection] = []
     for tracker in trackers:
-        _name, succeeded, data = results.get(tracker, (tracker, False, "not checked"))
-        if succeeded and not (isinstance(data, list) and data):
-            keep.append(tracker)
-            continue
-        if succeeded:
-            names = [str(getattr(item, "name", item)) for item in data]
-            decision = Decision(
-                DecisionKind.DUPES_FOUND,
-                f"{tracker} may already have this release. Upload anyway?",
-                subject=tracker.name,
-                hint="pass --skip-dupe-check to upload past it",
-                context={"matches": names},
-            )
-        else:
-            decision = Decision(
-                DecisionKind.DUPE_CHECK_FAILED,
-                f"{tracker} could not be checked for duplicates ({data}). "
-                "Upload anyway?",
-                subject=tracker.name,
-                hint="pass --skip-dupe-check to upload without checking",
-            )
-        if run.decide(decision):
+        decision = dupe_decision(tracker, result)
+        if decision is None or run.decide(decision):
             keep.append(tracker)
         else:
             run.log(f"Skipping {tracker}", LogLevel.WARNING)
@@ -761,15 +733,7 @@ def upload(run: Run) -> None:
             context.shared_data.dynamic_data.get("override_tokens") or {}
         ) | dict(request.token_overrides)
 
-    working_dir = context.media_input.working_dir
-    if working_dir is None:
-        raise WorkflowError("The run has no working directory")
-    tracker_data = build_tracker_data(
-        working_dir=working_dir,
-        input_path=context.media_input.require_input_path(),
-        tracker_image_hosts=shared.tracker_image_hosts,
-        input_is_directory=context.media_input.input_is_directory(),
-    )
+    tracker_data = run_tracker_data(context)
     for tracker in trackers:
         run.outcomes.setdefault(tracker, TrackerRunOutcome.NOT_ATTEMPTED)
 
