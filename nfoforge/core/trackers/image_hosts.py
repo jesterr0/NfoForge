@@ -57,17 +57,57 @@ def available_image_hosts(
     return hosts
 
 
+def find_image_host(name: str, available: Iterable[ImageHostRef]) -> ImageHostRef:
+    """The available host `name` refers to.
+
+    Matched without regard to case against a host's name ("Pixhost"), its
+    kind ("PIXHOST") or its stored key ("CHEVERETO_V4:abc"); "Disabled" means
+    no host. Raises `ValueError` when nothing, or more than one host, matches.
+    """
+    wanted = name.strip().casefold()
+    if wanted == str(ImageHost.DISABLED).casefold():
+        return DISABLED_HOST
+    hosts = list(available)
+    matches = [
+        host
+        for host in hosts
+        if wanted
+        in {
+            host.key().casefold(),
+            str(host).casefold(),
+            host.kind.name.casefold(),
+            str(host.kind).casefold(),
+        }
+    ]
+    if len(matches) == 1:
+        return matches[0]
+    offered = ", ".join(sorted(str(host) for host in hosts)) or "none"
+    if not matches:
+        raise ValueError(
+            f"Image host {name!r} is not available in this config (available: "
+            f"{offered})"
+        )
+    raise ValueError(
+        f"{name!r} matches several image hosts ({', '.join(map(str, matches))}); "
+        "name one by its label"
+    )
+
+
 def default_image_hosts(
     context: ProcessingContext,
     settings: AppConfig,
     plugin_manager: PluginManager,
     trackers: Iterable[TrackerSelection],
+    preferred: str | None = None,
 ) -> tuple[dict[TrackerSelection, ImageUploadFromTo], list[str]]:
-    """Each tracker's image host, as the Process page pre-selects it.
+    """Each tracker's image host.
 
-    That is the tracker's last-used host where it is still available, and no
-    host otherwise. Returns notes naming every tracker whose last-used host
-    could not be used, so a run that uploads no screenshots says why.
+    A `preferred` host, named for the run, is every tracker's host; it must be
+    available (`find_image_host` raises otherwise). Without one, each tracker
+    gets what the Process page pre-selects: its last-used host where that is
+    still available, and no host otherwise. Returns notes naming every
+    tracker whose last-used host could not be used, so a run that uploads no
+    screenshots says why.
     """
     shared = context.shared_data
     if shared.url_data:
@@ -84,6 +124,13 @@ def default_image_hosts(
         for host in shared.uploaded_images_by_host
         if isinstance(host, ImageHostRef) and host != DISABLED_HOST
     }
+
+    if preferred is not None:
+        chosen = find_image_host(preferred, available) if has_images else DISABLED_HOST
+        return {
+            tracker: ImageUploadFromTo(ImageSource.IMAGES, chosen)
+            for tracker in trackers
+        }, []
 
     hosts: dict[TrackerSelection, ImageUploadFromTo] = {}
     notes: list[str] = []
