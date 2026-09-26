@@ -1,8 +1,9 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal, TypedDict, overload
 
 from nfoforge.backend.tokens import TokenSelection
+from nfoforge.config.presets import RunPreset
 from nfoforge.enums.cropping import Cropping
 from nfoforge.enums.image_host import ImageHost, ImageSource
 from nfoforge.enums.image_plugin import ImagePlugin
@@ -482,3 +483,5 @@ class AppConfig:
     templates: TemplateSettings
     release_notes: ReleaseNoteSettings
     widgets: WidgetSettings
+    presets: dict[str, RunPreset] = field(default_factory=dict)
+    """Named answers for headless runs; see `nfoforge.config.presets`."""

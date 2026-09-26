@@ -34,6 +34,7 @@ from nfoforge.config.models import (
 )
 from nfoforge.config.paths import ConfigPaths
 from nfoforge.config.persistence import atomic_write_text
+from nfoforge.config.presets import parse_presets
 from nfoforge.enums.cropping import Cropping
 from nfoforge.enums.image_host import ImageSource
 from nfoforge.enums.image_plugin import ImagePlugin
@@ -2017,6 +2018,7 @@ class TypedTomlOperations:
                         widget_settings["prompt_token_editor_warn_on_missing"]
                     )
                 ),
+                presets=parse_presets(toml_data.get("presets")),
             )
 
             # validate before ever assigning to instance state

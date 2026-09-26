@@ -659,9 +659,16 @@ def choose_trackers(run: Run) -> None:
         raise WorkflowError(warning)
 
     context.shared_data.selected_trackers = trackers
-    hosts, notes = default_image_hosts(
-        context, run.settings, run.config.plugin_manager, trackers
-    )
+    try:
+        hosts, notes = default_image_hosts(
+            context,
+            run.settings,
+            run.config.plugin_manager,
+            trackers,
+            preferred=run.request.image_host,
+        )
+    except ValueError as error:
+        raise WorkflowError(str(error)) from error
     context.shared_data.tracker_image_hosts = hosts
     for note in notes:
         run.log(f"No screenshots will be uploaded for {note}", LogLevel.WARNING)

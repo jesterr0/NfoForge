@@ -55,6 +55,10 @@ class ReleaseRequest:
     screenshot_dir: Path | None = None
     """Screenshots chosen beforehand, instead of generating any."""
 
+    image_host: str | None = None
+    """Where every tracker's screenshots go, by name ("Pixhost", "Disabled").
+    None uses each tracker's last-used host, as the desktop app does."""
+
     no_screenshots: bool = False
 
     skip_dupe_check: bool = False
@@ -65,6 +69,9 @@ class ReleaseRequest:
 
     dry_run: bool = False
     """Resolve and report everything, then stop before changing anything."""
+
+    preset: str | None = None
+    """The profile preset this request was filled from, for the record."""
 
     def to_dict(self) -> dict[str, Any]:
         document: dict[str, Any] = {}
