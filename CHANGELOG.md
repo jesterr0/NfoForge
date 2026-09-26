@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Added
+
+- **A command line.** `nfoforge upload PATH --trackers AITHER` runs a release from a path to its trackers without the desktop app: the same steps the wizard takes, reading the same config profiles (read-only, so it is safe alongside the app). Questions the wizard asks are asked at the terminal, or, with `--mode safe`, saved as a job to answer later with `nfoforge jobs answer`, or, with `--mode unattended`, stop the run naming the option that answers them in advance -- a run never guesses. `nfoforge search PATH` shows what TMDB matches. From a source checkout, run it with `uv run nfoforge`; the desktop builds do not include it yet. See [Command Line](https://jesterr0.github.io/NfoForge/view/cli/command-line.html).
+- **Run presets.** A `[presets.NAME]` table in a config profile names a set of upload options -- trackers, image host, screenshot count, rename, mode, tokens -- for `nfoforge upload --preset NAME`. Options given on the command line win over the preset.
+
 ### Breaking
 
 - **The Python package is now `nfoforge` instead of `src`.** Plugins must import from `nfoforge.plugins.api` (and any other host module) instead of `src.plugins.api`. There is no compatibility alias: a plugin still importing `src.*` fails to load and is reported in **Settings -> Plugins**. The change is a find-and-replace of `src.` with `nfoforge.` in a plugin's imports.
