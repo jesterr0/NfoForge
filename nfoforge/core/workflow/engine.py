@@ -58,6 +58,7 @@ from nfoforge.core.workflow.events import (
     StageFinished,
     StageStarted,
 )
+from nfoforge.core.workflow.preflight import preflight_problems
 from nfoforge.core.workflow.request import ReleaseRequest
 from nfoforge.core.workflow.stages import RoutingOptions, Stage, next_stage
 from nfoforge.core.workflow.steps import STEPS, Run, WorkflowError
@@ -147,8 +148,23 @@ class Workflow:
     ) -> WorkflowResult:
         """Run `request` from the beginning.
 
-        `answers` are given in advance, keyed by `Decision.id`.
+        `answers` are given in advance, keyed by `Decision.id`. A request that
+        cannot succeed for reasons knowable up front is refused before any
+        work is done.
         """
+        problems = preflight_problems(
+            request,
+            self.config,
+            screenshots=routing_for(request, self.config.settings).screenshots,
+            answers=answers or {},
+            unresolved_prompt_tokens=self.process_backend.unresolved_prompt_tokens,
+        )
+        if problems:
+            error = scrub_secrets("\n".join(problems))
+            self.sink.emit(LogLine(error, LogLevel.ERROR))
+            self.sink.emit(JobStateChanged(JobState.FAILED, error))
+            return WorkflowResult(JobState.FAILED, Stage.INPUT, error=error)
+
         context = create_processing_context(
             self.config.settings, self.config.plugin_manager
         )
