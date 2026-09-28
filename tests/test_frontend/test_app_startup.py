@@ -1,8 +1,8 @@
 """Startup config-error recovery routing tests.
 
-`start_ui.NfoForge` drives real Qt widgets (`QApplication`, splash screen,
-message boxes) that aren't worth standing up just to prove routing logic, so
-these tests construct a bare `NfoForge` instance (via `object.__new__`,
+`nfoforge.frontend.app.NfoForge` drives real Qt widgets (`QApplication`,
+splash screen, message boxes) that aren't worth standing up just to prove
+routing logic, so these tests construct a bare `NfoForge` instance (via `object.__new__`,
 bypassing `__init__`) and drive `_continue_init` directly, stubbing out the
 handler methods/collaborators it calls. This isolates exactly the thing task
 3.3 changes: which except clause and which recovery handler a given
@@ -16,19 +16,19 @@ import pytest
 
 from nfoforge.config.paths import AppPaths
 from nfoforge.exceptions import ConfigError, ConfigSchemaError
-import start_ui
+import nfoforge.frontend.app as gui_app
 from tests.repo_paths import build_app_paths
 
 
-def _bare_nfoforge(config_file: str | None) -> start_ui.NfoForge:
-    app = object.__new__(start_ui.NfoForge)
+def _bare_nfoforge(config_file: str | None) -> gui_app.NfoForge:
+    app = object.__new__(gui_app.NfoForge)
     app.config_file = config_file
     app.splash_screen = SimpleNamespace(updateMessageBox=lambda *_a, **_k: None)  # type: ignore[reportAttributeAccessIssue]
     app.program_config_malformed = False
     return app
 
 
-def _bare_nfoforge_with_config() -> start_ui.NfoForge:
+def _bare_nfoforge_with_config() -> gui_app.NfoForge:
     """`_bare_nfoforge` plus a stub `config`, for `_maybe_prompt_template_migration`
     tests -- that method only touches `self.config.program.
     suppress_template_token_prompt` and `self.config.save_program()`, so a
@@ -73,16 +73,16 @@ def test_plain_config_error_routes_to_generic_recovery_handler(
     `_error_on_splash` quit path.
     """
     monkeypatch.setattr(
-        start_ui,
+        gui_app,
         "ConfigManager",
         lambda config_file: (_ for _ in ()).throw(ConfigError("boom")),
     )
     test_paths = build_app_paths(tmp_path)
-    monkeypatch.setattr(start_ui, "default_paths", lambda: test_paths)
+    monkeypatch.setattr(gui_app, "default_paths", lambda: test_paths)
 
     recovery_calls = []
     monkeypatch.setattr(
-        start_ui.NfoForge,
+        gui_app.NfoForge,
         "_offer_archive_and_regenerate",
         lambda self, config_path, error_text, issue_description, title: (
             recovery_calls.append((config_path, error_text, issue_description, title))
@@ -90,7 +90,7 @@ def test_plain_config_error_routes_to_generic_recovery_handler(
     )
     fatal_calls = []
     monkeypatch.setattr(
-        start_ui.NfoForge,
+        gui_app.NfoForge,
         "_error_on_splash",
         lambda self, error: fatal_calls.append(error),
     )
@@ -117,24 +117,24 @@ def test_config_error_falls_back_to_fatal_when_path_unresolvable(
     nothing to archive/regenerate, so the fatal path is still correct.
     """
     monkeypatch.setattr(
-        start_ui,
+        gui_app,
         "ConfigManager",
         lambda config_file: (_ for _ in ()).throw(ConfigError("boom")),
     )
     unresolvable_paths = AppPaths(
         state_root=Path("nonexistent"), asset_root=Path("nonexistent")
     )
-    monkeypatch.setattr(start_ui, "default_paths", lambda: unresolvable_paths)
+    monkeypatch.setattr(gui_app, "default_paths", lambda: unresolvable_paths)
 
     recovery_calls = []
     monkeypatch.setattr(
-        start_ui.NfoForge,
+        gui_app.NfoForge,
         "_offer_archive_and_regenerate",
         lambda self, *a: recovery_calls.append(a),
     )
     fatal_calls = []
     monkeypatch.setattr(
-        start_ui.NfoForge,
+        gui_app.NfoForge,
         "_error_on_splash",
         lambda self, error: fatal_calls.append(error),
     )
@@ -156,7 +156,7 @@ def test_resolve_config_path_defaults_missing_current_config_key(
     test_paths = build_app_paths(tmp_path)
     test_paths.program.parent.mkdir(parents=True, exist_ok=True)
     test_paths.program.write_text('main_window_position = ""\n', encoding="utf-8")
-    monkeypatch.setattr(start_ui, "default_paths", lambda: test_paths)
+    monkeypatch.setattr(gui_app, "default_paths", lambda: test_paths)
 
     app = _bare_nfoforge(None)
 
@@ -176,7 +176,7 @@ def test_malformed_program_config_offers_recovery_not_a_fatal_error(
     test_paths = build_app_paths(tmp_path)
     test_paths.program.parent.mkdir(parents=True, exist_ok=True)
     test_paths.program.write_text('current_config = "unterminated', encoding="utf-8")
-    monkeypatch.setattr(start_ui, "default_paths", lambda: test_paths)
+    monkeypatch.setattr(gui_app, "default_paths", lambda: test_paths)
 
     app = _bare_nfoforge(None)
     result = app._resolve_config_path()
@@ -199,23 +199,23 @@ def test_handle_config_error_routes_malformed_program_config_to_its_own_recovery
     test_paths = build_app_paths(tmp_path)
     test_paths.program.parent.mkdir(parents=True, exist_ok=True)
     test_paths.program.write_text('current_config = "unterminated', encoding="utf-8")
-    monkeypatch.setattr(start_ui, "default_paths", lambda: test_paths)
+    monkeypatch.setattr(gui_app, "default_paths", lambda: test_paths)
 
     program_reset_calls = []
     monkeypatch.setattr(
-        start_ui.NfoForge,
+        gui_app.NfoForge,
         "_offer_program_config_reset",
         lambda self, error_text: program_reset_calls.append(error_text),
     )
     archive_calls = []
     monkeypatch.setattr(
-        start_ui.NfoForge,
+        gui_app.NfoForge,
         "_offer_archive_and_regenerate",
         lambda self, *a: archive_calls.append(a),
     )
     fatal_calls = []
     monkeypatch.setattr(
-        start_ui.NfoForge,
+        gui_app.NfoForge,
         "_error_on_splash",
         lambda self, error: fatal_calls.append(error),
     )
@@ -243,7 +243,7 @@ def test_resolve_config_path_detects_malformed_program_config_even_with_a_known_
     test_paths = build_app_paths(tmp_path)
     test_paths.program.parent.mkdir(parents=True, exist_ok=True)
     test_paths.program.write_text('current_config = "unterminated', encoding="utf-8")
-    monkeypatch.setattr(start_ui, "default_paths", lambda: test_paths)
+    monkeypatch.setattr(gui_app, "default_paths", lambda: test_paths)
 
     app = _bare_nfoforge("test")
     result = app._resolve_config_path()
@@ -267,22 +267,22 @@ def test_malformed_program_config_takes_priority_over_a_known_profile_name(
     test_paths = build_app_paths(tmp_path)
     test_paths.program.parent.mkdir(parents=True, exist_ok=True)
     test_paths.program.write_text('current_config = "unterminated', encoding="utf-8")
-    monkeypatch.setattr(start_ui, "default_paths", lambda: test_paths)
+    monkeypatch.setattr(gui_app, "default_paths", lambda: test_paths)
     monkeypatch.setattr(
-        start_ui,
+        gui_app,
         "ConfigManager",
         lambda config_file: (_ for _ in ()).throw(ConfigError("boom")),
     )
 
     program_reset_calls = []
     monkeypatch.setattr(
-        start_ui.NfoForge,
+        gui_app.NfoForge,
         "_offer_program_config_reset",
         lambda self, error_text: program_reset_calls.append(error_text),
     )
     archive_calls = []
     monkeypatch.setattr(
-        start_ui.NfoForge,
+        gui_app.NfoForge,
         "_offer_archive_and_regenerate",
         lambda self, *a: archive_calls.append(a),
     )
@@ -305,7 +305,7 @@ def test_last_used_config_is_returned_only_when_profile_exists(
     test_paths = build_app_paths(tmp_path)
     test_paths.program.parent.mkdir(parents=True, exist_ok=True)
     test_paths.program.write_text('current_config = "second"\n', encoding="utf-8")
-    monkeypatch.setattr(start_ui, "default_paths", lambda: test_paths)
+    monkeypatch.setattr(gui_app, "default_paths", lambda: test_paths)
 
     app = _bare_nfoforge(None)
 
@@ -344,7 +344,7 @@ def test_config_schema_error_still_prefers_schema_specific_handler(
     generic `ConfigError` recovery handler.
     """
     monkeypatch.setattr(
-        start_ui,
+        gui_app,
         "ConfigManager",
         lambda config_file: (_ for _ in ()).throw(
             ConfigSchemaError("bad schema", config_path=Path("test.toml"))
@@ -353,12 +353,12 @@ def test_config_schema_error_still_prefers_schema_specific_handler(
     schema_calls = []
     generic_calls = []
     monkeypatch.setattr(
-        start_ui.NfoForge,
+        gui_app.NfoForge,
         "_handle_config_schema_error",
         lambda self, error: schema_calls.append(error),
     )
     monkeypatch.setattr(
-        start_ui.NfoForge,
+        gui_app.NfoForge,
         "_handle_config_error",
         lambda self, error: generic_calls.append(error),
     )
@@ -380,7 +380,7 @@ def test_template_prompt_is_skipped_when_suppressed(
         called = True
         return []
 
-    monkeypatch.setattr(start_ui, "scan_template_dir", record_scan)
+    monkeypatch.setattr(gui_app, "scan_template_dir", record_scan)
 
     app = _bare_nfoforge_with_config()
     app.config.program.suppress_template_token_prompt = True
@@ -392,14 +392,14 @@ def test_template_prompt_is_skipped_when_suppressed(
 def test_template_prompt_is_skipped_when_no_template_is_stale(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(start_ui, "scan_template_dir", lambda _: [])
+    monkeypatch.setattr(gui_app, "scan_template_dir", lambda _: [])
     shown = False
 
     def record_dialog(*args: object, **kwargs: object) -> None:
         nonlocal shown
         shown = True
 
-    monkeypatch.setattr(start_ui, "TemplateMigrationDialog", record_dialog)
+    monkeypatch.setattr(gui_app, "TemplateMigrationDialog", record_dialog)
 
     app = _bare_nfoforge_with_config()
     app.config.program.suppress_template_token_prompt = False
@@ -414,7 +414,7 @@ def test_a_scanner_failure_never_blocks_startup(
     def explode(_: Path) -> list[object]:
         raise OSError("disk gone")
 
-    monkeypatch.setattr(start_ui, "scan_template_dir", explode)
+    monkeypatch.setattr(gui_app, "scan_template_dir", explode)
 
     app = _bare_nfoforge_with_config()
     app.config.program.suppress_template_token_prompt = False
@@ -433,16 +433,16 @@ def test_declining_the_prompt_does_not_migrate_templates(
     that actually guards the destructive call.
     """
     reports_stub = [object()]
-    monkeypatch.setattr(start_ui, "scan_template_dir", lambda _: reports_stub)
+    monkeypatch.setattr(gui_app, "scan_template_dir", lambda _: reports_stub)
     monkeypatch.setattr(
-        start_ui,
+        gui_app,
         "TemplateMigrationDialog",
         _stub_dialog_class(migrate_requested=False, suppress_future_prompts=False),
     )
 
     migrate_calls: list[object] = []
     monkeypatch.setattr(
-        start_ui,
+        gui_app,
         "migrate_templates",
         lambda reports: migrate_calls.append(reports) or [],
     )
@@ -459,9 +459,9 @@ def test_accepting_the_prompt_migrates_templates(
 ) -> None:
     """The consent gate itself: an accept must actually run the migration."""
     reports_stub = [object()]
-    monkeypatch.setattr(start_ui, "scan_template_dir", lambda _: reports_stub)
+    monkeypatch.setattr(gui_app, "scan_template_dir", lambda _: reports_stub)
     monkeypatch.setattr(
-        start_ui,
+        gui_app,
         "TemplateMigrationDialog",
         _stub_dialog_class(migrate_requested=True, suppress_future_prompts=False),
     )
@@ -472,10 +472,10 @@ def test_accepting_the_prompt_migrates_templates(
         migrate_calls.append(reports)
         return []
 
-    monkeypatch.setattr(start_ui, "migrate_templates", record_migrate)
+    monkeypatch.setattr(gui_app, "migrate_templates", record_migrate)
     # A successful migration shows a modal QMessageBox; stub it out so the
     # test doesn't block waiting for a click.
-    monkeypatch.setattr(start_ui.QMessageBox, "information", lambda *a, **k: None)
+    monkeypatch.setattr(gui_app.QMessageBox, "information", lambda *a, **k: None)
 
     app = _bare_nfoforge_with_config()
     app.config.program.suppress_template_token_prompt = False
@@ -493,9 +493,9 @@ def test_a_suppression_save_failure_does_not_block_migration(
     `save_program()` ran (and could raise) before `migrate_templates`.
     """
     reports_stub = [object()]
-    monkeypatch.setattr(start_ui, "scan_template_dir", lambda _: reports_stub)
+    monkeypatch.setattr(gui_app, "scan_template_dir", lambda _: reports_stub)
     monkeypatch.setattr(
-        start_ui,
+        gui_app,
         "TemplateMigrationDialog",
         _stub_dialog_class(migrate_requested=True, suppress_future_prompts=True),
     )
@@ -506,8 +506,8 @@ def test_a_suppression_save_failure_does_not_block_migration(
         migrate_calls.append(reports)
         return []
 
-    monkeypatch.setattr(start_ui, "migrate_templates", record_migrate)
-    monkeypatch.setattr(start_ui.QMessageBox, "information", lambda *a, **k: None)
+    monkeypatch.setattr(gui_app, "migrate_templates", record_migrate)
+    monkeypatch.setattr(gui_app.QMessageBox, "information", lambda *a, **k: None)
 
     app = _bare_nfoforge_with_config()
     app.config.program.suppress_template_token_prompt = False
@@ -528,29 +528,29 @@ def test_a_suppression_save_failure_does_not_block_migration(
 # ---------------------------------------------------------------------------
 def _nfoforge_for_startup(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> start_ui.NfoForge:
+) -> gui_app.NfoForge:
     """A bare instance with the two branches `_init_app` chooses between stubbed."""
     app = _bare_nfoforge(None)
     app.selected = False  # type: ignore[reportAttributeAccessIssue]
     app.migration_started = False  # type: ignore[reportAttributeAccessIssue]
     app.errors = []  # type: ignore[reportAttributeAccessIssue]
     monkeypatch.setattr(
-        start_ui.NfoForge,
+        gui_app.NfoForge,
         "_select_config",
         lambda self: setattr(self, "selected", True),
     )
     monkeypatch.setattr(
-        start_ui.NfoForge,
+        gui_app.NfoForge,
         "_start_layout_migration",
         lambda self: setattr(self, "migration_started", True),
     )
     monkeypatch.setattr(
-        start_ui.NfoForge,
+        gui_app.NfoForge,
         "_error_on_splash",
         lambda self, text: self.errors.append(text),
     )
     monkeypatch.setattr(
-        start_ui,
+        gui_app,
         "default_paths",
         lambda: AppPaths(state_root=tmp_path / "data", asset_root=tmp_path / "assets"),
     )
@@ -562,7 +562,7 @@ def test_a_current_layout_goes_straight_to_choosing_a_profile(
 ) -> None:
     """The launch nearly everyone takes: no thread, no dialog, no delay."""
     app = _nfoforge_for_startup(monkeypatch, tmp_path)
-    monkeypatch.setattr(start_ui, "migration_pending", lambda _root: False)
+    monkeypatch.setattr(gui_app, "migration_pending", lambda _root: False)
 
     app._init_app()
 
@@ -579,7 +579,7 @@ def test_a_pending_migration_runs_before_any_profile_is_chosen(
     they have not been imported yet.
     """
     app = _nfoforge_for_startup(monkeypatch, tmp_path)
-    monkeypatch.setattr(start_ui, "migration_pending", lambda _root: True)
+    monkeypatch.setattr(gui_app, "migration_pending", lambda _root: True)
 
     app._init_app()
 
@@ -599,9 +599,9 @@ def test_an_unreadable_layout_record_stops_the_launch(
     app = _nfoforge_for_startup(monkeypatch, tmp_path)
 
     def explode(_root: Path) -> bool:
-        raise start_ui.LayoutRecordError("layout.json is not valid JSON")
+        raise gui_app.LayoutRecordError("layout.json is not valid JSON")
 
-    monkeypatch.setattr(start_ui, "migration_pending", explode)
+    monkeypatch.setattr(gui_app, "migration_pending", explode)
 
     app._init_app()
 
@@ -626,7 +626,7 @@ def test_the_summary_is_shown_then_the_launch_continues(
         def deleteLater(self) -> None:
             return None
 
-    monkeypatch.setattr(start_ui, "MigrationSummaryDialog", _StubSummary)
+    monkeypatch.setattr(gui_app, "MigrationSummaryDialog", _StubSummary)
     run = SimpleNamespace(plan=object(), outcome=object(), missing_profile="")
 
     app._on_migration_finished(run)  # type: ignore[arg-type]
@@ -646,7 +646,7 @@ def test_nothing_is_shown_when_there_was_nothing_to_migrate(
     app = _nfoforge_for_startup(monkeypatch, tmp_path)
     shown: list[object] = []
     monkeypatch.setattr(
-        start_ui, "MigrationSummaryDialog", lambda *a, **k: shown.append(a)
+        gui_app, "MigrationSummaryDialog", lambda *a, **k: shown.append(a)
     )
 
     app._on_migration_finished(None)
@@ -670,7 +670,7 @@ def test_the_worker_always_gets_an_answer_even_if_the_dialog_fails(
     def explode(*_args: object, **_kwargs: object) -> None:
         raise RuntimeError("the dialog could not be built")
 
-    monkeypatch.setattr(start_ui, "MigrationPromptDialog", explode)
+    monkeypatch.setattr(gui_app, "MigrationPromptDialog", explode)
 
     with pytest.raises(RuntimeError):
         app._ask_where_to_import(None)

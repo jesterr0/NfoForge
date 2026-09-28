@@ -10,6 +10,7 @@
 ### Breaking
 
 - **The Python package is now `nfoforge` instead of `src`.** Plugins must import from `nfoforge.plugins.api` (and any other host module) instead of `src.plugins.api`. There is no compatibility alias: a plugin still importing `src.*` fails to load and is reported in **Settings -> Plugins**. The change is a find-and-replace of `src.` with `nfoforge.` in a plugin's imports.
+- **`start_ui.py` is gone; the desktop app starts with `uv run nfoforge-gui`** (or `python -m nfoforge.frontend`). The launcher now lives inside the package, so installing NfoForge as a package gives you both commands: `nfoforge` for the command line and `nfoforge-gui` for the desktop app. The released builds are unchanged.
 
 ## [1.2.2] - 2026-09-21
 

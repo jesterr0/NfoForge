@@ -292,8 +292,7 @@ def test_nothing_in_the_application_reads_the_old_mutable_tree() -> None:
     What can be is that no module here uses it.
     """
     offenders = []
-    sources = [REPO_ROOT / "start_ui.py", *(REPO_ROOT / "nfoforge").rglob("*.py")]
-    for source in sources:
+    for source in (REPO_ROOT / "nfoforge").rglob("*.py"):
         if source.name == "working_dir.py":
             continue  # where the compatibility shim necessarily names it
         if re.search(r"\bRUNTIME_DIR\b", source.read_text(encoding="utf-8")):

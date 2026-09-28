@@ -51,7 +51,7 @@ Run from [Release](#run-from-release) or [Run From Source](#run-from-source).
 4. Start the application.
 
     ```sh
-    uv run .\start_ui.py
+    uv run nfoforge-gui
     ```
 
 ### Updating the locked HTTP dependencies

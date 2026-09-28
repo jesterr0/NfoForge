@@ -13,8 +13,8 @@ build a widget (a cross-thread parent, then a nested modal event loop off the
 GUI thread, which wedges the process), and after a fatal message it must not
 open a dialog at all in a process that is already going down.
 
-`start_ui.NfoForge` drives real Qt widgets that aren't worth standing up for
-this, so these build a bare instance via `object.__new__` as the sibling
+`nfoforge.frontend.app.NfoForge` drives real Qt widgets that aren't worth
+standing up for this, so these build a bare instance via `object.__new__` as the sibling
 startup tests do.
 """
 
@@ -25,11 +25,11 @@ from types import SimpleNamespace
 from PySide6.QtCore import QThread, QtMsgType
 import pytest
 
-import start_ui
+import nfoforge.frontend.app as gui_app
 
 
-def _bare_nfoforge() -> start_ui.NfoForge:
-    app = object.__new__(start_ui.NfoForge)
+def _bare_nfoforge() -> gui_app.NfoForge:
+    app = object.__new__(gui_app.NfoForge)
     app.splash_screen = None
     app.main_window = None
     return app
@@ -49,7 +49,7 @@ def test_a_fatal_qt_message_is_logged_without_opening_a_dialog(
     app._error_message_box = lambda *args, **kwargs: dialogs.append(args)
     logged = []
     monkeypatch.setattr(
-        start_ui.LOG, "critical", lambda _source, message: logged.append(message)
+        gui_app.LOG, "critical", lambda _source, message: logged.append(message)
     )
 
     app.qt_message_handler(
@@ -73,7 +73,7 @@ def test_a_qt_warning_is_logged_without_a_dialog(
     app._error_message_box = lambda *args, **kwargs: dialogs.append(args)
     warnings = []
     monkeypatch.setattr(
-        start_ui.LOG, "warning", lambda _source, message: warnings.append(message)
+        gui_app.LOG, "warning", lambda _source, message: warnings.append(message)
     )
 
     app.qt_message_handler(
@@ -92,7 +92,7 @@ def test_a_qt_critical_message_opens_a_dialog(monkeypatch: pytest.MonkeyPatch) -
     app = _bare_nfoforge()
     dialogs = []
     app._error_message_box = lambda *args, **kwargs: dialogs.append(args)
-    monkeypatch.setattr(start_ui.LOG, "critical", lambda _source, _message: None)
+    monkeypatch.setattr(gui_app.LOG, "critical", lambda _source, _message: None)
 
     app.qt_message_handler(QtMsgType.QtCriticalMsg, None, "something is off")
 
@@ -111,7 +111,7 @@ def test_a_qt_message_records_the_thread_that_emitted_it(
     app._error_message_box = lambda *args, **kwargs: None
     logged = []
     monkeypatch.setattr(
-        start_ui.LOG, "critical", lambda _source, message: logged.append(message)
+        gui_app.LOG, "critical", lambda _source, message: logged.append(message)
     )
 
     app.qt_message_handler(QtMsgType.QtCriticalMsg, None, "something is off")
@@ -178,9 +178,9 @@ def test_a_second_dialog_is_suppressed_while_one_is_open(
     app._error_dialog_active = True
     built = []
     monkeypatch.setattr(
-        start_ui, "ScrollableErrorDialog", lambda *a, **kw: built.append(a)
+        gui_app, "ScrollableErrorDialog", lambda *a, **kw: built.append(a)
     )
-    monkeypatch.setattr(start_ui.LOG, "error", lambda _source, _message: None)
+    monkeypatch.setattr(gui_app.LOG, "error", lambda _source, _message: None)
 
     app._show_error_dialog("QtError", "second one", "")
 
@@ -196,10 +196,10 @@ def test_the_crash_log_handle_is_kept_open_for_the_process(
     """
     logs = tmp_path / "logs"
     logs.mkdir()
-    monkeypatch.setattr(start_ui.LOG, "log_file", logs / "nfoforge_run.log")
+    monkeypatch.setattr(gui_app.LOG, "log_file", logs / "nfoforge_run.log")
     enabled = {}
     monkeypatch.setattr(
-        start_ui.faulthandler, "enable", lambda file: enabled.update(file=file)
+        gui_app.faulthandler, "enable", lambda file: enabled.update(file=file)
     )
     app = _bare_nfoforge()
 
@@ -218,8 +218,8 @@ def test_the_crash_log_names_the_run_it_belongs_to(
     """
     logs = tmp_path / "logs"
     logs.mkdir()
-    monkeypatch.setattr(start_ui.LOG, "log_file", logs / "nfoforge_run.log")
-    monkeypatch.setattr(start_ui.faulthandler, "enable", lambda file: None)
+    monkeypatch.setattr(gui_app.LOG, "log_file", logs / "nfoforge_run.log")
+    monkeypatch.setattr(gui_app.faulthandler, "enable", lambda file: None)
     app = _bare_nfoforge()
 
     app._enable_crash_dump()
@@ -235,11 +235,11 @@ def test_an_unwritable_crash_log_does_not_stop_startup(
     directory must cost the dump, not the application.
     """
     monkeypatch.setattr(
-        start_ui.LOG, "log_file", tmp_path / "nonexistent" / "nfoforge_run.log"
+        gui_app.LOG, "log_file", tmp_path / "nonexistent" / "nfoforge_run.log"
     )
     warnings = []
     monkeypatch.setattr(
-        start_ui.LOG, "warning", lambda _source, message: warnings.append(message)
+        gui_app.LOG, "warning", lambda _source, message: warnings.append(message)
     )
     app = _bare_nfoforge()
 

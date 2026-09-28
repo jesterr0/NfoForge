@@ -1,7 +1,8 @@
 # relevant documentation
 # https://doc.qt.io/qtforpython-6/index.html#
 
-# we're going to load all .env variables for dev purposes before any other module is called
+# we're going to load all .env variables for dev purposes before any other module
+# is called, so this module has to be the first thing an entry point imports
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -55,7 +56,9 @@ from nfoforge.config.layout_migration import LegacyInstall
 from nfoforge.config.layout_version import LayoutRecordError, migration_pending
 from nfoforge.config.paths import AppPaths, default_paths
 from nfoforge.exceptions import ConfigError, ConfigSchemaError
-from nfoforge.frontend.custom_widgets.scrollable_error_dialog import ScrollableErrorDialog
+from nfoforge.frontend.custom_widgets.scrollable_error_dialog import (
+    ScrollableErrorDialog,
+)
 from nfoforge.frontend.windows.main_window import MainWindow
 from nfoforge.frontend.windows.migration_prompt_dialog import MigrationPromptDialog
 from nfoforge.frontend.windows.migration_summary_dialog import MigrationSummaryDialog
@@ -851,7 +854,9 @@ def arg_parse() -> tuple[str | None, str | None]:
     return config_arg, message_arg
 
 
-if __name__ == "__main__":
+def main() -> None:
+    """Launch the desktop app. The `nfoforge-gui` command and the frozen build
+    both start here."""
     if IS_FROZEN:
         # required for multiprocessing support when the app is frozen (exe)
         mp_freeze_support()

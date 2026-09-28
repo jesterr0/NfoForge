@@ -53,8 +53,9 @@ def restart_application(main_window: "MainWindow") -> bool:
         return False
 
     # frozen: sys.executable IS the app, so pass only the extra args.
-    # source: sys.executable is python.exe, which needs the script path too.
-    args = sys.argv[1:] if IS_FROZEN else sys.argv
+    # source: sys.executable is python.exe. argv[0] may be the `nfoforge-gui`
+    # launcher rather than a script python can run, so name the module instead.
+    args = sys.argv[1:] if IS_FROZEN else ["-m", "nfoforge.frontend", *sys.argv[1:]]
     if not QProcess.startDetached(sys.executable, args):
         return False
 

@@ -171,7 +171,7 @@ def build_app(folder_name: str, include_std_lib: bool, debug: bool = False):
     pyinstaller_folder.mkdir(exist_ok=True)
 
     # define paths before changing directory
-    entry_script = project_root / "start_ui.py"
+    entry_script = project_root / "nfoforge" / "frontend" / "__main__.py"
     icon_path = project_root / "assets" / "images" / "hammer_merged.ico"
     if platform.system() == "Darwin":
         icns_candidate = project_root / "assets" / "images" / "hammer_merged.icns"
