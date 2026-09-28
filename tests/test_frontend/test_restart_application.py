@@ -30,7 +30,7 @@ def _patch_argv(monkeypatch: pytest.MonkeyPatch, argv: list[str]) -> None:
 def test_restart_application_relaunches_and_quits(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _patch_argv(monkeypatch, ["start_ui.py", "-c", "myprofile"])
+    _patch_argv(monkeypatch, ["C:/fake/Scripts/nfoforge-gui.exe", "-c", "myprofile"])
     monkeypatch.setattr(app_lifecycle, "IS_FROZEN", False)
 
     started: list[tuple[str, list[str]]] = []
@@ -49,8 +49,11 @@ def test_restart_application_relaunches_and_quits(
 
     assert result is True
     assert main_window.close_calls == 1
-    # source (non-frozen): full sys.argv (script path included) is forwarded.
-    assert started == [("C:/fake/python.exe", ["start_ui.py", "-c", "myprofile"])]
+    # source (non-frozen): argv[0] is swapped for the module, since it may be a
+    # launcher exe python cannot run.
+    assert started == [
+        ("C:/fake/python.exe", ["-m", "nfoforge.frontend", "-c", "myprofile"])
+    ]
     assert fake_app.quit_calls == 1
 
 
@@ -108,7 +111,7 @@ def test_restart_application_aborts_if_close_declined(
 def test_restart_application_does_not_quit_if_relaunch_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _patch_argv(monkeypatch, ["start_ui.py"])
+    _patch_argv(monkeypatch, ["C:/fake/Scripts/nfoforge-gui.exe"])
     monkeypatch.setattr(app_lifecycle, "IS_FROZEN", False)
     monkeypatch.setattr(
         app_lifecycle.QProcess,

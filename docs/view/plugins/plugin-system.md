@@ -66,7 +66,7 @@ Plugins load from your data folder, not from wherever you keep the source. Witho
 
 ```powershell
 $env:NFOFORGE_DEV_PLUGINS = "D:\src\nfoforge-plugins"
-uv run start_ui.py
+uv run nfoforge-gui
 ```
 
 ```

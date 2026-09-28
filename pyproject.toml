@@ -71,6 +71,9 @@ docs = ["mkdocs>=1.6.1", "mkdocs-material>=9.6.11", "pymdown-extensions"]
 [project.scripts]
 nfoforge = "nfoforge.cli.main:main"
 
+[project.gui-scripts]
+nfoforge-gui = "nfoforge.frontend.app:main"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
@@ -140,7 +143,6 @@ timeout_method = "thread"
 [tool.basedpyright]
 include = [
     "nfoforge",
-    "start_ui.py",
     "build.py",
     "assets/plugin_examples/jinja2_plugin_example",
     "assets/plugin_examples/metadata_plugin_example",
