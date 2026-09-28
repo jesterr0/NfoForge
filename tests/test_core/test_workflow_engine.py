@@ -91,13 +91,16 @@ def config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> ConfigManager:
     )
     manager = ConfigManager("test", build_app_paths(tmp_path / "config"))
     manager.settings.general.working_dir = tmp_path / "work"
+    manager.settings.api_keys.tmdb_api_key = "key"
     # the tracker checks have their own tests; these runs are about the engine
-    monkeypatch.setattr(
-        "nfoforge.core.workflow.steps.tracker_profile_problems", lambda *_a: []
-    )
-    monkeypatch.setattr(
-        "nfoforge.core.workflow.steps.missing_nfo_templates", lambda *_a: []
-    )
+    for module in ("steps", "preflight"):
+        monkeypatch.setattr(
+            f"nfoforge.core.workflow.{module}.tracker_profile_problems",
+            lambda *_a: [],
+        )
+        monkeypatch.setattr(
+            f"nfoforge.core.workflow.{module}.missing_nfo_templates", lambda *_a: []
+        )
     return manager
 
 
@@ -261,11 +264,28 @@ def test_an_unanswered_prompt_token_is_a_decision(
 ) -> None:
     workflow, _sink = _workflow(config, FakeSearch({"42": _row("42")}), FakeProcess())
 
+    result = workflow.start(_request(movie, mode=AutomationMode.SAFE, prompt_tokens={}))
+
+    assert result.state is JobState.WAITING_FOR_INPUT
+    assert result.stage is Stage.PROCESS
+    assert result.decision is not None
+    assert result.decision.kind is DecisionKind.PROMPT_TOKENS
+
+
+def test_an_unattended_run_missing_a_prompt_token_is_refused_up_front(
+    config: ConfigManager, movie: Path
+) -> None:
+    search = FakeSearch({"42": _row("42")})
+    workflow, _sink = _workflow(config, search, FakeProcess())
+
     result = workflow.start(_request(movie, prompt_tokens={}))
 
     assert result.state is JobState.FAILED
-    assert result.decision is not None
-    assert result.decision.kind is DecisionKind.PROMPT_TOKENS
+    assert result.stage is Stage.INPUT
+    assert "prompt_notes" in (result.error or "")
+    assert "--token" in (result.error or "")
+    assert search.searched == []
+    assert result.job_path is None
 
 
 @pytest.fixture
@@ -316,14 +336,19 @@ def test_missing_input_fails_without_a_job(
     assert result.job_path is None
 
 
-def test_an_unknown_tracker_fails(config: ConfigManager, movie: Path) -> None:
-    workflow, _sink = _workflow(config, FakeSearch({"42": _row("42")}), FakeProcess())
+def test_an_unknown_tracker_fails_before_any_work(
+    config: ConfigManager, movie: Path
+) -> None:
+    search = FakeSearch({"42": _row("42")})
+    workflow, _sink = _workflow(config, search, FakeProcess())
 
     result = workflow.start(_request(movie, trackers=("nope",)))
 
     assert result.state is JobState.FAILED
-    assert result.stage is Stage.TRACKERS
+    assert result.stage is Stage.INPUT
     assert "nope" in (result.error or "")
+    assert search.searched == []
+    assert result.job_path is None
 
 
 def test_a_desktop_job_cannot_be_resumed_headlessly(

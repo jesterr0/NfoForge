@@ -28,6 +28,8 @@ nfoforge upload PATH --trackers AITHER,HUNO [options]
 
 Trackers are never inferred from the profile: name them with `--trackers` or a [preset](#presets).
 
+Before any work starts, the run checks everything it can without reading the release: that the trackers exist, are enabled and have an NFO template, that `--image-host` and `--screenshot-dir` are usable, and that the profile has a TMDB API key. An unattended run also checks that every prompt token the templates ask for has a `--token`. Every problem found is reported at once, and nothing is renamed, generated or uploaded.
+
 | Option | What it does |
 | --- | --- |
 | `--tmdb-id`, `--imdb-id`, `--tvdb-id` | Identify the release instead of searching for it |

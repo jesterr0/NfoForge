@@ -11,7 +11,7 @@ config, never the job.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from typing import Any
 
 from nfoforge.backend.jobs.assets import template_fingerprint
@@ -27,6 +27,30 @@ from nfoforge.payloads.series import (
     build_series_release_info,
     describe_multi_season_pack,
 )
+
+
+def resolve_tracker_names(
+    names: Iterable[str],
+    tracker_map: Mapping[TrackerSelection, Any],
+    order: Sequence[TrackerSelection] = (),
+) -> tuple[list[TrackerSelection], list[str]]:
+    """The trackers `names` refer to, in the profile's `order`, and the names
+    that refer to none.
+
+    A name matches a tracker's label or its enum name, without regard to case.
+    """
+    known = {str(tracker).casefold(): tracker for tracker in tracker_map}
+    known |= {tracker.name.casefold(): tracker for tracker in tracker_map}
+    chosen: list[TrackerSelection] = []
+    unknown: list[str] = []
+    for name in names:
+        tracker = known.get(name.strip().casefold())
+        if tracker is None:
+            unknown.append(name)
+        elif tracker not in chosen:
+            chosen.append(tracker)
+    chosen.sort(key=lambda t: order.index(t) if t in order else len(order))
+    return chosen, unknown
 
 
 def tracker_profile_problems(

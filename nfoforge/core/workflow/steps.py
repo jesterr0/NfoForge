@@ -70,6 +70,7 @@ from nfoforge.core.trackers.image_hosts import default_image_hosts
 from nfoforge.core.trackers.validate import (
     missing_nfo_templates,
     multi_season_pack_warning,
+    resolve_tracker_names,
     series_unsupported_trackers,
     tracker_profile_problems,
 )
@@ -555,17 +556,24 @@ def rename(run: Run) -> None:
 _IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg"}
 
 
+def screenshot_dir_images(folder: Path) -> list[Path]:
+    """The screenshots a `--screenshot-dir` folder holds, in name order."""
+    folder = folder.expanduser()
+    if not folder.is_dir():
+        raise WorkflowError(f"Screenshot folder does not exist: {folder}")
+    images = sorted(
+        path for path in folder.iterdir() if path.suffix.lower() in _IMAGE_SUFFIXES
+    )
+    if not images:
+        raise WorkflowError(f"No images found in {folder}")
+    return images
+
+
 def screenshots(run: Run) -> None:
     shared = run.context.shared_data
     chosen_dir = run.request.screenshot_dir
     if chosen_dir is not None:
-        images = sorted(
-            path
-            for path in chosen_dir.expanduser().iterdir()
-            if path.suffix.lower() in _IMAGE_SUFFIXES
-        )
-        if not images:
-            raise WorkflowError(f"No images found in {chosen_dir}")
+        images = screenshot_dir_images(chosen_dir)
         shared.loaded_images = images
         shared.generated_images = False
         shared.is_comparison_images = False
@@ -616,20 +624,15 @@ def screenshots(run: Run) -> None:
 # --------------------------------------------------------------------------
 def resolve_trackers(run: Run) -> list[TrackerSelection]:
     """The trackers named in the request. Never inferred from the profile."""
-    by_selection = run.settings.trackers.by_selection()
     if not run.request.trackers:
         raise WorkflowError("No trackers were named for this release")
-    known = {str(tracker).casefold(): tracker for tracker in by_selection}
-    known |= {tracker.name.casefold(): tracker for tracker in by_selection}
-    chosen: list[TrackerSelection] = []
-    for name in run.request.trackers:
-        tracker = known.get(name.strip().casefold())
-        if tracker is None:
-            raise WorkflowError(f"Unknown tracker {name!r}")
-        if tracker not in chosen:
-            chosen.append(tracker)
-    order = run.settings.trackers.order
-    return sorted(chosen, key=lambda t: order.index(t) if t in order else len(order))
+    trackers = run.settings.trackers
+    chosen, unknown = resolve_tracker_names(
+        run.request.trackers, trackers.by_selection(), trackers.order
+    )
+    if unknown:
+        raise WorkflowError(f"Unknown tracker {unknown[0]!r}")
+    return chosen
 
 
 def choose_trackers(run: Run) -> None:
