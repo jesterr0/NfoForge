@@ -22,6 +22,7 @@ from nfoforge.backend.jobs import JobListing, list_jobs, load_job
 from nfoforge.backend.media_search import MediaSearchBackEnd
 from nfoforge.backend.upload_retry import TrackerRunOutcome
 from nfoforge.backend.utils.title_inference import MediaTitleInferer
+from nfoforge.backend.utils.working_dir import IS_FROZEN
 from nfoforge.cli.app import CliError, load_config
 from nfoforge.cli.console import ConsoleSink, TerminalPrompter, is_interactive
 from nfoforge.cli.exit_codes import ExitCode
@@ -32,9 +33,11 @@ from nfoforge.core.workflow.engine import Workflow, WorkflowResult
 from nfoforge.core.workflow.presets import PresetError, build_request, find_preset
 from nfoforge.core.workflow.steps import WorkflowError, collect_media_files
 from nfoforge.enums.automation import AutomationMode, JobState
+from nfoforge.launcher import CLI_EXECUTABLE
 from nfoforge.version import __version__
 
-PROGRAM = "nfoforge"
+PROGRAM = CLI_EXECUTABLE if IS_FROZEN else "nfoforge"
+"""What the user typed to run this, for usage and the hints printed."""
 _FAILED_OUTCOMES = {
     TrackerRunOutcome.UPLOAD_FAILED,
     TrackerRunOutcome.INJECTION_FAILED,

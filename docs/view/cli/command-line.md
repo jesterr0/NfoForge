@@ -8,7 +8,7 @@ nfoforge upload "/media/The.Movie.2024.1080p.BluRay.x264-GRP.mkv" --trackers AIT
 
 It runs the same steps the wizard does, reading the same config profiles, and asks the same questions. When nobody is there to answer them, it stops instead of guessing.
 
-!!! note "Running it" From a source checkout, run `uv run nfoforge ...` (or `uv run python -m nfoforge.cli ...`). The desktop builds do not include the command line yet.
+!!! note "Running it" A release ships the command line as `nfoforge-cli` (`nfoforge-cli.exe` on Windows), beside the `NfoForge` executable. From a source checkout, run `uv run nfoforge ...` (or `uv run python -m nfoforge.cli ...`). This page writes `nfoforge` throughout; with a release, type `nfoforge-cli` instead.
 
 ## Profiles
 
