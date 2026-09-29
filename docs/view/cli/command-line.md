@@ -47,7 +47,20 @@ Every command reads a config profile, read-only, so it is safe to run while the 
 nfoforge --config main upload ...
 ```
 
-Set up trackers, templates, image hosts and torrent clients in the desktop app, or by editing the profile's `.toml` file in `config/profiles` inside the data folder.
+Set up trackers, templates, image hosts and torrent clients in the desktop app, or by editing the profile's `.toml` file in `config/profiles` inside the data folder. `nfoforge config path` prints where that file and the rest of the data folder are.
+
+### Checking a Profile
+
+```bash
+nfoforge --config main config check
+```
+
+Reports everything that would stop an upload, all at once, without uploading anything:
+
+- **Problems** stop a run: no TMDB API key, a tracker with no NFO template or with uploads disabled, a template that no longer exists, an image host switched on without its credentials, a tool set to a file that is not there, a preset naming a tracker or image host that does not exist.
+- **Warnings** may be deliberate: a tracker credential left empty, or FFmpeg not being set (so no screenshots can be generated).
+
+It checks the trackers your presets name and every tracker with a credential filled in. Name others with `--trackers A,B`. It exits with `1` when there is a problem, so it can gate a script.
 
 Profiles are read from the same data folder the desktop app uses. To use another one, give `--data-dir` before the command, or run a portable release; see [Where Your Settings Are Kept](../getting-started/install.md#where-your-settings-are-kept).
 

@@ -22,12 +22,13 @@ from nfoforge.backend.jobs import JobListing, list_jobs, load_job
 from nfoforge.backend.media_search import MediaSearchBackEnd
 from nfoforge.backend.upload_retry import TrackerRunOutcome
 from nfoforge.backend.utils.title_inference import MediaTitleInferer
-from nfoforge.cli.app import PROGRAM, CliError, load_config
+from nfoforge.cli.app import PROGRAM, CliError, choose_profile, load_config
 from nfoforge.cli.console import ConsoleSink, TerminalPrompter, is_interactive
 from nfoforge.cli.exit_codes import ExitCode
 from nfoforge.cli.setup import SetupOptions, run_setup
 from nfoforge.config.config import ConfigManager
 from nfoforge.config.paths import DATA_DIR_OPTION, default_paths
+from nfoforge.core.config_check import Severity, check_profile, trackers_to_check
 from nfoforge.core.metadata.resolve import run_media_search
 from nfoforge.core.workflow.decisions import Decision
 from nfoforge.core.workflow.engine import Workflow, WorkflowResult
@@ -191,6 +192,25 @@ def build_parser() -> argparse.ArgumentParser:
         "--update-templates",
         action="store_true",
         help="Update templates that use renamed tokens, without asking.",
+    )
+
+    config = commands.add_parser(
+        "config", help="Where settings are kept, and whether a profile is ready."
+    )
+    config_commands = config.add_subparsers(
+        dest="config_command", metavar="ACTION", required=True
+    )
+    config_commands.add_parser(
+        "path", help="Where the data folder, profiles, templates and plugins are."
+    )
+    config_check = config_commands.add_parser(
+        "check", help="Check the profile is ready to upload, reporting every problem."
+    )
+    config_check.add_argument(
+        "--trackers",
+        metavar="A,B",
+        help="Check these trackers (default: those the presets name, and every "
+        "tracker with a credential set).",
     )
 
     search = commands.add_parser("search", help="Show what TMDB matches a release.")
@@ -475,7 +495,62 @@ def cmd_setup(args: argparse.Namespace, out: TextIO) -> ExitCode:
     return ExitCode.OK
 
 
-COMMANDS = {"upload": cmd_upload, "search": cmd_search, "jobs": cmd_jobs}
+def cmd_config_path(args: argparse.Namespace, out: TextIO) -> ExitCode:
+    """Runs without loading a profile, so it works before setup has."""
+    paths = default_paths()
+    try:
+        profile: object = paths.user_configs / f"{choose_profile(args.config)}.toml"
+    except CliError as error:
+        profile = error
+    rows = {
+        "Data folder": paths.state_root,
+        "Profiles": paths.user_configs,
+        "Profile": profile,
+        "Templates": paths.templates,
+        "Plugins": paths.plugins,
+        "Logs": paths.logs,
+    }
+    width = max(map(len, rows)) + 1
+    for label, value in rows.items():
+        out.write(f"{label + ':':<{width}} {value}\n")
+    return ExitCode.OK
+
+
+def cmd_config(
+    args: argparse.Namespace, config: ConfigManager, out: TextIO, _err: TextIO
+) -> ExitCode:
+    """`config check`: every reason the profile could not upload, at once."""
+    named = (
+        [name.strip() for name in args.trackers.split(",") if name.strip()]
+        if args.trackers
+        else None
+    )
+    trackers, _unknown = trackers_to_check(config.settings, named)
+    out.write(f"Profile: {config.program.current_config}\n")
+    if trackers:
+        out.write(f"Trackers checked: {', '.join(t.name for t in trackers)}\n")
+
+    findings = check_profile(config, named)
+    for severity in (Severity.PROBLEM, Severity.WARNING):
+        for finding in findings:
+            if finding.severity is severity:
+                out.write(f"{severity}: {finding}\n")
+
+    problems = sum(finding.severity is Severity.PROBLEM for finding in findings)
+    warnings = len(findings) - problems
+    if problems:
+        out.write(f"{problems} problem(s), {warnings} warning(s).\n")
+        return ExitCode.FAILED
+    out.write(f"No problems found{f', {warnings} warning(s)' if warnings else ''}.\n")
+    return ExitCode.OK
+
+
+COMMANDS = {
+    "upload": cmd_upload,
+    "search": cmd_search,
+    "jobs": cmd_jobs,
+    "config": cmd_config,
+}
 
 
 def main(
@@ -493,6 +568,8 @@ def main(
     try:
         if args.command == "setup":
             return int(cmd_setup(args, stdout))
+        if args.command == "config" and args.config_command == "path":
+            return int(cmd_config_path(args, stdout))
         config = load_config(args.config, warn=warn)
         return int(COMMANDS[args.command](args, config, stdout, stderr))
     except (CliError, PresetError) as error:
