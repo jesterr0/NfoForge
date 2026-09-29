@@ -73,6 +73,6 @@ def test_every_plugin_module_is_either_imported_by_nfoforge_or_declared() -> Non
 def test_declared_modules_are_collected_without_the_standard_library() -> None:
     # the stdlib is opt-in per build, and the plugin API must not be gated on
     # that unrelated choice
-    hiddenimports = spec_hiddenimports(include_std_lib=False)
+    hiddenimports = spec_hiddenimports(include_std_lib=False, gui=True)
 
     assert set(PLUGIN_API_MODULES) <= set(hiddenimports)

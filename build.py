@@ -35,14 +35,32 @@ def get_std_lib() -> list:
     return standard_lib
 
 
-def spec_hiddenimports(include_std_lib: bool) -> list[str]:
+QT_MODULES: list[str] = [
+    "PySide6",
+    "shiboken6",
+    "qtawesome",
+    "qtpy",
+    # the desktop app, and the one plugin API module that is Qt by design
+    "nfoforge.frontend",
+    "nfoforge.plugins.plugin_wizard_base",
+]
+"""Left out of the command line's bundle, which carries no Qt at all.
+
+The command line's own imports never reach these, but the launcher names the
+desktop app in a function it never calls there, and PyInstaller's walk follows
+every import it can see.
+"""
+
+
+def spec_hiddenimports(include_std_lib: bool, *, gui: bool) -> list[str]:
     """Modules to name in the spec that PyInstaller's own walk would not find.
 
-    The plugin API is always included. The standard library is per-build, and
-    the plugin API must not be gated on that choice: a build without the
-    standard library is still a build external plugins load into.
+    The plugin API goes into the desktop app's bundle whatever the standard
+    library choice: a build without the standard library is still a build
+    external plugins load into. The command line's bundle takes none of it,
+    since every module on the list is Qt.
     """
-    hiddenimports: list[str] = list(PLUGIN_API_MODULES)
+    hiddenimports: list[str] = list(PLUGIN_API_MODULES) if gui else []
     if include_std_lib:
         hiddenimports += get_std_lib()
     return hiddenimports
@@ -68,17 +86,14 @@ def modify_spec_file(spec_file_path: Path, hiddenimports: list):
 CONSOLE_EXECUTABLES: dict[str, str] = {
     # the desktop app with a console attached, for reading its log live
     "exe_debug": "NfoForge-debug",
-    # the command line; `nfoforge.launcher` runs it from this file name
-    "exe_cli": CLI_EXECUTABLE,
 }
 
 
 def add_console_executables(spec_content: str) -> str:
-    """Add the console executables to a generated spec.
+    """Add the console executables to the desktop app's generated spec.
 
     Each is a copy of the desktop app's EXE over the same analysis and bundle,
-    renamed and given a console. Sharing the analysis is what lets the command
-    line load any plugin the desktop app can, Qt included.
+    renamed and given a console.
     """
     # regex pattern to match multi-line EXE definitions
     exe_pattern = re.compile(r"(exe\s*=\s*EXE\s*\(\s*\n(?:[^)]*\n)*?\))", re.MULTILINE)
@@ -174,7 +189,8 @@ def build_app(folder_name: str, include_std_lib: bool, debug: bool = False):
     pyinstaller_folder.mkdir(exist_ok=True)
 
     # define paths before changing directory
-    entry_script = project_root / "nfoforge" / "launcher.py"
+    gui_entry = project_root / "nfoforge" / "frontend" / "__main__.py"
+    cli_entry = project_root / "nfoforge" / "cli" / "__main__.py"
     icon_path = project_root / "assets" / "images" / "hammer_merged.ico"
     if platform.system() == "Darwin":
         icns_candidate = project_root / "assets" / "images" / "hammer_merged.icns"
@@ -188,85 +204,97 @@ def build_app(folder_name: str, include_std_lib: bool, debug: bool = False):
     # there is no stripping pass to run afterwards
     assets = project_root / "assets"
 
+    shared_options = [
+        f"--icon={icon_path}",
+        f"--add-data={assets}:assets",
+        f"--add-data={babel_fish}:./babelfish",
+        f"--add-data={guessit}:./guessit",
+        # setuptools is in the build environment, so pkg_resources gets
+        # collected and a PyInstaller startup hook imports it at every
+        # launch, printing a deprecation warning to the command line's
+        # console. Nothing NfoForge runs uses it.
+        "--exclude-module",
+        "pkg_resources",
+    ]
+
     # change directory so PyInstaller outputs all of its files in its own folder
     os.chdir(pyinstaller_folder)
 
-    # run PyInstaller makespec to generate the spec file
-    run(  # noqa: S603 - fixed argv, no shell, maintainer-run build script
-        [  # noqa: S607 - "uv" resolved via PATH by design
-            "uv",
-            "run",
-            "pyi-makespec",
-            # "--onefile",
+    # two bundles: the desktop app (and its debug twin), and the command line
+    # with no Qt in it at all, so it runs on a server that has none
+    gui_spec = _make_spec(
+        "NfoForge",
+        gui_entry,
+        [
             "-w" if not debug else "-c",
-            f"--icon={icon_path}",
-            f"--add-data={assets}:assets",
-            f"--add-data={babel_fish}:./babelfish",
-            f"--add-data={guessit}:./guessit",
-            # setuptools is in the build environment, so pkg_resources gets
-            # collected and a PyInstaller startup hook imports it at every
-            # launch, printing a deprecation warning to the command line's
-            # console. Nothing NfoForge runs uses it.
-            "--exclude-module",
-            "pkg_resources",
+            *shared_options,
             "--contents-directory",
             "bundle",
-            "--name",
-            "NfoForge",
-            str(entry_script),
         ],
-        check=True,
+        spec_hiddenimports(include_std_lib, gui=True),
     )
-
-    # modify the generated spec file
-    spec_file_path = pyinstaller_folder / "NfoForge.spec"
-
-    # name the modules PyInstaller's own import walk cannot reach
-    modify_spec_file(spec_file_path, spec_hiddenimports(include_std_lib))
-
-    # add the debug and command line executables beside the desktop app
-    spec_file_path.write_text(
-        add_console_executables(spec_file_path.read_text(encoding="utf-8")),
+    gui_spec.write_text(
+        add_console_executables(gui_spec.read_text(encoding="utf-8")),
         encoding="utf-8",
     )
-
-    # run pyinstaller
-    build_job = run(  # noqa: S603 - fixed argv, no shell, maintainer-run build script
-        ["uv", "run", "pyinstaller", "--noconfirm", str(spec_file_path)],  # noqa: S607 - "uv" resolved via PATH by design
+    # its own contents folder name, so both releases can be unpacked into one
+    # folder and share a portable `data` folder beside them
+    cli_options = ["-c", *shared_options, "--contents-directory", "bundle-cli"]
+    for module in QT_MODULES:
+        cli_options += ["--exclude-module", module]
+    cli_spec = _make_spec(
+        CLI_EXECUTABLE,
+        cli_entry,
+        cli_options,
+        spec_hiddenimports(include_std_lib, gui=False),
     )
 
-    # ensure the output of the executable
-    success = "Did not complete successfully"
+    failed = [
+        spec.stem
+        for spec in (gui_spec, cli_spec)
+        if run(  # noqa: S603 - fixed argv, no shell, maintainer-run build script
+            ["uv", "run", "pyinstaller", "--noconfirm", str(spec)],  # noqa: S607 - "uv" resolved via PATH by design
+        ).returncode
+        != 0
+    ]
+
+    dist = pyinstaller_folder / "dist"
+    extension = get_executable_string_by_os()
     if platform.system() == "Darwin":
         # PyInstaller's windowed (-w) onedir build on macOS wraps the output
         # into an .app bundle instead of the flat folder Windows/Linux produce
-        exe_dir = pyinstaller_folder / "dist" / "NfoForge.app" / "Contents" / "MacOS"
+        exe_path = dist / "NfoForge.app" / "Contents" / "MacOS" / "NfoForge"
     else:
-        exe_dir = pyinstaller_folder / "dist" / "NfoForge"
-    extension = get_executable_string_by_os()
-    exe_path = exe_dir / f"NfoForge{extension}"
-    cli_path = exe_dir / f"{CLI_EXECUTABLE}{extension}"
-    if exe_path.is_file() and cli_path.is_file() and build_job.returncode == 0:
-        success = (
-            f"\nSuccess!\nPath to executable: {exe_path}\nCommand line: {cli_path}"
-        )
+        exe_path = dist / "NfoForge" / f"NfoForge{extension}"
+    cli_path = dist / CLI_EXECUTABLE / f"{CLI_EXECUTABLE}{extension}"
 
     # change directory back to the original directory
     os.chdir(project_root)
 
     # bail out loudly rather than reporting success for a folder with no
     # executable in it - a failed PyInstaller run must fail the build (and CI)
-    if build_job.returncode != 0:
-        raise RuntimeError(f"PyInstaller failed with exit code {build_job.returncode}.")
+    if failed:
+        raise RuntimeError(f"PyInstaller failed for: {', '.join(failed)}")
     for path in (exe_path, cli_path):
         if not path.is_file():
             raise FileNotFoundError(
                 f"PyInstaller reported success but the expected executable is "
                 f"missing: {path}"
             )
+    return f"\nSuccess!\nDesktop app: {exe_path}\nCommand line: {cli_path}"
 
-    # Return a success message
-    return success
+
+def _make_spec(
+    name: str, entry: Path, options: list[str], hiddenimports: list[str]
+) -> Path:
+    """Generate `<name>.spec` in the current folder, naming `hiddenimports`."""
+    run(  # noqa: S603 - fixed argv, no shell, maintainer-run build script
+        ["uv", "run", "pyi-makespec", *options, "--name", name, str(entry)],  # noqa: S607 - "uv" resolved via PATH by design
+        check=True,
+    )
+    spec = Path.cwd() / f"{name}.spec"
+    modify_spec_file(spec, hiddenimports)
+    return spec
 
 
 if __name__ == "__main__":

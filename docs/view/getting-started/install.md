@@ -35,18 +35,20 @@ Run from [Release](#run-from-release) or [Run From Source](#run-from-source).
 
     ```powershell
     $env:URLLIB3_NO_OVERRIDE = "1"
-    uv sync --locked
+    uv sync --locked --extra gui
     ```
 
     On macOS or Linux:
 
     ```sh
-    URLLIB3_NO_OVERRIDE=1 uv sync --locked
+    URLLIB3_NO_OVERRIDE=1 uv sync --locked --extra gui
     ```
 
-    Use `uv sync --locked --all-extras` instead when you also need every optional
-    extra. `--all-extras` controls which optional dependencies are installed; it
-    does not replace the environment variable above.
+    The `gui` extra is Qt, which the desktop app needs. Leave it out on a
+    server where you only want the [command line](../cli/command-line.md). Use
+    `uv sync --locked --all-extras` instead when you also need every optional
+    extra. The extras control which optional dependencies are installed; they
+    do not replace the environment variable above.
 
 4. Start the application.
 
@@ -90,6 +92,8 @@ The desktop app and the command line use the same folder, so a profile set up in
 There are two ways to use a different folder. Both work for the desktop app and the command line alike.
 
 **Portable mode.** Create a folder named `data` beside the NfoForge executable (on macOS, beside `NfoForge.app`). That release then keeps everything in it instead. Nothing is written beside a release unless you create the folder, and removing it goes back to the usual location.
+
+The command line is a separate download. To have both use the same portable folder, unpack the command line into the same folder as the desktop app; their files do not overlap.
 
 !!! warning "Keep the `data` folder when you upgrade" In portable mode your settings live inside the release folder. When you replace a release, move its `data` folder into the new one rather than deleting the old folder.
 
