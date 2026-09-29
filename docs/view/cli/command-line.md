@@ -10,7 +10,7 @@ It runs the same steps the wizard does, reading the same config profiles, and as
 
 !!! note "Running it" A release ships the command line as its own download, `nfoforge-cli` (`nfoforge-cli.exe` on Windows), separate from the desktop app and without Qt, so it runs on a server with no display or graphics libraries. From a source checkout, run `uv run nfoforge ...` (or `uv run python -m nfoforge.cli ...`); the command line does not need the `gui` extra. This page writes `nfoforge` throughout; with a release, type `nfoforge-cli` instead.
 
-!!! warning "Plugins that use Qt" A plugin that imports Qt when it loads (usually because it adds a page to the desktop app's wizard) cannot load in the command line, which has no Qt. The command line reports it as not loaded and carries on without it.
+!!! warning "Plugins that use Qt" A plugin that imports Qt when it loads cannot load in the command line, which has no Qt; the command line reports it as not loaded and carries on without it. A plugin that adds a wizard page avoids this by [naming the page as a string](../plugins/plugin-system.md#wizard-pages), so its other capabilities still work here.
 
 ## First-Time Setup
 

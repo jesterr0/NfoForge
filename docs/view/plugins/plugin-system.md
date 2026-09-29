@@ -111,6 +111,21 @@ The full order is your plugins folder, then the examples shipped with the releas
 
 Wizard pages, token replacers, pre-upload processors, post-upload processors, metadata transformers, image host uploaders, and duplicate checkers are single-select capabilities. Jinja filters/functions, flat token filters, and custom edition/cut contributions from every valid plugin are combined while external plugins are enabled.
 
+### Wizard pages
+
+A wizard page is Qt, and the [command line](../cli/command-line.md) has no Qt. So name the page as a string, `"package.module:ClassName"`, rather than importing the class:
+
+```python
+plugin = PluginDefinition(
+    display_name="My Plugin",
+    version="1.0.0",
+    wizard_page="my_plugin.wizard_page:MyInputPage",
+    token_replacer=my_token_replacer,
+)
+```
+
+The desktop app imports it when it builds the wizard. The command line never does, so the plugin's other capabilities -- here the token replacer -- still load and run there. Passing the class itself still works, but it imports Qt as the plugin loads, and the command line then cannot load the plugin at all.
+
 ### Post-upload processors
 
 A post-upload processor runs once per tracker, after that tracker's upload and torrent- client injection have both finished (or failed). Unlike a pre-upload processor, it makes no decision -- the tracker's work is already done -- so it receives a `PostUploadRequest` and returns nothing.
