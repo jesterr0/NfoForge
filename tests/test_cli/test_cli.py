@@ -292,3 +292,18 @@ def test_jobs_answer_needs_a_value_without_a_terminal(tmp_path: Path) -> None:
 
     assert code == ExitCode.FAILED
     assert "nobody to ask" in err
+
+
+def test_an_unmigrated_data_folder_is_refused_naming_it(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # a source checkout and a release use different data folders, so the
+    # message has to say which one it means
+    data = tmp_path / "data"
+    data.mkdir()
+    monkeypatch.setenv("NFOFORGE_DATA_DIR", str(data))
+
+    with pytest.raises(CliError, match="one-time migration") as refused:
+        cli_app.load_config("testing")
+
+    assert str(data) in str(refused.value)

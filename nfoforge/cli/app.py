@@ -64,15 +64,18 @@ def load_config(
     nothing locks the file. A data folder the desktop app still has to migrate
     is refused rather than migrated from here.
     """
+    # named in both messages: a source checkout and a release use different
+    # data folders, so "the data folder" alone does not say which one
+    state_root = default_paths().state_root
     try:
-        if migration_pending(default_paths().state_root):
+        if migration_pending(state_root):
             raise CliError(
-                "NfoForge's data folder needs a one-time migration. Start the "
-                "desktop app once to run it, then try again."
+                f"NfoForge's data folder ({state_root}) needs a one-time "
+                "migration. Start the desktop app once to run it, then try again."
             )
     except LayoutRecordError as error:
         raise CliError(
-            f"NfoForge's data folder record cannot be read: {error}"
+            f"NfoForge's data folder record ({state_root}) cannot be read: {error}"
         ) from error
 
     try:
