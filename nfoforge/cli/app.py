@@ -10,11 +10,16 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+from nfoforge.backend.utils.working_dir import IS_FROZEN
 from nfoforge.config.config import ConfigManager
 from nfoforge.config.layout_version import LayoutRecordError, migration_pending
 from nfoforge.config.paths import default_paths
-from nfoforge.exceptions import ConfigError
+from nfoforge.exceptions import ConfigError, ProfileMigrationRequired
+from nfoforge.launcher import CLI_EXECUTABLE
 from nfoforge.plugins.loader import PluginLoader
+
+PROGRAM = CLI_EXECUTABLE if IS_FROZEN else "nfoforge"
+"""What the user typed to run this, for usage and the hints printed."""
 
 
 class CliError(Exception):
@@ -46,8 +51,7 @@ def choose_profile(name: str | None) -> str:
         return profiles[0]
     if not profiles:
         raise CliError(
-            "No config profile exists yet. Start NfoForge once to create one, "
-            "then configure your trackers."
+            f"No config profile exists yet. Create one with: {PROGRAM} setup"
         )
     raise CliError(
         "Several config profiles exist; choose one with --config: "
@@ -71,7 +75,7 @@ def load_config(
         if migration_pending(state_root):
             raise CliError(
                 f"NfoForge's data folder ({state_root}) needs a one-time "
-                "migration. Start the desktop app once to run it, then try again."
+                f"migration. Run it with: {PROGRAM} setup"
             )
     except LayoutRecordError as error:
         raise CliError(
@@ -80,6 +84,8 @@ def load_config(
 
     try:
         config = ConfigManager(choose_profile(profile), read_only=True)
+    except ProfileMigrationRequired as error:
+        raise CliError(f"{error} Upgrade it with: {PROGRAM} setup") from error
     except ConfigError as error:
         raise CliError(str(error)) from error
 

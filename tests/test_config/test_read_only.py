@@ -11,7 +11,7 @@ import tomlkit
 
 from nfoforge.config.config import ConfigManager
 from nfoforge.config.paths import ConfigPaths
-from nfoforge.exceptions import ConfigError
+from nfoforge.exceptions import ConfigError, ProfileMigrationRequired
 from tests.test_config.config_tree import build_config_paths
 
 
@@ -80,7 +80,7 @@ def test_profile_needing_migration_is_refused_and_left_alone(
     profile.write_text(tomlkit.dumps(document), encoding="utf-8")
     before = _snapshot(paths)
 
-    with pytest.raises(ConfigError, match="needs migrating"):
+    with pytest.raises(ProfileMigrationRequired, match="needs upgrading"):
         ConfigManager("other", paths, read_only=True)
 
     assert _snapshot(paths) == before

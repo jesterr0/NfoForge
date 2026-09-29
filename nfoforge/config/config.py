@@ -14,7 +14,11 @@ from nfoforge.config.models import AppConfig, ProgramConfig
 from nfoforge.config.operations import TypedTomlOperations
 from nfoforge.config.paths import ConfigPaths, default_paths
 from nfoforge.config.persistence import atomic_write_text
-from nfoforge.exceptions import ConfigError, ConfigSchemaError
+from nfoforge.exceptions import (
+    ConfigError,
+    ConfigSchemaError,
+    ProfileMigrationRequired,
+)
 from nfoforge.logger.nfo_forge_logger import LOG
 from nfoforge.plugins.manager import PluginManager
 
@@ -182,10 +186,9 @@ class ConfigManager(TypedTomlOperations):
                 and loaded_version < self.codec.SCHEMA_VERSION
             ):
                 if self.read_only:
-                    raise ConfigError(
+                    raise ProfileMigrationRequired(
                         f"Profile '{config_path.stem}' was written by an older "
-                        "NfoForge and needs migrating. Open it in NfoForge once "
-                        "to migrate it."
+                        "NfoForge and needs upgrading."
                     )
                 self._migration_error = None
                 migrated_document = self._try_migrate_profile(
