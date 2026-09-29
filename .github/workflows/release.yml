@@ -121,23 +121,25 @@ jobs:
         shell: bash
         run: uv run python build.py
 
-      - name: Package artifact (Windows)
+      # two downloads per platform: the desktop app, and the command line,
+      # which has no Qt and so runs on a server without graphics libraries
+      - name: Package artifacts (Windows)
         if: matrix.platform == 'windows'
         shell: pwsh
         run: |
           $tag = "${{ needs.resolve-release.outputs.tag }}"
           Compress-Archive -Path "pyinstaller_build_full/dist/NfoForge/*" -DestinationPath "NfoForge-$tag-windows.zip"
-          echo "ARCHIVE_PATH=NfoForge-$tag-windows.zip" >> $env:GITHUB_ENV
+          Compress-Archive -Path "pyinstaller_build_full/dist/nfoforge-cli/*" -DestinationPath "NfoForge-CLI-$tag-windows.zip"
 
-      - name: Package artifact (Linux)
+      - name: Package artifacts (Linux)
         if: matrix.platform == 'linux'
         shell: bash
         run: |
           TAG="${{ needs.resolve-release.outputs.tag }}"
           tar -czf "NfoForge-$TAG-linux.tar.gz" -C "pyinstaller_build_full/dist/NfoForge" .
-          echo "ARCHIVE_PATH=NfoForge-$TAG-linux.tar.gz" >> "$GITHUB_ENV"
+          tar -czf "NfoForge-CLI-$TAG-linux.tar.gz" -C "pyinstaller_build_full/dist/nfoforge-cli" .
 
-      - name: Package artifact (macOS)
+      - name: Package artifacts (macOS)
         if: matrix.platform == 'macos'
         shell: bash
         run: |
@@ -145,18 +147,27 @@ jobs:
           ditto -c -k --sequesterRsrc --keepParent \
             "pyinstaller_build_full/dist/NfoForge.app" \
             "NfoForge-$TAG-macos.zip"
-          echo "ARCHIVE_PATH=NfoForge-$TAG-macos.zip" >> "$GITHUB_ENV"
+          ditto -c -k --sequesterRsrc \
+            "pyinstaller_build_full/dist/nfoforge-cli" \
+            "NfoForge-CLI-$TAG-macos.zip"
 
-      - name: Upload workflow artifact
+      - name: Upload workflow artifacts
         uses: actions/upload-artifact@v4
         with:
           name: NfoForge-${{ needs.resolve-release.outputs.tag }}-${{ matrix.platform }}
-          path: ${{ env.ARCHIVE_PATH }}
+          path: |
+            NfoForge-*.zip
+            NfoForge-*.tar.gz
 
       - name: Upload to release
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release upload "${{ needs.resolve-release.outputs.tag }}" "$ARCHIVE_PATH" \
+          # each platform makes either zips or tarballs; drop the pattern that
+          # matched nothing rather than passing it through literally
+          shopt -s nullglob
+          archives=(NfoForge-*.zip NfoForge-*.tar.gz)
+          gh release upload "${{ needs.resolve-release.outputs.tag }}" \
+            "${archives[@]}" \
             --repo "${{ github.repository }}" --clobber
