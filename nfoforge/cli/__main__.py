@@ -1,6 +1,4 @@
-import sys
-
-from nfoforge.cli.main import main
+from nfoforge.launcher import cli
 
 if __name__ == "__main__":
-    sys.exit(main())
+    cli()

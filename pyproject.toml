@@ -69,10 +69,10 @@ build = [
 docs = ["mkdocs>=1.6.1", "mkdocs-material>=9.6.11", "pymdown-extensions"]
 
 [project.scripts]
-nfoforge = "nfoforge.cli.main:main"
+nfoforge = "nfoforge.launcher:cli"
 
 [project.gui-scripts]
-nfoforge-gui = "nfoforge.frontend.app:main"
+nfoforge-gui = "nfoforge.launcher:gui"
 
 [build-system]
 requires = ["hatchling"]

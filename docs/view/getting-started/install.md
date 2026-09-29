@@ -82,3 +82,24 @@ NfoForge keeps your profiles, templates, cookies, plugins, tools and saved jobs 
 | Linux   | `~/.local/share/nfoforge`                |
 
 A source checkout uses `nfoforge-dev` in the same place, so running from source never shares data with an installed release.
+
+The desktop app and the command line use the same folder, so a profile set up in one works in the other.
+
+### Keeping Them Somewhere Else
+
+There are two ways to use a different folder. Both work for the desktop app and the command line alike.
+
+**Portable mode.** Create a folder named `data` beside the NfoForge executable (on macOS, beside `NfoForge.app`). That release then keeps everything in it instead. Nothing is written beside a release unless you create the folder, and removing it goes back to the usual location.
+
+!!! warning "Keep the `data` folder when you upgrade" In portable mode your settings live inside the release folder. When you replace a release, move its `data` folder into the new one rather than deleting the old folder.
+
+**For one launch.** Pass `--data-dir PATH`:
+
+```sh
+NfoForge --data-dir D:\nfoforge-data
+nfoforge-cli --data-dir /config upload ...
+```
+
+This is the one to use in a container or a script. It takes priority over portable mode, and the folder is created if it does not exist.
+
+Either way, the folder starts empty. To bring your existing settings across, copy the contents of your current data folder into it before the first launch.

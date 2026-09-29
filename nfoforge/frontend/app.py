@@ -23,7 +23,6 @@ if not IS_FROZEN:
 from collections.abc import Callable
 from datetime import datetime
 import faulthandler
-from multiprocessing import freeze_support as mp_freeze_support
 import sys
 import threading
 import traceback
@@ -54,7 +53,7 @@ from nfoforge.config.layout_apply import (
 )
 from nfoforge.config.layout_migration import LegacyInstall
 from nfoforge.config.layout_version import LayoutRecordError, migration_pending
-from nfoforge.config.paths import AppPaths, default_paths
+from nfoforge.config.paths import DATA_DIR_OPTION, AppPaths, default_paths
 from nfoforge.exceptions import ConfigError, ConfigSchemaError
 from nfoforge.frontend.custom_widgets.scrollable_error_dialog import (
     ScrollableErrorDialog,
@@ -837,27 +836,41 @@ class NfoForge:
                 self.app.quit()
 
 
-def arg_parse() -> tuple[str | None, str | None]:
-    config_arg = None
-    message_arg = None
-    args = sys.argv
-    length = len(args)
-    if length == 2 and args[1] in ("--help", "-h", "help", "h"):
-        message_arg = (
-            "-c/--config <config_file> (Loads the program with desired config)"
-            "\n-h/--help (Displays this message)"
-        )
-    elif length == 3 and args[1] in ("--config", "-c", "config", "c"):
-        config_arg = args[2]
-        if config_arg.lower().endswith(".toml"):
-            config_arg = config_arg[:-5]
-    return config_arg, message_arg
+HELP_TEXT = (
+    "-c/--config <config_file> (Loads the program with desired config)"
+    f"\n{DATA_DIR_OPTION} <folder> (Uses this data folder instead of the usual one)"
+    "\n-h/--help (Displays this message)"
+)
+
+
+def arg_parse(argv: list[str] | None = None) -> tuple[str | None, str | None]:
+    """The profile named on the command line, and a message to show instead of
+    starting, if any.
+
+    Hand-rolled rather than argparse because a windowed app has no console to
+    print usage to; the message is shown in a dialog. `--data-dir` was already
+    applied by the launcher and is only stepped over here.
+    """
+    args = sys.argv[1:] if argv is None else argv
+    config_arg: str | None = None
+    index = 0
+    while index < len(args):
+        argument = args[index]
+        if argument in ("--help", "-h", "help", "h"):
+            return None, HELP_TEXT
+        if argument in ("--config", "-c", "config", "c") and index + 1 < len(args):
+            config_arg = args[index + 1]
+            if config_arg.lower().endswith(".toml"):
+                config_arg = config_arg[:-5]
+            index += 2
+        elif argument == DATA_DIR_OPTION:
+            index += 2
+        else:
+            index += 1
+    return config_arg, None
 
 
 def main() -> None:
-    """Launch the desktop app. The `nfoforge-gui` command and the frozen build
-    both start here."""
-    if IS_FROZEN:
-        # required for multiprocessing support when the app is frozen (exe)
-        mp_freeze_support()
+    """Launch the desktop app. Reached through `nfoforge.launcher`, which has
+    already chosen the data folder."""
     NfoForge(arg_parse())

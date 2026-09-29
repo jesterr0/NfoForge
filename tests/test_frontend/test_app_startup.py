@@ -676,3 +676,28 @@ def test_the_worker_always_gets_an_answer_even_if_the_dialog_fails(
         app._ask_where_to_import(None)
 
     assert answers == [None]
+
+
+@pytest.mark.parametrize(
+    ("argv", "expected"),
+    [
+        ([], (None, None)),
+        (["-c", "testing"], ("testing", None)),
+        (["-c", "testing.TOML"], ("testing", None)),
+        (["--data-dir", "D:/nf", "-c", "testing"], ("testing", None)),
+        (["-c", "testing", "--data-dir", "D:/nf"], ("testing", None)),
+        (["--data-dir", "D:/nf"], (None, None)),
+    ],
+)
+def test_arg_parse_reads_the_profile_and_steps_over_the_data_dir(
+    argv: list[str], expected: tuple[str | None, str | None]
+) -> None:
+    assert gui_app.arg_parse(argv) == expected
+
+
+def test_arg_parse_help_names_every_option() -> None:
+    _config, message = gui_app.arg_parse(["-h"])
+
+    assert message is not None
+    assert "--config" in message
+    assert "--data-dir" in message

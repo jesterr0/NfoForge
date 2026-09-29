@@ -6,6 +6,7 @@ executables under the names the launcher expects, and the launcher runs the
 right interface for each name.
 """
 
+from pathlib import Path
 import re
 
 import pytest
@@ -13,6 +14,7 @@ import pytest
 from build import CONSOLE_EXECUTABLES, add_console_executables
 from nfoforge import launcher
 import nfoforge.cli.main
+from nfoforge.config.paths import default_paths
 import nfoforge.frontend.app
 
 # the shape `pyi-makespec -w --name NfoForge` writes
@@ -74,6 +76,13 @@ def test_the_launcher_tells_the_executables_apart(executable: str, cli: bool) ->
     assert launcher.is_cli(executable) is cli
 
 
+@pytest.fixture(autouse=True)
+def plain_argv(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No `--data-dir` unless a test gives one, and none left behind after."""
+    monkeypatch.setattr(launcher.sys, "argv", ["nfoforge"])
+    monkeypatch.setattr("nfoforge.config.paths._chosen_data_dir", None)
+
+
 def test_the_command_line_executable_runs_the_command_line(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -99,3 +108,27 @@ def test_any_other_executable_runs_the_desktop_app(
     launcher.main()
 
     assert started == [True]
+
+
+@pytest.mark.parametrize("entry", ["cli", "gui"])
+def test_the_data_dir_is_chosen_before_the_interface_is_imported(
+    entry: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The logger opens its file in the data folder as it is imported, so the
+    folder has to be settled before either interface is."""
+    seen: list[Path] = []
+
+    def record() -> int:
+        seen.append(default_paths().state_root)
+        return 0
+
+    monkeypatch.setattr(launcher.sys, "argv", ["nfoforge", "--data-dir", str(tmp_path)])
+    monkeypatch.setattr(nfoforge.cli.main, "main", record)
+    monkeypatch.setattr(nfoforge.frontend.app, "main", record)
+
+    try:
+        getattr(launcher, entry)()
+    except SystemExit:
+        pass
+
+    assert seen == [tmp_path.resolve()]

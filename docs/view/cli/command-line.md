@@ -20,6 +20,12 @@ nfoforge --config main upload ...
 
 Set up trackers, templates, image hosts and torrent clients in the desktop app first.
 
+Profiles are read from the same data folder the desktop app uses. To use another one, give `--data-dir` before the command, or run a portable release; see [Where Your Settings Are Kept](../getting-started/install.md#where-your-settings-are-kept).
+
+```bash
+nfoforge --data-dir /config --config main upload ...
+```
+
 ## Uploading
 
 ```bash

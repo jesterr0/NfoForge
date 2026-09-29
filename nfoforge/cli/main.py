@@ -27,6 +27,7 @@ from nfoforge.cli.app import CliError, load_config
 from nfoforge.cli.console import ConsoleSink, TerminalPrompter, is_interactive
 from nfoforge.cli.exit_codes import ExitCode
 from nfoforge.config.config import ConfigManager
+from nfoforge.config.paths import DATA_DIR_OPTION
 from nfoforge.core.metadata.resolve import run_media_search
 from nfoforge.core.workflow.decisions import Decision
 from nfoforge.core.workflow.engine import Workflow, WorkflowResult
@@ -81,6 +82,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--version", action="version", version=str(__version__))
     parser.add_argument(
         "-c", "--config", metavar="PROFILE", help="Config profile to use."
+    )
+    # read by the launcher before anything is imported; declared here for help
+    # and so it is accepted
+    parser.add_argument(
+        DATA_DIR_OPTION,
+        metavar="PATH",
+        help="Use this data folder (profiles, templates, plugins, jobs) instead "
+        "of the usual one.",
     )
     parser.add_argument(
         "-q", "--quiet", action="store_true", help="Report only the outcome."
