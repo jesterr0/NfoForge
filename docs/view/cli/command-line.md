@@ -10,6 +10,35 @@ It runs the same steps the wizard does, reading the same config profiles, and as
 
 !!! note "Running it" A release ships the command line as `nfoforge-cli` (`nfoforge-cli.exe` on Windows), beside the `NfoForge` executable. From a source checkout, run `uv run nfoforge ...` (or `uv run python -m nfoforge.cli ...`). This page writes `nfoforge` throughout; with a release, type `nfoforge-cli` instead.
 
+## First-Time Setup
+
+If you have used the desktop app on this machine, there is nothing to do. Otherwise, run:
+
+```bash
+nfoforge setup
+```
+
+It does what the desktop app does the first time it starts:
+
+1. Sets up the data folder, offering to import the settings of a previous NfoForge installation. The previous installation is copied from, never changed.
+2. Creates a profile, if there is none.
+3. Upgrades any profile written by an older NfoForge, keeping a copy of the old one in `old_configs`.
+4. Offers to update templates that use tokens which have since been renamed, keeping a copy of each.
+
+Each step does nothing when there is nothing to do, so it is safe to run again, for example after an upgrade. Other commands tell you when it is needed.
+
+Without a terminal to ask at, say what to import up front:
+
+| Option | What it does |
+| --- | --- |
+| `--import-from PATH` | Import from the previous installation in this folder. On a data folder already set up, it imports the way **Settings** does: nothing is overwritten, and anything that clashes is set aside in `migration-conflicts` |
+| `--no-import` | Start fresh |
+| `--update-templates` | Update templates without asking |
+
+```bash
+nfoforge --data-dir /config setup --no-import
+```
+
 ## Profiles
 
 Every command reads a config profile, read-only, so it is safe to run while the desktop app is open. With one profile it is used automatically; with several, name one:
@@ -18,7 +47,7 @@ Every command reads a config profile, read-only, so it is safe to run while the 
 nfoforge --config main upload ...
 ```
 
-Set up trackers, templates, image hosts and torrent clients in the desktop app first.
+Set up trackers, templates, image hosts and torrent clients in the desktop app, or by editing the profile's `.toml` file in `config/profiles` inside the data folder.
 
 Profiles are read from the same data folder the desktop app uses. To use another one, give `--data-dir` before the command, or run a portable release; see [Where Your Settings Are Kept](../getting-started/install.md#where-your-settings-are-kept).
 

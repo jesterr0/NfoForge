@@ -21,6 +21,11 @@ class ConfigSchemaError(ConfigError):
         self.config_path = config_path
 
 
+class ProfileMigrationRequired(ConfigError):
+    """A profile written by an older NfoForge was opened read-only, which cannot
+    upgrade it"""
+
+
 class MediaParsingError(NfoForgeError):
     """Exception for media parsing errors"""
 

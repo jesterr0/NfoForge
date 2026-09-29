@@ -22,23 +22,20 @@ from nfoforge.backend.jobs import JobListing, list_jobs, load_job
 from nfoforge.backend.media_search import MediaSearchBackEnd
 from nfoforge.backend.upload_retry import TrackerRunOutcome
 from nfoforge.backend.utils.title_inference import MediaTitleInferer
-from nfoforge.backend.utils.working_dir import IS_FROZEN
-from nfoforge.cli.app import CliError, load_config
+from nfoforge.cli.app import PROGRAM, CliError, load_config
 from nfoforge.cli.console import ConsoleSink, TerminalPrompter, is_interactive
 from nfoforge.cli.exit_codes import ExitCode
+from nfoforge.cli.setup import SetupOptions, run_setup
 from nfoforge.config.config import ConfigManager
-from nfoforge.config.paths import DATA_DIR_OPTION
+from nfoforge.config.paths import DATA_DIR_OPTION, default_paths
 from nfoforge.core.metadata.resolve import run_media_search
 from nfoforge.core.workflow.decisions import Decision
 from nfoforge.core.workflow.engine import Workflow, WorkflowResult
 from nfoforge.core.workflow.presets import PresetError, build_request, find_preset
 from nfoforge.core.workflow.steps import WorkflowError, collect_media_files
 from nfoforge.enums.automation import AutomationMode, JobState
-from nfoforge.launcher import CLI_EXECUTABLE
 from nfoforge.version import __version__
 
-PROGRAM = CLI_EXECUTABLE if IS_FROZEN else "nfoforge"
-"""What the user typed to run this, for usage and the hints printed."""
 _FAILED_OUTCOMES = {
     TrackerRunOutcome.UPLOAD_FAILED,
     TrackerRunOutcome.INJECTION_FAILED,
@@ -171,6 +168,29 @@ def build_parser() -> argparse.ArgumentParser:
         action="append",
         metavar="ID=VALUE",
         help="Answer a question in advance, by decision id. Repeatable.",
+    )
+
+    setup = commands.add_parser(
+        "setup",
+        help="Prepare the data folder and profiles, as the desktop app does the "
+        "first time it starts. Safe to run again.",
+    )
+    source = setup.add_mutually_exclusive_group()
+    source.add_argument(
+        "--import-from",
+        type=Path,
+        metavar="PATH",
+        help="Import settings from this previous NfoForge installation.",
+    )
+    source.add_argument(
+        "--no-import",
+        action="store_true",
+        help="Start fresh instead of importing a previous installation.",
+    )
+    setup.add_argument(
+        "--update-templates",
+        action="store_true",
+        help="Update templates that use renamed tokens, without asking.",
     )
 
     search = commands.add_parser("search", help="Show what TMDB matches a release.")
@@ -433,6 +453,28 @@ def cmd_jobs(
     return report(result, out, err, sink.shown_errors)
 
 
+def cmd_setup(args: argparse.Namespace, out: TextIO) -> ExitCode:
+    """Runs without a profile: making one may be what it is for."""
+    interactive = is_interactive(no_input=args.no_input)
+
+    def ask(prompt: str) -> str:
+        out.write(prompt)
+        out.flush()
+        return sys.stdin.readline()
+
+    run_setup(
+        SetupOptions(
+            import_from=args.import_from,
+            no_import=args.no_import,
+            update_templates=args.update_templates,
+        ),
+        default_paths(),
+        out,
+        ask if interactive else None,
+    )
+    return ExitCode.OK
+
+
 COMMANDS = {"upload": cmd_upload, "search": cmd_search, "jobs": cmd_jobs}
 
 
@@ -449,6 +491,8 @@ def main(
         stderr.write(f"warning: {text}\n")
 
     try:
+        if args.command == "setup":
+            return int(cmd_setup(args, stdout))
         config = load_config(args.config, warn=warn)
         return int(COMMANDS[args.command](args, config, stdout, stderr))
     except (CliError, PresetError) as error:
