@@ -1,4 +1,4 @@
-from nfoforge.frontend.app import main
+from nfoforge.launcher import gui
 
 if __name__ == "__main__":
-    main()
+    gui()

@@ -9,6 +9,7 @@ import sys
 from stdlib_list import stdlib_list
 
 from nfoforge.backend.utils.get_os_executable_ext import get_executable_string_by_os
+from nfoforge.launcher import CLI_EXECUTABLE
 
 # Modules that exist for external plugins to import rather than for NfoForge's
 # own use. Nothing here imports them, so PyInstaller's walk from the entry
@@ -64,44 +65,46 @@ def modify_spec_file(spec_file_path: Path, hiddenimports: list):
         spec_file.write(spec_content)
 
 
-def modify_spec_file_for_dual_exe(spec_file_path: Path):
-    """Modify the PyInstaller spec file to create two executables from a single bundle."""
-    with open(spec_file_path) as spec_file:
-        spec_content = spec_file.read()
+CONSOLE_EXECUTABLES: dict[str, str] = {
+    # the desktop app with a console attached, for reading its log live
+    "exe_debug": "NfoForge-debug",
+    # the command line; `nfoforge.launcher` runs it from this file name
+    "exe_cli": CLI_EXECUTABLE,
+}
 
+
+def add_console_executables(spec_content: str) -> str:
+    """Add the console executables to a generated spec.
+
+    Each is a copy of the desktop app's EXE over the same analysis and bundle,
+    renamed and given a console. Sharing the analysis is what lets the command
+    line load any plugin the desktop app can, Qt included.
+    """
     # regex pattern to match multi-line EXE definitions
     exe_pattern = re.compile(r"(exe\s*=\s*EXE\s*\(\s*\n(?:[^)]*\n)*?\))", re.MULTILINE)
 
     matches = list(exe_pattern.finditer(spec_content))
     if not matches:
         raise ValueError("Could not find EXE definition in the spec file.")
-
-    # extract original EXE block
     original_exe = matches[0].group(1)
 
-    # modify the original EXE block to create a debug version
-    debug_exe = (
-        original_exe.replace("exe = ", "exe_debug = ")
+    copies = [
+        original_exe.replace("exe = ", f"{variable} = ")
         .replace("console=False", "console=True")
-        .replace("name='NfoForge'", "name='NfoForge-debug'")
+        .replace("name='NfoForge'", f"name='{name}'")
+        for variable, name in CONSOLE_EXECUTABLES.items()
+    ]
+    spec_content = spec_content.replace(
+        original_exe, "\n".join([original_exe, *copies])
     )
 
-    # insert the debug EXE definition after the original
-    modified_spec_content = spec_content.replace(
-        original_exe, f"{original_exe}\n{debug_exe}"
-    )
-
-    # regex pattern to find COLLECT and insert exe_debug
+    # list them in COLLECT beside the original, so they share its bundle
     collect_pattern = re.compile(r"(coll\s*=\s*COLLECT\s*\(\s*\n\s*exe,)", re.MULTILINE)
-
-    # modify COLLECT to include exe_debug
-    modified_spec_content = collect_pattern.sub(
-        r"\1\n    exe_debug,", modified_spec_content
-    )
-
-    # write back the modified spec file
-    with open(spec_file_path, "w") as spec_file:
-        spec_file.write(modified_spec_content)
+    added = "".join(f"\n    {variable}," for variable in CONSOLE_EXECUTABLES)
+    spec_content, found = collect_pattern.subn(rf"\1{added}", spec_content)
+    if not found:
+        raise ValueError("Could not find COLLECT definition in the spec file.")
+    return spec_content
 
 
 def get_site_packages() -> Path:
@@ -171,7 +174,7 @@ def build_app(folder_name: str, include_std_lib: bool, debug: bool = False):
     pyinstaller_folder.mkdir(exist_ok=True)
 
     # define paths before changing directory
-    entry_script = project_root / "nfoforge" / "frontend" / "__main__.py"
+    entry_script = project_root / "nfoforge" / "launcher.py"
     icon_path = project_root / "assets" / "images" / "hammer_merged.ico"
     if platform.system() == "Darwin":
         icns_candidate = project_root / "assets" / "images" / "hammer_merged.icns"
@@ -200,6 +203,12 @@ def build_app(folder_name: str, include_std_lib: bool, debug: bool = False):
             f"--add-data={assets}:assets",
             f"--add-data={babel_fish}:./babelfish",
             f"--add-data={guessit}:./guessit",
+            # setuptools is in the build environment, so pkg_resources gets
+            # collected and a PyInstaller startup hook imports it at every
+            # launch, printing a deprecation warning to the command line's
+            # console. Nothing NfoForge runs uses it.
+            "--exclude-module",
+            "pkg_resources",
             "--contents-directory",
             "bundle",
             "--name",
@@ -215,8 +224,11 @@ def build_app(folder_name: str, include_std_lib: bool, debug: bool = False):
     # name the modules PyInstaller's own import walk cannot reach
     modify_spec_file(spec_file_path, spec_hiddenimports(include_std_lib))
 
-    # modify the generated spec file to include two executables
-    modify_spec_file_for_dual_exe(spec_file_path)
+    # add the debug and command line executables beside the desktop app
+    spec_file_path.write_text(
+        add_console_executables(spec_file_path.read_text(encoding="utf-8")),
+        encoding="utf-8",
+    )
 
     # run pyinstaller
     build_job = run(  # noqa: S603 - fixed argv, no shell, maintainer-run build script
@@ -228,25 +240,16 @@ def build_app(folder_name: str, include_std_lib: bool, debug: bool = False):
     if platform.system() == "Darwin":
         # PyInstaller's windowed (-w) onedir build on macOS wraps the output
         # into an .app bundle instead of the flat folder Windows/Linux produce
-        exe_path = (
-            project_root
-            / pyinstaller_folder
-            / "dist"
-            / "NfoForge.app"
-            / "Contents"
-            / "MacOS"
-            / "NfoForge"
-        )
+        exe_dir = pyinstaller_folder / "dist" / "NfoForge.app" / "Contents" / "MacOS"
     else:
-        exe_path = (
-            project_root
-            / pyinstaller_folder
-            / "dist"
-            / "NfoForge"
-            / f"NfoForge{get_executable_string_by_os()}"
+        exe_dir = pyinstaller_folder / "dist" / "NfoForge"
+    extension = get_executable_string_by_os()
+    exe_path = exe_dir / f"NfoForge{extension}"
+    cli_path = exe_dir / f"{CLI_EXECUTABLE}{extension}"
+    if exe_path.is_file() and cli_path.is_file() and build_job.returncode == 0:
+        success = (
+            f"\nSuccess!\nPath to executable: {exe_path}\nCommand line: {cli_path}"
         )
-    if exe_path.is_file() and build_job.returncode == 0:
-        success = f"\nSuccess!\nPath to executable: {str(exe_path)}"
 
     # change directory back to the original directory
     os.chdir(project_root)
@@ -255,11 +258,12 @@ def build_app(folder_name: str, include_std_lib: bool, debug: bool = False):
     # executable in it - a failed PyInstaller run must fail the build (and CI)
     if build_job.returncode != 0:
         raise RuntimeError(f"PyInstaller failed with exit code {build_job.returncode}.")
-    if not exe_path.is_file():
-        raise FileNotFoundError(
-            f"PyInstaller reported success but the expected executable is "
-            f"missing: {exe_path}"
-        )
+    for path in (exe_path, cli_path):
+        if not path.is_file():
+            raise FileNotFoundError(
+                f"PyInstaller reported success but the expected executable is "
+                f"missing: {path}"
+            )
 
     # Return a success message
     return success

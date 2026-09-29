@@ -16,11 +16,14 @@ import pytest
 from nfoforge.config.paths import (
     DATA_DIR_ENV_VAR,
     DEV_PLUGINS_ENV_VAR,
+    PORTABLE_DIR_NAME,
     AppPaths,
     ConfigPaths,
+    data_dir_from_argv,
     default_paths,
     dev_plugin_dirs,
     resolve_data_root,
+    use_data_dir,
 )
 
 
@@ -405,3 +408,92 @@ def test_development_folders_are_honoured_by_the_debug_build(
     monkeypatch.setenv(DEV_PLUGINS_ENV_VAR, str(tmp_path / "checkout"))
 
     assert dev_plugin_dirs() == (tmp_path / "checkout",)
+
+
+# --------------------------------------------------------------------------
+# choosing the data folder: --data-dir, portable, per-user
+# --------------------------------------------------------------------------
+@pytest.fixture
+def no_chosen_data_dir(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Undo whatever `use_data_dir` sets, however the test ends."""
+    monkeypatch.setattr("nfoforge.config.paths._chosen_data_dir", None)
+
+
+def _release(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, exe: str) -> Path:
+    """Pretend to be a frozen release whose executable is at `exe`."""
+    executable = tmp_path / exe
+    executable.parent.mkdir(parents=True, exist_ok=True)
+    executable.write_bytes(b"")
+    monkeypatch.setattr("nfoforge.config.paths.IS_FROZEN", True)
+    monkeypatch.setattr(sys, "executable", str(executable))
+    return executable
+
+
+@pytest.mark.parametrize(
+    ("argv", "expected"),
+    [
+        (["--data-dir", "D:/nf"], Path("D:/nf")),
+        (["-c", "x", "--data-dir=D:/nf", "upload"], Path("D:/nf")),
+        (["upload", "x.mkv"], None),
+        (["--data-dir"], None),
+    ],
+)
+def test_the_data_dir_option_is_read_from_the_arguments(
+    argv: list[str], expected: Path | None
+) -> None:
+    assert data_dir_from_argv(argv) == expected
+
+
+@pytest.mark.usefixtures("no_chosen_data_dir")
+def test_a_chosen_data_dir_wins_even_in_a_released_build(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Typed for this launch, so unlike the environment variable it is honoured.
+
+    It is as deliberate as naming the file to open, and it is what a container
+    or a script needs: `nfoforge-cli --data-dir /config ...`.
+    """
+    release = _release(tmp_path, monkeypatch, "release/NfoForge.exe")
+    (release.parent / PORTABLE_DIR_NAME).mkdir()
+
+    use_data_dir(tmp_path / "chosen")
+
+    assert default_paths().state_root == tmp_path / "chosen"
+
+
+@pytest.mark.usefixtures("no_chosen_data_dir")
+def test_a_data_folder_beside_a_release_makes_it_portable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    release = _release(tmp_path, monkeypatch, "release/NfoForge.exe")
+    portable = release.parent / PORTABLE_DIR_NAME
+
+    assert resolve_data_root() == Path(
+        user_data_dir(appname="nfoforge", appauthor=False)
+    )
+    portable.mkdir()
+    assert resolve_data_root() == portable
+
+
+@pytest.mark.usefixtures("no_chosen_data_dir")
+def test_a_portable_mac_release_keeps_its_data_beside_the_app(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The executable is inside the `.app`; the data folder sits beside it."""
+    _release(tmp_path, monkeypatch, "release/NfoForge.app/Contents/MacOS/NfoForge")
+    portable = tmp_path / "release" / PORTABLE_DIR_NAME
+    portable.mkdir()
+
+    assert resolve_data_root() == portable
+
+
+@pytest.mark.usefixtures("no_chosen_data_dir")
+def test_a_source_checkout_is_never_portable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("nfoforge.config.paths.IS_FROZEN", False)
+    monkeypatch.delenv(DATA_DIR_ENV_VAR, raising=False)
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / PORTABLE_DIR_NAME).mkdir()
+
+    assert resolve_data_root().name == "nfoforge-dev"

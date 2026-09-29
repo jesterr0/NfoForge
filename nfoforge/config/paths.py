@@ -1,3 +1,4 @@
+from collections.abc import Sequence
 from dataclasses import dataclass
 from os import environ, pathsep
 from pathlib import Path
@@ -17,6 +18,11 @@ DATA_DIR_ENV_VAR = "NFOFORGE_DATA_DIR"
 Honoured from source and by the debug executable, refused by a released build.
 Point it at a *copy* of an installation to rehearse a migration against real
 data; pointing it at the original defeats the purpose of rehearsing.
+
+A user who wants their data somewhere else uses `--data-dir` or a portable
+`data` folder instead. Both are chosen visibly -- typed for the launch, or
+created beside the release -- where an environment variable can be set by
+anything that starts the process.
 """
 
 DEV_PLUGINS_ENV_VAR = "NFOFORGE_DEV_PLUGINS"
@@ -261,13 +267,83 @@ def dev_plugin_dirs() -> tuple[Path, ...]:
     return tuple(Path(entry) for entry in value.split(pathsep) if entry.strip())
 
 
-def resolve_data_root() -> Path:
-    """NfoForge's own per-user directory for this process.
+DATA_DIR_OPTION = "--data-dir"
+"""The command line option that names the data folder for one launch."""
 
-    A source run gets a different directory from an installed one, because a
-    developer has both and they would otherwise share every profile, credential
-    and saved job -- with the source run offering to migrate the data the
-    installed copy is using. Isolating by default leaves no variable to
+PORTABLE_DIR_NAME = "data"
+"""A folder of this name beside a release makes that release portable."""
+
+_chosen_data_dir: Path | None = None
+"""What `--data-dir` named for this process, set by the launcher."""
+
+
+def data_dir_from_argv(argv: Sequence[str]) -> Path | None:
+    """The folder `--data-dir PATH` (or `--data-dir=PATH`) names in `argv`.
+
+    Read by the launcher before anything else is imported: the logger opens its
+    file in the data folder as it is imported, so by the time an interface
+    parses its own arguments the folder has already been used. The interfaces
+    still declare the option, for their help and so it is not rejected.
+    """
+    for index, argument in enumerate(argv):
+        if argument == DATA_DIR_OPTION:
+            if index + 1 < len(argv):
+                return Path(argv[index + 1])
+            return None
+        if argument.startswith(f"{DATA_DIR_OPTION}="):
+            return Path(argument.partition("=")[2])
+    return None
+
+
+def use_data_dir(path: Path | None) -> None:
+    """Run this process against `path` instead of the usual data folder."""
+    global _chosen_data_dir
+    _chosen_data_dir = path.expanduser().resolve() if path is not None else None
+
+
+def release_dir() -> Path | None:
+    """The folder a frozen release was unpacked into, or None from source.
+
+    The executable's own folder on Windows and Linux. On macOS the executable
+    sits inside `NfoForge.app/Contents/MacOS`, and the release is the folder
+    holding the `.app`.
+    """
+    if not IS_FROZEN:
+        return None
+    executable = Path(sys.executable).resolve()
+    for parent in executable.parents:
+        if parent.suffix == ".app":
+            return parent.parent
+    return executable.parent
+
+
+def portable_data_dir() -> Path | None:
+    """The `data` folder beside this release, if the user created one.
+
+    Portable mode is opted into by creating the folder, the way portable
+    releases of other applications work, so nothing is ever written beside a
+    release that did not ask for it. Only a release can be portable: a source
+    checkout already keeps its data apart, in its own per-user folder.
+    """
+    release = release_dir()
+    if release is None:
+        return None
+    candidate = release / PORTABLE_DIR_NAME
+    return candidate if candidate.is_dir() else None
+
+
+def resolve_data_root() -> Path:
+    """NfoForge's data folder for this process.
+
+    In order: the folder `--data-dir` named, the development override, a
+    portable `data` folder beside the release, and otherwise the per-user
+    folder. The first two are explicit for this launch; the portable folder
+    is explicit for this copy of NfoForge.
+
+    A source run gets a different per-user folder from an installed one,
+    because a developer has both and they would otherwise share every profile,
+    credential and saved job -- with the source run offering to migrate the data
+    the installed copy is using. Isolating by default leaves no variable to
     remember and no way for forgetting one to reach real data.
 
     Named separately from `default_working_dir` because the two are the same
@@ -276,9 +352,14 @@ def resolve_data_root() -> Path:
     be able to delete, which is not the same question as where a run's output
     goes.
     """
+    if _chosen_data_dir is not None:
+        return _chosen_data_dir
     override = _override()
     if override is not None:
         return override
+    portable = portable_data_dir()
+    if portable is not None:
+        return portable
     appname = "nfoforge" if IS_FROZEN else "nfoforge-dev"
     return Path(user_data_dir(appname=appname, appauthor=False))
 
