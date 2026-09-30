@@ -49,6 +49,7 @@ from nfoforge.frontend.wizards.series_match import SeriesMatch
 from nfoforge.frontend.wizards.trackers import TrackersPage
 from nfoforge.frontend.wizards.wizard_base_page import BaseWizardPage, DummyWizardPage
 from nfoforge.logger.nfo_forge_logger import LOG
+from nfoforge.plugins.manager import resolve_wizard_page
 
 if TYPE_CHECKING:
     from nfoforge.frontend.windows.main_window import MainWindow
@@ -676,7 +677,8 @@ class MainWindowWizard(QWizard):
                 )
                 if record and record.definition.wizard_page:
                     # insert the plugin wizard page into the correct spot
-                    plugin_wizard = record.definition.wizard_page(
+                    page_class = resolve_wizard_page(record.definition.wizard_page)
+                    plugin_wizard = page_class(
                         self.config, self.context, self.main_window
                     )
                     self._PAGES.pop(WizardPages.PLUGIN_INPUT_PAGE.value - 1)

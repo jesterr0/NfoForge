@@ -195,7 +195,14 @@ class PluginDefinition:
     version: str
     api_version: int = PLUGIN_API_VERSION
     description: str = ""
-    wizard_page: type[BaseWizardPage] | None = None
+    wizard_page: type[BaseWizardPage] | str | None = None
+    """The page class, or where to find it as `"package.module:ClassName"`.
+
+    Prefer the string. A page is Qt, and naming the class means importing it,
+    and Qt with it, as the plugin loads -- which the command line cannot do, so
+    the whole plugin, token replacer and all, would fail to load there. The
+    string is only imported when the desktop app builds its wizard.
+    """
     token_replacer: TokenReplacer | None = None
     pre_upload: PreUploadProcessor | None = None
     post_upload: PostUploadProcessor | None = None

@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from copy import deepcopy
 from dataclasses import dataclass, replace
+from importlib import import_module
 import re
 import threading
 from typing import TYPE_CHECKING, Any
@@ -27,12 +28,42 @@ from nfoforge.plugins.api import (
 )
 
 if TYPE_CHECKING:
+    from nfoforge.frontend.wizards.wizard_base_page import BaseWizardPage
     from nfoforge.packages.custom_types import RenameNormalization
     from nfoforge.payloads.media_search import MediaSearchPayload
     from nfoforge.payloads.tracker_search_result import TrackerSearchResult
 
 
 PLUGIN_ID_PATTERN = re.compile(r"^[a-z0-9]+(?:[._-][a-z0-9]+)*$")
+
+_WIZARD_PAGE_REFERENCE = re.compile(
+    r"[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*:[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*"
+)
+"""`package.module:ClassName`, the form an entry point is written in."""
+
+
+def resolve_wizard_page(page: type[BaseWizardPage] | str) -> type[BaseWizardPage]:
+    """The page class a plugin's `wizard_page` names, imported if it is a string.
+
+    Imports Qt, so only the desktop app calls this -- and registration, for a
+    plugin that named the class outright and so imported Qt already.
+    """
+    from nfoforge.frontend.wizards.wizard_base_page import BaseWizardPage
+
+    resolved: object = page
+    if isinstance(page, str):
+        module_name, _, attribute = page.partition(":")
+        try:
+            resolved = import_module(module_name)
+            for part in attribute.split("."):
+                resolved = getattr(resolved, part)
+        except (ImportError, AttributeError) as error:
+            raise PluginError(
+                f"wizard_page {page!r} cannot be loaded: {error}"
+            ) from error
+    if not isinstance(resolved, type) or not issubclass(resolved, BaseWizardPage):
+        raise PluginError("wizard_page must be a BaseWizardPage subclass")
+    return resolved
 
 
 def validate_plugin_id(plugin_id: str) -> None:
@@ -431,13 +462,17 @@ class PluginManager:
         if not any(capabilities):
             raise PluginError("Plugin must provide at least one capability")
 
-        if definition.wizard_page is not None:
-            from nfoforge.frontend.wizards.wizard_base_page import BaseWizardPage
-
-            if not isinstance(definition.wizard_page, type) or not issubclass(
-                definition.wizard_page, BaseWizardPage
-            ):
-                raise PluginError("wizard_page must be a BaseWizardPage subclass")
+        if isinstance(definition.wizard_page, str):
+            # checked for shape only: importing it here would import Qt, which
+            # is what naming it by string avoids
+            if not _WIZARD_PAGE_REFERENCE.fullmatch(definition.wizard_page):
+                raise PluginError(
+                    "wizard_page must be a BaseWizardPage subclass or a "
+                    "'package.module:ClassName' reference, got "
+                    f"{definition.wizard_page!r}"
+                )
+        elif definition.wizard_page is not None:
+            resolve_wizard_page(definition.wizard_page)
 
         if definition.image_host_uploader is not None:
             from nfoforge.backend.image_host_uploading.base_image_host import (
