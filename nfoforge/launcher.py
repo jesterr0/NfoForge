@@ -24,8 +24,8 @@ CLI_EXECUTABLE = "nfoforge-cli"
 
 GUI_MISSING = (
     "The desktop app needs Qt, which is not installed. Install it with the "
-    "`gui` extra (for example `pip install 'nfoforge[gui]'`, or "
-    "`uv sync --extra gui` from a checkout), or use the command line: nfoforge"
+    "`gui` extra (`uv sync --extra gui` in the source checkout), or use the "
+    "command line: nfoforge"
 )
 
 

@@ -38,6 +38,8 @@ from nfoforge.enums.automation import AutomationMode, JobState
 from nfoforge.version import __version__
 
 _FAILED_OUTCOMES = {
+    # the run ended before reaching it; only SKIPPED is a deliberate no
+    TrackerRunOutcome.NOT_ATTEMPTED,
     TrackerRunOutcome.UPLOAD_FAILED,
     TrackerRunOutcome.INJECTION_FAILED,
     TrackerRunOutcome.MAY_HAVE_UPLOADED,
@@ -289,10 +291,11 @@ def report(
                 err.write(f"Answer it with: {PROGRAM} jobs answer {job} VALUE\n")
         return ExitCode.REFUSED if result.decision is not None else ExitCode.FAILED
 
-    if any(outcome in _FAILED_OUTCOMES for outcome in result.outcomes.values()):
-        return ExitCode.PARTIAL
+    # a partial run is archived too, and its id is how the rest gets added
     if result.job_path is not None:
         out.write(f"Archived as job {_job_id(result.job_path)}.\n")
+    if any(outcome in _FAILED_OUTCOMES for outcome in result.outcomes.values()):
+        return ExitCode.PARTIAL
     return ExitCode.OK
 
 
