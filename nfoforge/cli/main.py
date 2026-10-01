@@ -232,7 +232,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     job_show.add_argument("job", metavar="JOB")
     job_answer = job_commands.add_parser(
-        "answer", help="Answer the question a job is waiting on, and resume it."
+        "answer", help="Answer the question a job stopped at, and resume it."
     )
     job_answer.add_argument("job", metavar="JOB")
     job_answer.add_argument(
@@ -283,7 +283,10 @@ def report(
         if result.error not in shown_errors:
             err.write(f"error: {result.error}\n")
         if result.job_path is not None:
-            err.write(f"Saved as failed job {_job_id(result.job_path)}.\n")
+            job = _job_id(result.job_path)
+            err.write(f"Saved as failed job {job}.\n")
+            if result.decision is not None:
+                err.write(f"Answer it with: {PROGRAM} jobs answer {job} VALUE\n")
         return ExitCode.REFUSED if result.decision is not None else ExitCode.FAILED
 
     if any(outcome in _FAILED_OUTCOMES for outcome in result.outcomes.values()):
@@ -441,7 +444,9 @@ def cmd_jobs(
             out.write(f"  error: {saved.error}\n")
         if saved.pending_decision:
             decision = Decision.from_dict(saved.pending_decision)
-            out.write(f"  waiting on [{decision.id}]: {decision.prompt}\n")
+            waiting = saved.state is JobState.WAITING_FOR_INPUT
+            label = "waiting on" if waiting else "stopped at"
+            out.write(f"  {label} [{decision.id}]: {decision.prompt}\n")
             for option in decision.options:
                 out.write(f"    {option}: {decision.context.get(option, option)}\n")
             if decision.hint:

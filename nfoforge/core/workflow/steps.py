@@ -359,7 +359,12 @@ def identify(run: Run) -> None:
                 "leave it empty to skip.",
             )
         )
-        return int(answer) if answer else None
+        if answer is None or answer is False or not str(answer).strip():
+            return None
+        # `True` is an int too, and "yes" parses to it
+        if isinstance(answer, bool) or not str(answer).strip().isdigit():
+            raise WorkflowError(f"Not a MyAnimeList ID: {answer!r}")
+        return int(str(answer).strip())
 
     apply_search_result(
         context, item, ids, media_data=media_data, ask_mal_id=ask_mal_id
@@ -705,7 +710,14 @@ def _check_dupes(run: Run, trackers: list[TrackerSelection]) -> list[TrackerSele
 def upload(run: Run) -> None:
     context, request = run.context, run.request
     shared = context.shared_data
-    trackers = list(shared.tracker_image_hosts)
+    # Selected trackers only: a saved job keeps per-tracker state for trackers
+    # it must never send to again (one that may already have the release), and
+    # `selected_trackers` is what leaves them out.
+    trackers = [
+        tracker
+        for tracker in shared.selected_trackers or ()
+        if tracker in shared.tracker_image_hosts
+    ]
 
     if request.dry_run:
         run.log("Dry run: stopping before anything is uploaded")

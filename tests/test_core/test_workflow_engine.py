@@ -366,6 +366,79 @@ def test_a_desktop_job_cannot_be_resumed_headlessly(
     assert "Open it in NfoForge" in (result.error or "")
 
 
+class CrashAfterFirst(FakeProcess):
+    """Uploads the first tracker, then fails before the next."""
+
+    def process_trackers(self, **kwargs: Any) -> None:
+        first = next(iter(kwargs["process_dict"]))
+        self.uploaded.append(first)
+        kwargs["run_outcome_cb"](TrackerSelection(first), TrackerRunOutcome.UPLOADED)
+        raise RuntimeError("the second tracker broke")
+
+
+def test_a_run_failing_after_an_upload_is_archived_and_never_resumed(
+    config: ConfigManager, movie: Path
+) -> None:
+    workflow, _sink = _workflow(
+        config, FakeSearch({"42": _row("42")}), CrashAfterFirst()
+    )
+
+    failed = workflow.start(
+        _request(movie, trackers=("aither", "huno"), skip_dupe_check=True)
+    )
+
+    assert failed.state is JobState.FAILED
+    assert failed.job_path is not None
+    archive = load_job(failed.job_path)
+    assert archive.archived
+    assert archive.state is JobState.FAILED
+    assert archive.uploaded_trackers == [AITHER.name]
+
+    process = FakeProcess()
+    again, _sink = _workflow(config, FakeSearch({"42": _row("42")}), process)
+    resumed = again.resume(failed.job_path)
+
+    assert resumed.state is JobState.FAILED
+    assert "archive" in (resumed.error or "")
+    assert process.uploaded == []
+
+
+def test_a_resumed_job_with_nothing_left_to_upload_stops_waiting(
+    config: ConfigManager, movie: Path
+) -> None:
+    process = FakeProcess(dupes=["The.Movie.2024.1080p-OTHER"])
+    workflow, _sink = _workflow(config, FakeSearch({"42": _row("42")}), process)
+    waiting = workflow.start(_request(movie, mode=AutomationMode.SAFE))
+    assert waiting.job_path is not None
+
+    done = workflow.resume(waiting.job_path, {"dupes_found:AITHER": False})
+
+    assert done.state is JobState.COMPLETE, done.error
+    assert process.uploaded == []
+    saved = load_job(waiting.job_path)
+    assert saved.state is JobState.COMPLETE
+    assert saved.pending_decision is None
+
+
+def test_a_refused_run_names_its_question_and_can_be_answered(
+    config: ConfigManager, movie: Path
+) -> None:
+    process = FakeProcess(dupes=["The.Movie.2024.1080p-OTHER"])
+    workflow, _sink = _workflow(config, FakeSearch({"42": _row("42")}), process)
+
+    refused = workflow.start(_request(movie))
+
+    assert "--answer dupes_found:AITHER=VALUE" in (refused.error or "")
+    assert refused.job_path is not None
+    saved = load_job(refused.job_path)
+    assert (saved.pending_decision or {})["id"] == "dupes_found:AITHER"
+
+    done = workflow.resume(refused.job_path, {"dupes_found:AITHER": True})
+
+    assert done.state is JobState.COMPLETE, done.error
+    assert process.uploaded == [str(AITHER)]
+
+
 class SeriesSearch(FakeSearch):
     def resolve_tmdb_reference(
         self, _tmdb_id: str, _media_type: object, _mode: object

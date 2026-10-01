@@ -8,8 +8,10 @@ driven from a terminal, a server or a test.
 A run that stops at a question it cannot answer (safe mode) is saved as a job
 waiting for input, with everything done so far. `Workflow.resume` restores it
 and carries on from the stage it stopped at, with the answer. A run that fails
-is saved too, as failed, once there is anything to save. A run that uploads is
-archived like any desktop run, so trackers can be added to it later.
+is saved too, as failed, once there is anything to save; a refused one keeps
+the question, so it can be answered and resumed. A run that uploads is archived
+like any desktop run, so trackers can be added to it later -- including one
+that failed after a tracker had the release, which is never resumed from here.
 """
 
 from __future__ import annotations
@@ -182,6 +184,17 @@ class Workflow:
             job = load_job(job_path)
         except _SAVE_ERRORS as error:
             return WorkflowResult(JobState.FAILED, Stage.INPUT, job_path, str(error))
+        if job.archived:
+            # an archive's trackers are settled per tracker, which the desktop
+            # app's Add Trackers does; carrying on from its stage here would
+            # send the release again
+            return WorkflowResult(
+                JobState.FAILED,
+                Stage.INPUT,
+                job_path,
+                "This job already uploaded to a tracker, so it is kept as an "
+                "archive. Add trackers to it in NfoForge instead.",
+            )
         if not job.request:
             return WorkflowResult(
                 JobState.FAILED,
@@ -297,7 +310,17 @@ class Workflow:
     ) -> WorkflowResult:
         error = scrub_secrets(error)
         self.sink.emit(LogLine(error, LogLevel.ERROR))
-        path = self._save(run, JobState.FAILED, answers, job_path, error=error)
+        if any(not outcome.is_safe_to_reupload() for outcome in run.outcomes.values()):
+            # Something reached a tracker before the failure. Saved as an
+            # ordinary job it would resume into a second upload, so it is
+            # archived as the desktop app archives a failed run. If that
+            # cannot be written, nothing is: a job without the outcomes is
+            # the duplicate this avoids.
+            path = self._archive(run, JobState.FAILED, answers, error=error)
+        else:
+            path = self._save(
+                run, JobState.FAILED, answers, job_path, decision=decision, error=error
+            )
         self.sink.emit(JobStateChanged(JobState.FAILED, error))
         return WorkflowResult(
             JobState.FAILED, run.stage, path, error, decision, dict(run.outcomes)
@@ -308,32 +331,55 @@ class Workflow:
     ) -> WorkflowResult:
         path = job_path
         if run.uploaded and run.outcomes:
-            try:
-                archive = archive_completed_run(
-                    run.context,
-                    run.outcomes,
-                    working_dir=self.config.settings.general.working_dir,
-                    config_profile=self.config.program.current_config,
-                )
-                path = run.context.loaded_job_path
-                if path is not None:
-                    archive.state = JobState.COMPLETE
-                    archive.stage = str(run.stage)
-                    archive.request = run.request.to_dict()
-                    archive.pending_decision = None
-                    archive.decision_answers = dict(answers)
-                    archive.error = None
-                    write_job_document(archive, path)
-            except _SAVE_ERRORS as error:
-                self.sink.emit(
-                    LogLine(
-                        f"The run's archive could not be saved: {error}", LogLevel.ERROR
-                    )
-                )
+            path = self._archive(run, JobState.COMPLETE, answers) or job_path
+        elif job_path is not None:
+            # a resumed job that ended with nothing to upload (every tracker
+            # skipped as a dupe, say) would otherwise stay waiting forever
+            path = self._save(run, JobState.COMPLETE, answers, job_path) or job_path
         self.sink.emit(JobStateChanged(JobState.COMPLETE))
         return WorkflowResult(
             JobState.COMPLETE, run.stage, path, outcomes=dict(run.outcomes)
         )
+
+    def _archive(
+        self,
+        run: Run,
+        state: JobState,
+        answers: dict[str, Any],
+        *,
+        error: str | None = None,
+    ) -> Path | None:
+        """Archive a run that reached a tracker, as the desktop app does.
+
+        Trackers that uploaded, or may have, are recorded as such, so nothing
+        can send to them again. Returns the archive's path, or None (having
+        said why) when it could not be written.
+        """
+        try:
+            archive = archive_completed_run(
+                run.context,
+                run.outcomes,
+                working_dir=self.config.settings.general.working_dir,
+                config_profile=self.config.program.current_config,
+            )
+            path = run.context.loaded_job_path
+            if path is not None:
+                archive.state = state
+                archive.stage = str(run.stage)
+                archive.request = run.request.to_dict()
+                archive.pending_decision = None
+                archive.decision_answers = dict(answers)
+                archive.error = error
+                write_job_document(archive, path)
+        except _SAVE_ERRORS as save_error:
+            self.sink.emit(
+                LogLine(
+                    f"The run's archive could not be saved: {save_error}",
+                    LogLevel.ERROR,
+                )
+            )
+            return None
+        return path
 
     def _save(
         self,
