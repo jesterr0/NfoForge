@@ -144,8 +144,15 @@ def _preset(answers: Mapping[str, Any], decision: Decision) -> Answered | None:
 
 
 def _unanswered(decision: Decision) -> str:
-    reason = f"Nobody could answer: {decision.prompt}"
-    return f"{reason} ({decision.hint})" if decision.hint else reason
+    """Why a run stopped, naming every way to answer it in advance.
+
+    The id is always named: several questions have no option of their own, and
+    without it a refused run could not be answered at all.
+    """
+    way_out = f"--answer {decision.id}=VALUE"
+    if decision.hint:
+        way_out = f"{decision.hint}, or {way_out}"
+    return f"Nobody could answer: {decision.prompt} ({way_out})"
 
 
 @dataclass(frozen=True, slots=True)
