@@ -14,8 +14,8 @@
 ### Breaking
 
 - **The Python package is now `nfoforge` instead of `src`.** Plugins must import from `nfoforge.plugins.api` (and any other host module) instead of `src.plugins.api`. There is no compatibility alias: a plugin still importing `src.*` fails to load and is reported in **Settings -> Plugins**. The change is a find-and-replace of `src.` with `nfoforge.` in a plugin's imports.
-- **`start_ui.py` is gone; the desktop app starts with `uv run nfoforge-gui`** (or `python -m nfoforge.frontend`). The launcher now lives inside the package, so installing NfoForge as a package gives you both commands: `nfoforge` for the command line and `nfoforge-gui` for the desktop app. The released builds are unchanged.
-- **Qt is now an optional install, the `gui` extra.** The command line does not need it, so it no longer pulls it in. From a source checkout, install with `uv sync --extra gui` to use the desktop app (the `dev` and `build` extras include it); from pip, `pip install 'nfoforge[gui]'`. Started without it, `nfoforge-gui` says so and exits. A plugin that imports Qt as it loads -- usually one that adds a wizard page -- cannot load in the command line, and is reported as not loaded there.
+- **`start_ui.py` is gone; the desktop app starts with `uv run nfoforge-gui`** (or `python -m nfoforge.frontend`). The launcher now lives inside the package, so a source checkout synced with `uv sync` has both commands: `nfoforge` for the command line and `nfoforge-gui` for the desktop app. The released builds are unchanged.
+- **Qt is now an optional install, the `gui` extra.** The command line does not need it, so it no longer pulls it in. From a source checkout, install with `uv sync --extra gui` to use the desktop app (the `dev` and `build` extras include it). Started without it, `nfoforge-gui` says so and exits. A plugin that imports Qt as it loads -- usually one that adds a wizard page -- cannot load in the command line, and is reported as not loaded there.
 
 ## [1.2.2] - 2026-09-21
 

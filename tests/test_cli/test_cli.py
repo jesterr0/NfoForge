@@ -155,6 +155,25 @@ PICK = Decision(DecisionKind.SEARCH_RESULT, "Which?", options=("1", "2"))
         ),
         (
             WorkflowResult(
+                JobState.COMPLETE,
+                Stage.PROCESS,
+                outcomes={
+                    TrackerSelection.AITHER: TrackerRunOutcome.UPLOADED,
+                    TrackerSelection.HUNO: TrackerRunOutcome.NOT_ATTEMPTED,
+                },
+            ),
+            ExitCode.PARTIAL,
+        ),
+        (
+            WorkflowResult(
+                JobState.COMPLETE,
+                Stage.PROCESS,
+                outcomes={TrackerSelection.AITHER: TrackerRunOutcome.SKIPPED},
+            ),
+            ExitCode.OK,
+        ),
+        (
+            WorkflowResult(
                 JobState.WAITING_FOR_INPUT, Stage.SEARCH, Path("j/abc"), decision=PICK
             ),
             ExitCode.WAITING,
@@ -184,6 +203,38 @@ def test_a_waiting_run_says_how_to_answer_it() -> None:
     )
 
     assert "nfoforge jobs answer abc VALUE" in err.getvalue()
+
+
+def test_a_refused_run_says_how_to_answer_it() -> None:
+    err = io.StringIO()
+
+    report(
+        WorkflowResult(
+            JobState.FAILED, Stage.SEARCH, Path("jobs/abc"), "nobody", decision=PICK
+        ),
+        io.StringIO(),
+        err,
+    )
+
+    assert "nfoforge jobs answer abc VALUE" in err.getvalue()
+
+
+def test_a_partial_run_names_its_archive() -> None:
+    out = io.StringIO()
+
+    code = report(
+        WorkflowResult(
+            JobState.COMPLETE,
+            Stage.PROCESS,
+            Path("jobs/abc"),
+            outcomes={TrackerSelection.AITHER: TrackerRunOutcome.UPLOAD_FAILED},
+        ),
+        out,
+        io.StringIO(),
+    )
+
+    assert code is ExitCode.PARTIAL
+    assert "Archived as job abc." in out.getvalue()
 
 
 # --------------------------------------------------------------------------
