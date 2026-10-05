@@ -131,7 +131,7 @@ nfoforge jobs answer 4fHb2 603    # answer it and carry on
 
 An unattended run that stops at a question is kept too, as a failed job holding the question, so `jobs answer` works on it the same way.
 
-A job is named by its id, or any unambiguous start of it. `jobs resume JOB --answer ID=VALUE` resumes a waiting or failed job with any answers. A finished run is archived like a desktop run, so trackers can be added to it later from the Jobs dialog. So is a run that failed after a tracker had the release: it cannot be resumed from the command line, since that could upload the release twice, but the remaining trackers can be added from the Jobs dialog.
+A job is named by its id, or any unambiguous start of it. `jobs resume JOB --answer ID=VALUE` resumes a waiting or failed job with any answers. The profile is checked again first, since it may have changed since the job was saved; if it can no longer do what is left, the job is left as it was, to resume once the profile is fixed. A finished run is archived like a desktop run, so trackers can be added to it later from the Jobs dialog. So is a run that failed after a tracker had the release: it cannot be resumed from the command line, since that could upload the release twice, but the remaining trackers can be added from the Jobs dialog.
 
 ## Presets
 
