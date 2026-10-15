@@ -358,3 +358,24 @@ def test_an_unmigrated_data_folder_is_refused_naming_it(
         cli_app.load_config("testing")
 
     assert str(data) in str(refused.value)
+
+
+@pytest.mark.parametrize("argv", [["setup", "--no-import"], ["config", "check"]])
+def test_missing_saved_folder_is_refused_before_any_work(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, argv: list[str]
+) -> None:
+    from nfoforge.config.paths import (
+        DATA_DIR_ENV_VAR,
+        DataLocation,
+        write_data_location,
+    )
+
+    monkeypatch.delenv(DATA_DIR_ENV_VAR, raising=False)
+    missing = tmp_path / "unplugged"
+    write_data_location(DataLocation(data_dir=missing))
+    err = io.StringIO()
+
+    assert main(argv, out=io.StringIO(), err=err) == ExitCode.FAILED
+    assert "--data-dir PATH" in err.getvalue()
+    assert str(missing) in err.getvalue()
+    assert not missing.exists()

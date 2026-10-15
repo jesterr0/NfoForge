@@ -89,7 +89,7 @@ The desktop app and the command line use the same folder, so a profile set up in
 
 ### Keeping Them Somewhere Else
 
-There are two ways to use a different folder. Both work for the desktop app and the command line alike.
+For a portable release or a single launch, use these options. Both work for the desktop app and the command line alike.
 
 **Portable mode.** Create a folder named `data` beside the NfoForge executable (on macOS, beside `NfoForge.app`). That release then keeps everything in it instead. Nothing is written beside a release unless you create the folder, and removing it goes back to the usual location.
 
@@ -107,3 +107,16 @@ nfoforge-cli --data-dir /config upload ...
 This is the one to use in a container or a script. It takes priority over portable mode, and the folder is created if it does not exist.
 
 Either way, the folder starts empty. To bring your existing settings across, copy the contents of your current data folder into it before the first launch.
+
+### Moving Your Data from Settings
+
+To keep your data on another drive, use the change button beside **Data Folder** in **Settings -> General**:
+
+- **An empty folder:** NfoForge copies your data into it and restarts using it. Settings that name paths inside the old folder, such as the working directory and tools, are updated to match. Generated run output is not copied. Your old folder is left as it was, so remove it yourself once the new one works.
+- **A folder that already holds NfoForge data:** NfoForge uses that data as it is and copies nothing.
+
+The plugins folder can be moved separately with the same button in **Settings -> Plugins**. Plugin settings and credentials stay in the data folder.
+
+Your choices are saved in `location.toml` in the default location above, which is the one file that never moves. If a chosen folder is missing at launch, for example because its drive is not connected, NfoForge asks before doing anything else. You can retry, go back to the default folders, or quit.
+
+An explicit `--data-dir` takes priority over portable mode. Both take priority over saved Settings folder choices, including the plugins folder.

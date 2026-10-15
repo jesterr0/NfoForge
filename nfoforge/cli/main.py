@@ -27,7 +27,7 @@ from nfoforge.cli.console import ConsoleSink, TerminalPrompter, is_interactive
 from nfoforge.cli.exit_codes import ExitCode
 from nfoforge.cli.setup import SetupOptions, run_setup
 from nfoforge.config.config import ConfigManager
-from nfoforge.config.paths import DATA_DIR_OPTION, default_paths
+from nfoforge.config.paths import DATA_DIR_OPTION, data_location_problems, default_paths
 from nfoforge.core.config_check import Severity, check_profile, trackers_to_check
 from nfoforge.core.metadata.resolve import run_media_search
 from nfoforge.core.workflow.decisions import Decision
@@ -574,6 +574,12 @@ def main(
         stderr.write(f"warning: {text}\n")
 
     try:
+        if problems := data_location_problems():
+            raise CliError(
+                "Data folder unavailable: "
+                + "; ".join(problems)
+                + ". Restore the folder or use --data-dir PATH."
+            )
         if args.command == "setup":
             return int(cmd_setup(args, stdout))
         if args.command == "config" and args.config_command == "path":

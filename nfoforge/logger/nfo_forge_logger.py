@@ -11,7 +11,11 @@ from typing import Any, TextIO
 
 import shortuuid
 
-from nfoforge.config.paths import default_paths
+from nfoforge.config.paths import (
+    data_location_problems,
+    default_data_root,
+    default_paths,
+)
 from nfoforge.enums.logging_settings import DebugDataType, LogLevel, LogSource
 from nfoforge.exceptions import DebugDumpError
 from nfoforge.utils.secret_redaction import scrub_secrets
@@ -252,8 +256,16 @@ def default_log_file() -> Path:
     inside the installation, which meant replacing a release discarded the logs
     describing whatever went wrong with the one before it -- exactly when someone
     wants them.
+
+    Written to the default per-user directory instead while a folder the user
+    chose is unavailable. Creating `logs` inside it would create the folder
+    itself, and startup would then find an empty data folder where it should
+    have reported a missing one.
     """
-    return default_paths().logs / f"nfoforge_{_date_time_str}_{_short_uuid}.log"
+    name = f"nfoforge_{_date_time_str}_{_short_uuid}.log"
+    if data_location_problems():
+        return default_data_root() / "logs" / name
+    return default_paths().logs / name
 
 
 debug_env = str(os.environ.get("LOG_LEVEL", "")).lower()

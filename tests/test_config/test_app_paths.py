@@ -13,17 +13,24 @@ import sys
 from platformdirs import user_data_dir
 import pytest
 
+from nfoforge.config import paths as paths_module
 from nfoforge.config.paths import (
     DATA_DIR_ENV_VAR,
     DEV_PLUGINS_ENV_VAR,
     PORTABLE_DIR_NAME,
     AppPaths,
     ConfigPaths,
+    DataLocation,
+    DataLocationError,
     data_dir_from_argv,
+    data_location_problems,
+    default_data_root,
     default_paths,
     dev_plugin_dirs,
+    read_data_location,
     resolve_data_root,
     use_data_dir,
+    write_data_location,
 )
 
 
@@ -497,3 +504,213 @@ def test_a_source_checkout_is_never_portable(
     (tmp_path / PORTABLE_DIR_NAME).mkdir()
 
     assert resolve_data_root().name == "nfoforge-dev"
+
+
+def location_file() -> Path:
+    """The sandboxed location file, looked up through the module every time.
+
+    Never imported by name: the conftest sandbox replaces the module attribute,
+    and a name bound at import would still be the real function -- pointing at
+    the location file of the developer running the suite.
+    """
+    return paths_module.location_file()
+
+
+def _choose(text: str) -> None:
+    """Write the location file the conftest sandbox points at."""
+    path = location_file()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+
+
+def test_a_released_build_uses_the_data_folder_the_user_chose(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Unlike the environment variable, the user's own choice reaches a release.
+
+    That is the feature: someone with a small system drive keeps their data on
+    another one.
+    """
+    monkeypatch.setattr("nfoforge.config.paths.IS_FROZEN", True)
+    monkeypatch.setattr(sys, "executable", str(tmp_path / "NfoForge.exe"))
+    monkeypatch.delenv(DATA_DIR_ENV_VAR, raising=False)
+    chosen = tmp_path / "elsewhere"
+    write_data_location(DataLocation(data_dir=chosen))
+
+    assert resolve_data_root() == chosen
+    assert default_paths().state_root == chosen
+    assert AppPaths.data_root() == chosen
+
+
+def test_the_environment_override_beats_the_users_choice(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A rehearsal is an isolated tree, so the real choice must not reach it.
+
+    The location file lives in the real per-user directory, and following it
+    from inside a rehearsal would write into whatever folder it names.
+    """
+    monkeypatch.setattr("nfoforge.config.paths.IS_FROZEN", False)
+    monkeypatch.setenv(DATA_DIR_ENV_VAR, str(tmp_path / "rehearsal"))
+    write_data_location(
+        DataLocation(data_dir=tmp_path / "chosen", plugins_dir=tmp_path / "plugins")
+    )
+
+    paths = default_paths()
+
+    assert paths.state_root == tmp_path / "rehearsal"
+    assert paths.plugins == tmp_path / "rehearsal" / "plugins"
+    assert data_location_problems() == ()
+
+
+def test_a_plugins_folder_the_user_chose_is_used(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Only the code moves: plugin settings stay with the rest of the data."""
+    monkeypatch.delenv(DATA_DIR_ENV_VAR, raising=False)
+    chosen = tmp_path / "my_plugins"
+    write_data_location(DataLocation(plugins_dir=chosen))
+
+    paths = default_paths()
+
+    assert paths.plugins == chosen
+    assert paths.plugin_configs == paths.state_root / "config" / "plugins"
+
+
+def test_no_location_file_means_nothing_was_moved(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("nfoforge.config.paths.IS_FROZEN", False)
+    monkeypatch.delenv(DATA_DIR_ENV_VAR, raising=False)
+
+    assert read_data_location() == DataLocation()
+    assert resolve_data_root() == default_data_root()
+    assert default_paths().plugins == default_data_root() / "plugins"
+
+
+def test_moving_everything_back_removes_the_location_file(tmp_path: Path) -> None:
+    """So someone who moved back has the installation they started with."""
+    write_data_location(DataLocation(data_dir=tmp_path / "elsewhere"))
+    assert location_file().is_file()
+
+    write_data_location(DataLocation())
+
+    assert not location_file().exists()
+
+
+def test_the_location_file_round_trips(tmp_path: Path) -> None:
+    location = DataLocation(
+        data_dir=tmp_path / "data folder", plugins_dir=tmp_path / "plugins"
+    )
+    write_data_location(location)
+
+    assert read_data_location() == location
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "data_dir = [unclosed",
+        'data_dir = "relative/folder"',
+        "data_dir = 3",
+        'plugins_dir = "   "',
+    ],
+)
+def test_an_unusable_location_file_falls_back_and_is_reported(
+    text: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Resolution never raises -- the logger asks while it is being imported.
+
+    The problem is reported at startup instead, and a relative path counts as
+    one because it would resolve against wherever the process was launched.
+    """
+    monkeypatch.setattr("nfoforge.config.paths.IS_FROZEN", False)
+    monkeypatch.delenv(DATA_DIR_ENV_VAR, raising=False)
+    _choose(text)
+
+    with pytest.raises(DataLocationError):
+        read_data_location()
+    assert resolve_data_root() == default_data_root()
+    assert default_paths().plugins == default_data_root() / "plugins"
+    assert len(data_location_problems()) == 1
+
+
+def test_a_chosen_folder_that_is_not_there_is_reported(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A drive that is not connected must not be replaced by an empty folder."""
+    monkeypatch.delenv(DATA_DIR_ENV_VAR, raising=False)
+    present = tmp_path / "present"
+    present.mkdir()
+    write_data_location(
+        DataLocation(data_dir=tmp_path / "unplugged", plugins_dir=present)
+    )
+
+    problems = data_location_problems()
+
+    assert len(problems) == 1
+    assert str(tmp_path / "unplugged") in problems[0]
+    assert not (tmp_path / "unplugged").exists()
+
+
+def test_chosen_folders_that_exist_are_not_problems(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv(DATA_DIR_ENV_VAR, raising=False)
+    (tmp_path / "data").mkdir()
+    (tmp_path / "plugins").mkdir()
+    write_data_location(
+        DataLocation(data_dir=tmp_path / "data", plugins_dir=tmp_path / "plugins")
+    )
+
+    assert data_location_problems() == ()
+
+
+def test_a_chosen_plugins_root_may_sit_outside_both_roots(tmp_path: Path) -> None:
+    """The one exception to every path deriving from the two roots."""
+    paths = AppPaths(
+        state_root=tmp_path / "state",
+        asset_root=tmp_path / "assets",
+        plugins_root=tmp_path / "plugins",
+    )
+
+    assert paths.plugins == tmp_path / "plugins"
+
+
+def test_no_test_can_reach_the_real_location_file(tmp_path: Path) -> None:
+    """Same guard as the data root, for the file that relocates it.
+
+    Writing the real one from a test would move a developer's data folder the
+    next time they launched from source.
+    """
+    assert location_file().is_relative_to(tmp_path)
+    assert (
+        location_file()
+        != Path(user_data_dir(appname="nfoforge-dev", appauthor=False))
+        / "location.toml"
+    )
+
+
+@pytest.mark.usefixtures("no_chosen_data_dir")
+@pytest.mark.parametrize("mode", ["explicit", "portable"])
+def test_launch_folder_ignores_saved_data_and_plugins(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mode: str
+) -> None:
+    release = _release(tmp_path, monkeypatch, "release/NfoForge.exe")
+    write_data_location(
+        DataLocation(
+            data_dir=tmp_path / "unplugged",
+            plugins_dir=tmp_path / "old_plugins",
+        )
+    )
+    if mode == "explicit":
+        chosen = tmp_path / "explicit"
+        use_data_dir(chosen)
+    else:
+        chosen = release.parent / PORTABLE_DIR_NAME
+        chosen.mkdir()
+
+    paths = default_paths()
+    assert paths.state_root == chosen
+    assert paths.plugins == chosen / "plugins"
+    assert data_location_problems() == ()

@@ -41,6 +41,7 @@ from nfoforge.frontend.windows.config_transfer import (
     export_configuration,
     import_configuration,
 )
+from nfoforge.frontend.windows.data_location import change_data_folder
 from nfoforge.frontend.windows.legacy_import import (
     LegacyImportRunner,
     choose_legacy_install,
@@ -269,6 +270,15 @@ class GeneralSettings(BaseSettings):
         self.data_dir_open_btn.setToolTip("Open data folder")
         self.data_dir_open_btn.clicked.connect(self._handle_open_data_dir_click)
 
+        self.data_dir_change_btn = QToolButton(self)
+        QTAThemeSwap().register(
+            self.data_dir_change_btn, "ph.pencil-simple-light", icon_size=QSize(20, 20)
+        )
+        self.data_dir_change_btn.setToolTip(
+            "Move your data to another folder. NfoForge copies it there and restarts"
+        )
+        self.data_dir_change_btn.clicked.connect(self._handle_change_data_dir_click)
+
         self.import_legacy_btn = QToolButton(self)
         QTAThemeSwap().register(
             self.import_legacy_btn, "ph.download-simple-light", icon_size=QSize(20, 20)
@@ -298,6 +308,7 @@ class GeneralSettings(BaseSettings):
         data_dir_layout.setContentsMargins(0, 0, 0, 0)
         data_dir_layout.addWidget(self.data_dir_entry, stretch=1)
         data_dir_layout.addWidget(self.data_dir_open_btn)
+        data_dir_layout.addWidget(self.data_dir_change_btn)
         data_dir_layout.addWidget(self.import_legacy_btn)
         data_dir_layout.addWidget(self.export_config_btn)
         data_dir_layout.addWidget(self.import_config_btn)
@@ -562,6 +573,10 @@ class GeneralSettings(BaseSettings):
     @Slot()
     def _handle_open_data_dir_click(self) -> None:
         open_explorer(self.config.paths.state_root)
+
+    @Slot()
+    def _handle_change_data_dir_click(self) -> None:
+        change_data_folder(self, self.config.paths, self.main_window)
 
     @Slot()
     def _handle_import_legacy_click(self) -> None:

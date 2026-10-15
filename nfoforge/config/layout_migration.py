@@ -386,6 +386,7 @@ def plan_migration(
     configured_paths: Iterable[tuple[str, str, Path]] = (),
     working_dirs: Iterable[tuple[str, Path]] = (),
     shipped_plugins: Path | None = None,
+    plugins_dir: Path | None = None,
 ) -> MigrationPlan:
     """Everything the move to the new layout would do.
 
@@ -393,7 +394,12 @@ def plan_migration(
     installation is supplied: saved jobs and run output accumulated at the root
     of the data directory under the old layout regardless of where the
     application itself was installed.
+
+    `plugins_dir` is where imported plugins go, which is the plugins folder in
+    `state_root` unless the user chose their own. Copying into the default one
+    regardless would import plugins into a folder nothing loads from.
     """
+    plugins_destination = plugins_dir or state_root / PLUGINS_DIR_NAME
     actions: list[PlannedAction] = []
     findings: list[Finding] = []
 
@@ -494,7 +500,7 @@ def plan_migration(
             actions.append(
                 _copy(
                     entry,
-                    state_root / PLUGINS_DIR_NAME / entry.name,
+                    plugins_destination / entry.name,
                     copy_policy=CopyPolicy.PLUGIN,
                 )
             )

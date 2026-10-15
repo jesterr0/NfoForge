@@ -28,6 +28,7 @@ from nfoforge.frontend.stacked_windows.settings.base import BaseSettings
 from nfoforge.frontend.utils import build_h_line, create_form_layout
 from nfoforge.frontend.utils.app_lifecycle import restart_application
 from nfoforge.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
+from nfoforge.frontend.windows.data_location import change_plugins_folder
 from nfoforge.frontend.windows.plugin_install import (
     install_from_archive,
     install_from_folder,
@@ -135,6 +136,17 @@ class PluginsSettings(BaseSettings):
         self.plugin_dir_open_btn.setToolTip("Open plugins folder")
         self.plugin_dir_open_btn.clicked.connect(self._handle_open_plugin_dir_click)
 
+        self.plugin_dir_change_btn = QToolButton(self)
+        QTAThemeSwap().register(
+            self.plugin_dir_change_btn,
+            "ph.pencil-simple-light",
+            icon_size=QSize(20, 20),
+        )
+        self.plugin_dir_change_btn.setToolTip(
+            "Load plugins from another folder. NfoForge restarts to use it"
+        )
+        self.plugin_dir_change_btn.clicked.connect(self._handle_change_plugin_dir_click)
+
         # A popup rather than two buttons: both entries do the same thing and
         # differ only in what is pointed at, so they belong under one verb.
         self.install_plugin_btn = QToolButton(self)
@@ -161,6 +173,7 @@ class PluginsSettings(BaseSettings):
         plugin_dir_layout.setContentsMargins(0, 0, 0, 0)
         plugin_dir_layout.addWidget(self.plugin_dir_entry, stretch=1)
         plugin_dir_layout.addWidget(self.plugin_dir_open_btn)
+        plugin_dir_layout.addWidget(self.plugin_dir_change_btn)
         plugin_dir_layout.addWidget(self.install_plugin_btn)
 
         # Shown only while the override is set, so a user who is not developing
@@ -236,6 +249,10 @@ class PluginsSettings(BaseSettings):
         # is no folder to open and the click would do nothing at all.
         self.config.paths.plugins.mkdir(parents=True, exist_ok=True)
         open_explorer(self.config.paths.plugins)
+
+    @Slot()
+    def _handle_change_plugin_dir_click(self) -> None:
+        change_plugins_folder(self, self.config.paths, self.main_window)
 
     @Slot()
     def _handle_install_from_folder_click(self) -> None:

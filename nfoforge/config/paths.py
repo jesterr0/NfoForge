@@ -3,14 +3,26 @@ from dataclasses import dataclass
 from os import environ, pathsep
 from pathlib import Path
 import sys
+import tomllib
 
 from platformdirs import user_data_dir
+import tomlkit
 
 from nfoforge.backend.utils.working_dir import (
     IS_FROZEN,
     WORKSPACE_DIR_NAME,
     asset_root,
 )
+from nfoforge.config.persistence import atomic_write_text
+
+LOCATION_FILE_NAME = "location.toml"
+"""Where the user moved their data and plugins folders, if anywhere.
+
+Kept in the default per-user directory rather than in the data folder it
+describes, because it is what finds that folder: a setting stored inside the
+directory it locates could never be read. This is the one file that stays
+behind when the data moves.
+"""
 
 DATA_DIR_ENV_VAR = "NFOFORGE_DATA_DIR"
 """Redirects every root this module resolves, for development and rehearsal.
@@ -71,6 +83,13 @@ class AppPaths:
 
     state_root: Path
     asset_root: Path
+    plugins_root: Path | None = None
+    """A plugins folder the user chose to keep apart from the rest of their data.
+
+    The one location allowed to sit under neither root, and only when the user
+    asked for it. Unset means plugins live in the data folder like everything
+    else.
+    """
 
     @property
     def config_dir(self) -> Path:
@@ -141,7 +160,14 @@ class AppPaths:
         `DEV_PLUGINS_ENV_VAR` has the loader reading somewhere else. Installing
         writes here, and Settings names this folder, because this is where a
         plugin goes when the development variable is gone.
+
+        Only the code moves when the user picks their own plugins folder.
+        Plugins keep their configuration and credentials in `plugin_configs`,
+        which stays with the rest of the data, because plugins derive that
+        location themselves and cannot be told otherwise.
         """
+        if self.plugins_root is not None:
+            return self.plugins_root
         return self.state_root / "plugins"
 
     @property
@@ -336,8 +362,8 @@ def resolve_data_root() -> Path:
     """NfoForge's data folder for this process.
 
     In order: the folder `--data-dir` named, the development override, a
-    portable `data` folder beside the release, and otherwise the per-user
-    folder. The first two are explicit for this launch; the portable folder
+    portable `data` folder beside the release, the saved Settings choice,
+    and otherwise the per-user folder. The first two are explicit for this launch; the portable folder
     is explicit for this copy of NfoForge.
 
     A source run gets a different per-user folder from an installed one,
@@ -351,6 +377,15 @@ def resolve_data_root() -> Path:
     directory. Cleanup asks for this one: it needs to know what it must never
     be able to delete, which is not the same question as where a run's output
     goes.
+
+    A folder the user chose in Settings comes second to `NFOFORGE_DATA_DIR`.
+    The variable stands for an isolated tree, and reading the user's choice out
+    of the real per-user directory would let a rehearsal escape into it.
+
+    Never raises, because the logger asks for this while it is being imported
+    and nothing could report the failure yet. A location file that cannot be
+    read is ignored here and reported by `data_location_problems`, which
+    startup asks before anything else touches the data folder.
     """
     if _chosen_data_dir is not None:
         return _chosen_data_dir
@@ -360,8 +395,133 @@ def resolve_data_root() -> Path:
     portable = portable_data_dir()
     if portable is not None:
         return portable
+
+    try:
+        chosen = read_data_location().data_dir
+    except DataLocationError:
+        chosen = None
+    return chosen if chosen is not None else default_data_root()
+
+
+def default_data_root() -> Path:
+    """The per-user directory the platform assigns, whatever the user chose.
+
+    Where the location file lives, and where data goes when the user has not
+    moved it.
+    """
     appname = "nfoforge" if IS_FROZEN else "nfoforge-dev"
     return Path(user_data_dir(appname=appname, appauthor=False))
+
+
+class DataLocationError(Exception):
+    """The location file exists but does not say anything usable."""
+
+
+@dataclass(frozen=True)
+class DataLocation:
+    """The folders the user moved, each unset when it was left where it was."""
+
+    data_dir: Path | None = None
+    plugins_dir: Path | None = None
+
+
+def location_file() -> Path:
+    """Where the user's choice of folders is recorded."""
+    return default_data_root() / LOCATION_FILE_NAME
+
+
+def read_data_location() -> DataLocation:
+    """The folders recorded in the location file, or none when there is no file.
+
+    A relative path is refused rather than resolved, because it would be
+    resolved against wherever the process happened to be launched from, and
+    the data folder would move with the shortcut used to start it.
+    """
+    path = location_file()
+    try:
+        text = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return DataLocation()
+    except OSError as error:
+        raise DataLocationError(f"{path} could not be read: {error}") from error
+
+    try:
+        document = tomllib.loads(text)
+    except tomllib.TOMLDecodeError as error:
+        raise DataLocationError(f"{path} is not valid TOML: {error}") from error
+
+    def folder(key: str) -> Path | None:
+        value = document.get(key)
+        if value is None:
+            return None
+        if not isinstance(value, str) or not value.strip():
+            raise DataLocationError(f"{path}: {key} must be a folder path")
+        chosen = Path(value.strip())
+        if not chosen.is_absolute():
+            raise DataLocationError(
+                f"{path}: {key} must be an absolute path, not {value!r}"
+            )
+        return chosen
+
+    return DataLocation(data_dir=folder("data_dir"), plugins_dir=folder("plugins_dir"))
+
+
+def write_data_location(location: DataLocation) -> None:
+    """Record the user's folders, removing the file when neither was moved.
+
+    Removed rather than left empty, so that a user who moved everything back
+    has the same installation as one who never moved anything.
+    """
+    path = location_file()
+    if location.data_dir is None and location.plugins_dir is None:
+        path.unlink(missing_ok=True)
+        return
+
+    document = tomlkit.document()
+    document.add(
+        tomlkit.comment(
+            "Where NfoForge keeps your data. Change it from Settings, which "
+            "copies your data across; editing this by hand only repoints."
+        )
+    )
+    if location.data_dir is not None:
+        document["data_dir"] = str(location.data_dir)
+    if location.plugins_dir is not None:
+        document["plugins_dir"] = str(location.plugins_dir)
+    atomic_write_text(path, tomlkit.dumps(document))
+
+
+def data_location_problems() -> tuple[str, ...]:
+    """Why the folders the user chose cannot be used, if they cannot.
+
+    Asked at startup, before anything creates a directory. Starting anyway
+    would be the worst answer: a data folder on a drive that is not plugged in
+    would be replaced by an empty one, which looks exactly like losing every
+    profile -- and, being empty, it would offer to migrate.
+
+    So a chosen folder has to exist already. Creating it here would hide a
+    missing drive behind a fresh directory on whatever drive now has that
+    letter.
+    """
+    if (
+        _chosen_data_dir is not None
+        or _override() is not None
+        or portable_data_dir() is not None
+    ):
+        return ()
+    try:
+        location = read_data_location()
+    except DataLocationError as error:
+        return (str(error),)
+
+    problems: list[str] = []
+    for label, chosen in (
+        ("Data folder", location.data_dir),
+        ("Plugins folder", location.plugins_dir),
+    ):
+        if chosen is not None and not chosen.is_dir():
+            problems.append(f"{label} {chosen} is not available.")
+    return tuple(problems)
 
 
 def default_paths() -> AppPaths:
@@ -371,5 +531,21 @@ def default_paths() -> AppPaths:
     exercise is for: a release folder can be replaced wholesale without touching
     anything the user owns. It was the mutable tree inside the installation,
     which is why replacing a release meant reconstructing a configuration.
+
+    The plugins folder follows the same rule as the data folder: the user's
+    choice, unless `NFOFORGE_DATA_DIR` has isolated this process from it.
+    Trusting a file in the user's own profile to decide what is imported adds
+    nothing an attacker lacks already -- anyone who can write that file can
+    write a plugin into the default plugins folder beside it.
     """
-    return AppPaths(state_root=resolve_data_root(), asset_root=asset_root())
+    plugins_root = None
+    if _chosen_data_dir is None and _override() is None and portable_data_dir() is None:
+        try:
+            plugins_root = read_data_location().plugins_dir
+        except DataLocationError:
+            plugins_root = None
+    return AppPaths(
+        state_root=resolve_data_root(),
+        asset_root=asset_root(),
+        plugins_root=plugins_root,
+    )
