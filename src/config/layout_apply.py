@@ -351,6 +351,7 @@ def _plan_for(paths: AppPaths, legacy: LegacyInstall | None) -> MigrationPlan:
         configured_paths=settings.configured_paths,
         working_dirs=settings.working_dirs,
         shipped_plugins=paths.plugin_examples,
+        plugins_dir=paths.plugins,
     )
 
 

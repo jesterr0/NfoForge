@@ -53,7 +53,13 @@ from src.config.layout_apply import (
 )
 from src.config.layout_migration import LegacyInstall
 from src.config.layout_version import LayoutRecordError, migration_pending
-from src.config.paths import AppPaths, default_paths
+from src.config.paths import (
+    AppPaths,
+    DataLocation,
+    data_location_problems,
+    default_paths,
+    write_data_location,
+)
 from src.exceptions import ConfigError, ConfigSchemaError
 from src.frontend.custom_widgets.scrollable_error_dialog import ScrollableErrorDialog
 from src.frontend.windows.main_window import MainWindow
@@ -290,6 +296,10 @@ class NfoForge:
         if self.splash_screen is None:
             raise RuntimeError("Splash screen is not initialized")
 
+        if not self._check_data_location():
+            QApplication.quit()
+            return
+
         try:
             pending = migration_pending(default_paths().state_root)
         except LayoutRecordError as error:
@@ -308,6 +318,51 @@ class NfoForge:
             return
 
         self._select_config()
+
+    def _check_data_location(self) -> bool:
+        """Make sure the folders the user chose are there, before anything runs.
+
+        Checked ahead of the migration because that is the first thing to touch
+        the data folder, and on a missing one it would find nothing, create a
+        fresh tree and offer to import into it -- which looks like every profile
+        has gone. Asking means a drive that is not plugged in costs a click.
+
+        Returns False when the user chose to quit.
+        """
+        while problems := data_location_problems():
+            box = QMessageBox(
+                QMessageBox.Icon.Warning,
+                "Data Folder Unavailable",
+                "NfoForge cannot find a folder you chose for your data:\n\n"
+                + "\n".join(problems)
+                + "\n\nIf it is on a drive that is not connected, connect it and "
+                "choose Retry. Use Default Folders forgets your choice; you can "
+                "choose the folder again in Settings.",
+                parent=self.splash_screen,
+            )
+            retry = box.addButton("Retry", QMessageBox.ButtonRole.AcceptRole)
+            reset = box.addButton(
+                "Use Default Folders", QMessageBox.ButtonRole.DestructiveRole
+            )
+            box.addButton("Quit", QMessageBox.ButtonRole.RejectRole)
+            box.setDefaultButton(retry)
+            box.exec()
+            clicked = box.clickedButton()
+            box.deleteLater()
+            if clicked is retry:
+                continue
+            if clicked is not reset:
+                return False
+            try:
+                write_data_location(DataLocation())
+            except OSError as error:
+                QMessageBox.critical(
+                    self.splash_screen,
+                    "Data Folder Unavailable",
+                    f"Your folder choice could not be cleared:\n\n{error}",
+                )
+                return False
+        return True
 
     def _start_layout_migration(self) -> None:
         """Run the migration on a worker, asking the question on the GUI thread.
