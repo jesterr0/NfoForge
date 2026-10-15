@@ -1,6 +1,6 @@
 [project]
 name = "NfoForge"
-version = "1.2.2"
+version = "1.2.3"
 description = "NFO generator and upload assistant"
 license = "GPL-3.0-or-later"
 readme = "README.md"
@@ -37,7 +37,7 @@ dependencies = [
     "qtawesome>=1.4.0",
     "urllib3>=2.7.0",
     "tenacity>=9.1.4",
-    "python-dotenv>=1.2.2",
+    "python-dotenv>=1.2.3",
     "typing-extensions>=4.12.2",
 ]
 

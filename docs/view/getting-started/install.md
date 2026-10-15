@@ -82,3 +82,14 @@ NfoForge keeps your profiles, templates, cookies, plugins, tools and saved jobs 
 | Linux   | `~/.local/share/nfoforge`                |
 
 A source checkout uses `nfoforge-dev` in the same place, so running from source never shares data with an installed release.
+
+### Keeping Your Data Somewhere Else
+
+To keep your data on another drive, use the change button beside **Data Folder** in **Settings -> General**:
+
+- **An empty folder:** NfoForge copies your data into it and restarts using it. Settings that name paths inside the old folder, such as the working directory and tools, are updated to match. Generated run output is not copied. Your old folder is left as it was, so remove it yourself once the new one works.
+- **A folder that already holds NfoForge data:** NfoForge uses that data as it is and copies nothing.
+
+The plugins folder can be moved separately with the same button in **Settings -> Plugins**. Plugin settings and credentials stay in the data folder.
+
+Your choices are saved in `location.toml` in the default location above, which is the one file that never moves. If a chosen folder is missing at launch, for example because its drive is not connected, NfoForge asks before doing anything else. You can retry, go back to the default folders, or quit.

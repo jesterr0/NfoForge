@@ -1184,3 +1184,27 @@ def test_a_working_directory_is_returned_as_the_document_wrote_it(
     assert settings.working_dirs == (
         ("main: working directory", Path("somewhere/relative")),
     )
+
+
+def test_legacy_plugins_are_planned_into_a_plugins_folder_the_user_chose(
+    tmp_path: Path,
+) -> None:
+    """Imported plugins go where the loader reads, not where it used to.
+
+    With the user's own plugins folder in use, the one inside the data folder is
+    never scanned, so copying there would import plugins that never load.
+    """
+    state_root = tmp_path / "user_data"
+    state_root.mkdir()
+    legacy = _frozen_install(tmp_path)
+    _write_plugin(legacy.plugins / "their_own_plugin", "something.else")
+    chosen = tmp_path / "elsewhere" / "plugins"
+
+    plan = plan_migration(state_root, legacy=legacy, plugins_dir=chosen)
+
+    destinations = [
+        action.destination
+        for action in plan.actions
+        if action.kind is ActionKind.COPY and action.source.parent == legacy.plugins
+    ]
+    assert destinations == [chosen / "their_own_plugin"]
