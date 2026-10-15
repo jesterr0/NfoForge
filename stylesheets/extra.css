@@ -1,0 +1,11 @@
+.scrollable-code-block {
+    max-height: 320px;
+    overflow-y: auto;
+    overflow-x: auto;
+}
+
+.token-parent table {
+    max-height: 550px;
+    overflow-y: auto;
+    overflow-x: auto;
+}
