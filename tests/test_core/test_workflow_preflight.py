@@ -9,6 +9,7 @@ import pytest
 from nfoforge.config.config import ConfigManager
 from nfoforge.core.workflow.preflight import preflight_problems
 from nfoforge.core.workflow.request import ReleaseRequest
+from nfoforge.core.workflow.stages import Stage
 from nfoforge.enums.automation import AutomationMode
 from nfoforge.enums.tracker_selection import TrackerSelection
 from tests.repo_paths import build_app_paths
@@ -177,3 +178,44 @@ def test_unanswered_prompt_tokens_refuse_only_an_unattended_run(
     )
     for mode in (AutomationMode.INTERACTIVE, AutomationMode.SAFE):
         assert _problems(config, _request(release, mode=mode), prompts=prompts) == []
+
+
+def test_a_resumed_run_skips_the_files_it_is_already_past(
+    config: ConfigManager, tmp_path: Path
+) -> None:
+    request = _request(tmp_path / "renamed-since.mkv", screenshot_dir=tmp_path / "gone")
+
+    def problems(stage: Stage) -> list[str]:
+        return preflight_problems(
+            request,
+            config,
+            screenshots=True,
+            answers={},
+            unresolved_prompt_tokens=_no_prompts,
+            template_selector=FakeTemplates(),  # type: ignore[arg-type]
+            from_stage=stage,
+        )
+
+    assert len(problems(Stage.INPUT)) == 2
+    (folder,) = problems(Stage.SEARCH)
+    assert "Screenshot folder does not exist" in folder
+    assert problems(Stage.TRACKERS) == []
+
+
+def test_a_resumed_run_still_checks_the_profile(
+    config: ConfigManager, tmp_path: Path
+) -> None:
+    config.settings.api_keys.tmdb_api_key = ""
+
+    problems = preflight_problems(
+        _request(tmp_path / "renamed-since.mkv", trackers=("nosuch",)),
+        config,
+        screenshots=False,
+        answers={},
+        unresolved_prompt_tokens=_no_prompts,
+        template_selector=FakeTemplates(),  # type: ignore[arg-type]
+        from_stage=Stage.PROCESS,
+    )
+
+    assert any("TMDB" in problem for problem in problems)
+    assert any("Unknown tracker" in problem for problem in problems)

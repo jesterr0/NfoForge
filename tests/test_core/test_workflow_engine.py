@@ -506,3 +506,47 @@ def test_a_series_run_matches_episodes_and_asks_about_the_rest(
 
     assert done.state is JobState.COMPLETE, done.error
     assert process.uploaded == [str(AITHER)]
+
+
+def test_a_resume_the_profile_no_longer_supports_is_refused_untouched(
+    config: ConfigManager, movie: Path
+) -> None:
+    process = FakeProcess()
+    workflow, _sink = _workflow(
+        config, FakeSearch({"1": _row("1"), "2": _row("2")}), process
+    )
+    waiting = workflow.start(_request(movie, mode=AutomationMode.SAFE))
+    assert waiting.job_path is not None
+    config.settings.api_keys.tmdb_api_key = ""
+
+    refused = workflow.resume(waiting.job_path, {"search_result": "2"})
+
+    assert refused.state is JobState.FAILED
+    assert "No TMDB API key" in (refused.error or "")
+    assert "resume it again" in (refused.error or "")
+    assert refused.job_path is None
+    saved = load_job(waiting.job_path)
+    assert saved.state is JobState.WAITING_FOR_INPUT
+    assert (saved.pending_decision or {})["id"] == "search_result"
+
+    config.settings.api_keys.tmdb_api_key = "key"
+    done = workflow.resume(waiting.job_path, {"search_result": "2"})
+
+    assert done.state is JobState.COMPLETE, done.error
+    assert process.uploaded == [str(AITHER)]
+
+
+def test_a_resume_past_input_does_not_look_for_the_release_where_it_was(
+    config: ConfigManager, movie: Path
+) -> None:
+    process = FakeProcess(dupes=["The.Movie.2024.1080p-OTHER"])
+    workflow, _sink = _workflow(config, FakeSearch({"42": _row("42")}), process)
+    waiting = workflow.start(_request(movie, mode=AutomationMode.SAFE))
+    assert waiting.job_path is not None
+    # what a rename stage does to the path the request named
+    movie.rename(movie.with_name("The Movie (2024).mkv"))
+
+    done = workflow.resume(waiting.job_path, {"dupes_found:AITHER": True})
+
+    assert done.state is JobState.COMPLETE, done.error
+    assert process.uploaded == [str(AITHER)]

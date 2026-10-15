@@ -154,18 +154,9 @@ class Workflow:
         cannot succeed for reasons knowable up front is refused before any
         work is done.
         """
-        problems = preflight_problems(
-            request,
-            self.config,
-            screenshots=routing_for(request, self.config.settings).screenshots,
-            answers=answers or {},
-            unresolved_prompt_tokens=self.process_backend.unresolved_prompt_tokens,
-        )
-        if problems:
-            error = scrub_secrets("\n".join(problems))
-            self.sink.emit(LogLine(error, LogLevel.ERROR))
-            self.sink.emit(JobStateChanged(JobState.FAILED, error))
-            return WorkflowResult(JobState.FAILED, Stage.INPUT, error=error)
+        refused = self._preflight(request, Stage.INPUT, answers or {})
+        if refused:
+            return refused
 
         context = create_processing_context(
             self.config.settings, self.config.plugin_manager
@@ -179,6 +170,9 @@ class Workflow:
 
         `answers` settle the question it was waiting on (and any others),
         keyed by `Decision.id`; they are added to the answers already given.
+        The profile is checked again for what is still ahead, since it may
+        have changed since the save; a refusal leaves the job as it was, so it
+        can be resumed once the profile is fixed.
         """
         try:
             job = load_job(job_path)
@@ -205,6 +199,10 @@ class Workflow:
             )
         request = ReleaseRequest.from_dict(job.request)
         stage = Stage(job.stage) if job.stage else Stage.INPUT
+        answers = dict(job.decision_answers) | dict(answers or {})
+        refused = self._preflight(request, stage, answers, resuming=True)
+        if refused:
+            return refused
 
         # never inherit MediaInfo cached for whichever job ran before this one
         clear_restored_mediainfo()
@@ -221,13 +219,36 @@ class Workflow:
         context.loaded_job_id = job.job_id
         context.loaded_job_name = job.name
 
-        return self._run(
+        return self._run(request, context, stage, answers, job_path)
+
+    def _preflight(
+        self,
+        request: ReleaseRequest,
+        stage: Stage,
+        answers: Mapping[str, Any],
+        *,
+        resuming: bool = False,
+    ) -> WorkflowResult | None:
+        """The refusal for a run that cannot succeed from `stage`, if it cannot."""
+        problems = preflight_problems(
             request,
-            context,
-            stage,
-            dict(job.decision_answers) | dict(answers or {}),
-            job_path,
+            self.config,
+            screenshots=routing_for(request, self.config.settings).screenshots,
+            answers=answers,
+            unresolved_prompt_tokens=self.process_backend.unresolved_prompt_tokens,
+            from_stage=stage,
         )
+        if not problems:
+            return None
+        if resuming:
+            problems.append(
+                "The saved job was left as it was; resume it again once this is fixed."
+            )
+        error = scrub_secrets("\n".join(problems))
+        self.sink.emit(LogLine(error, LogLevel.ERROR))
+        self.sink.emit(JobStateChanged(JobState.FAILED, error))
+        # nothing was written, so there is no job to report as saved
+        return WorkflowResult(JobState.FAILED, stage, error=error)
 
     # -- the run ---------------------------------------------------------
     def _run(
