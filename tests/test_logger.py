@@ -2,7 +2,15 @@ from datetime import datetime
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from src.config.paths import default_paths
+import pytest
+
+from src.config.paths import (
+    DATA_DIR_ENV_VAR,
+    DataLocation,
+    default_data_root,
+    default_paths,
+    write_data_location,
+)
 from src.enums.logging_settings import LogSource
 from src.logger.nfo_forge_logger import Logger, default_log_file
 
@@ -121,3 +129,20 @@ def test_a_logger_with_a_usable_directory_logs_to_its_file(tmp_path: Path) -> No
 
     assert logger.file_logging is True
     assert (tmp_path / "logs" / "nfoforge.log").read_text(encoding="utf-8").strip()
+
+
+def test_an_unavailable_data_folder_logs_to_the_default_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Creating `logs` in a missing data folder would create the folder itself.
+
+    Startup would then find an empty data folder instead of reporting a drive
+    that is not connected, so this run logs to the default directory instead.
+    """
+    monkeypatch.delenv(DATA_DIR_ENV_VAR, raising=False)
+    write_data_location(DataLocation(data_dir=tmp_path / "unplugged"))
+
+    log_file = default_log_file()
+
+    assert log_file.parent == default_data_root() / "logs"
+    assert not (tmp_path / "unplugged").exists()

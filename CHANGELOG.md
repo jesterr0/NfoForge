@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.2.3] - 2026-10-15
+
+### Added
+
+- **The data folder can live wherever you want it.** **Settings -> General** gained a change button beside the data folder. Pick an empty folder and NfoForge copies your profiles, templates, cookies, tools, logs and saved jobs into it, then restarts using it. Generated run output is not copied: every run regenerates it and Clean Up would delete it anyway. Your old folder is left untouched, so you can check the new one before removing it. Pick a folder that already holds NfoForge data -- a second drive you used before, or a backup -- and it is used as it is, with nothing copied. A folder holding anything else is refused, as is one inside NfoForge's installation, which an update replaces.
+- **Settings follow the data to its new folder.** Profiles store the working directory and tool paths in full, so a straight copy would keep reading saved jobs and tools from the old folder until you deleted it, then fail. Every setting naming a path inside the old folder is rewritten to the same place in the new one. Comments, quoting and every other value in your files are left exactly as they were.
+- **The plugins folder can be moved on its own.** **Settings -> Plugins** gained the same change button. A folder that already holds plugins is fine, so you can point it at a folder of checkouts. When the new folder is empty, NfoForge offers to copy your installed plugins across. Only plugin code moves: plugin settings and credentials stay in the data folder, because plugins find that location themselves. Importing a previous installation now copies its plugins into whichever plugins folder is in use.
+- **A missing data folder is reported instead of being replaced.** If a folder you chose is not there at launch, for example because its drive is not connected, NfoForge says so before touching anything. You can **Retry** once the drive is back, switch to **Use Default Folders**, or **Quit**. Starting anyway would have created an empty folder in its place, which looks exactly like losing every profile.
+- Your folder choices are recorded in `location.toml` in the default per-user folder (`%LOCALAPPDATA%\nfoforge` on Windows). That is the one file that stays behind, because it is what finds everything else. `NFOFORGE_DATA_DIR` still takes precedence when it applies, so a rehearsal never follows the real file out of its isolated tree.
+
 ## [1.2.2] - 2026-09-21
 
 ### Fixes

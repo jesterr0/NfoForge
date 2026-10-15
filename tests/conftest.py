@@ -45,7 +45,7 @@ from src.backend.utils.example_parsed_series_data import (
     EXAMPLE_MEDIA_INPUT_PAYLOAD as SERIES_EXAMPLE_PAYLOAD,
 )
 from src.backend.utils.media_info_utils import clear_restored_mediainfo
-from src.config.paths import DATA_DIR_ENV_VAR, DEV_PLUGINS_ENV_VAR
+from src.config.paths import DATA_DIR_ENV_VAR, DEV_PLUGINS_ENV_VAR, LOCATION_FILE_NAME
 from src.context.processing_context import ProcessingContext
 from src.enums.image_host import ImageHost, ImageSource
 from src.enums.media_type import MediaType
@@ -131,6 +131,14 @@ def _sandbox_every_data_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) ->
     """
     monkeypatch.setenv(DATA_DIR_ENV_VAR, str(tmp_path / "user_data"))
     monkeypatch.delenv(DEV_PLUGINS_ENV_VAR, raising=False)
+
+    # The location file lives in the real per-user directory, and the tests
+    # that delete the override above would otherwise read whatever folder the
+    # developer running them has moved their own data to.
+    monkeypatch.setattr(
+        "src.config.paths.location_file",
+        lambda: tmp_path / "default_data" / LOCATION_FILE_NAME,
+    )
 
 
 @pytest.fixture(autouse=True)
