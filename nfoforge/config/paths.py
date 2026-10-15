@@ -491,6 +491,15 @@ def write_data_location(location: DataLocation) -> None:
     atomic_write_text(path, tomlkit.dumps(document))
 
 
+def data_location_is_overridden() -> bool:
+    """Whether this launch is isolated from the saved Settings folder choices."""
+    return (
+        _chosen_data_dir is not None
+        or _override() is not None
+        or portable_data_dir() is not None
+    )
+
+
 def data_location_problems() -> tuple[str, ...]:
     """Why the folders the user chose cannot be used, if they cannot.
 
@@ -503,11 +512,7 @@ def data_location_problems() -> tuple[str, ...]:
     missing drive behind a fresh directory on whatever drive now has that
     letter.
     """
-    if (
-        _chosen_data_dir is not None
-        or _override() is not None
-        or portable_data_dir() is not None
-    ):
+    if data_location_is_overridden():
         return ()
     try:
         location = read_data_location()
@@ -539,7 +544,7 @@ def default_paths() -> AppPaths:
     write a plugin into the default plugins folder beside it.
     """
     plugins_root = None
-    if _chosen_data_dir is None and _override() is None and portable_data_dir() is None:
+    if not data_location_is_overridden():
         try:
             plugins_root = read_data_location().plugins_dir
         except DataLocationError:

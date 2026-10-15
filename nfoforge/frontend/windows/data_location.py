@@ -27,6 +27,7 @@ from nfoforge.config.paths import (
     AppPaths,
     DataLocation,
     DataLocationError,
+    data_location_is_overridden,
     default_data_root,
     read_data_location,
     write_data_location,
@@ -37,10 +38,25 @@ if TYPE_CHECKING:
     from nfoforge.frontend.windows.main_window import MainWindow
 
 
+def _can_change_location(parent: QWidget) -> bool:
+    if not data_location_is_overridden():
+        return True
+    QMessageBox.information(
+        parent,
+        "Folder Location",
+        "This launch uses --data-dir, NFOFORGE_DATA_DIR, or a portable data "
+        "folder, so saved folder choices do not apply. Restart without that "
+        "override to change the folders in Settings.",
+    )
+    return False
+
+
 def change_data_folder(
     parent: QWidget, paths: AppPaths, main_window: "MainWindow"
 ) -> None:
     """Ask for a new data folder, copy the data there, and restart into it."""
+    if not _can_change_location(parent):
+        return
     picked = QFileDialog.getExistingDirectory(
         parent, "Choose a folder for your NfoForge data", str(paths.state_root)
     )
@@ -102,6 +118,8 @@ def change_plugins_folder(
     parent: QWidget, paths: AppPaths, main_window: "MainWindow"
 ) -> None:
     """Ask for a new plugins folder, offering to copy installed plugins there."""
+    if not _can_change_location(parent):
+        return
     picked = QFileDialog.getExistingDirectory(
         parent, "Choose a folder for your plugins", str(paths.plugins)
     )
