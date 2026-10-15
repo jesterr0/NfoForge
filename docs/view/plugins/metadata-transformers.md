@@ -7,12 +7,12 @@ A failure or invalid return is non-blocking: NfoForge warns the user, discards t
 ## Contract
 
 ```python
-from src.plugins.api import (
+from nfoforge.plugins.api import (
     MetadataMediaKind,
     MetadataTransformRequest,
     PluginDefinition,
 )
-from src.payloads.media_search import MediaSearchPayload
+from nfoforge.payloads.media_search import MediaSearchPayload
 
 
 def transform_metadata(

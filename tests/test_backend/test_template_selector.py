@@ -2,13 +2,13 @@ from pathlib import Path
 
 import pytest
 
-from src.backend.template_selector import (
+from nfoforge.backend.template_selector import (
     DEF_MV_TEMPLATE,
     DEF_SERIES_TEMPLATE,
     TemplateSelectorBackEnd,
 )
-from src.config.paths import DATA_DIR_ENV_VAR
-from src.enums.media_type import MediaType
+from nfoforge.config.paths import DATA_DIR_ENV_VAR
+from nfoforge.enums.media_type import MediaType
 
 
 @pytest.mark.parametrize(

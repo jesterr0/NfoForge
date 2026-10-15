@@ -8,11 +8,11 @@ from pathlib import Path
 
 import pytest
 
-from src.config.layout_apply import MigrationError
-from src.config.layout_migration import LegacyInstall
-from src.config.paths import AppPaths
-import src.frontend.windows.legacy_import as legacy_import
-from src.frontend.windows.legacy_import import (
+from nfoforge.config.layout_apply import MigrationError
+from nfoforge.config.layout_migration import LegacyInstall
+from nfoforge.config.paths import AppPaths
+import nfoforge.frontend.windows.legacy_import as legacy_import
+from nfoforge.frontend.windows.legacy_import import (
     LegacyImportWorker,
     choose_legacy_install,
 )

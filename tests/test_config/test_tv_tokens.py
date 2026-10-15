@@ -2,7 +2,7 @@ from dataclasses import dataclass
 
 import pytest
 
-from src.config.tv_tokens import (
+from nfoforge.config.tv_tokens import (
     SUPPORTED_TVR_FORMATS,
     get_tvr_episode_token,
     get_tvr_title_token,
@@ -10,7 +10,7 @@ from src.config.tv_tokens import (
     set_tvr_episode_token,
     set_tvr_title_token,
 )
-from src.enums.series import EpisodeFormat
+from nfoforge.enums.series import EpisodeFormat
 
 
 def test_blank_subfolder_token_falls_back_to_the_season_folder_token() -> None:

@@ -12,10 +12,10 @@ import shutil
 
 import pytest
 
-from src.backend.utils.get_os_executable_ext import get_executable_string_by_os
-from src.config.dependencies import FindDependencies
-from src.config.models import DependencySettings
-from src.enums.dependencies import Dependencies
+from nfoforge.backend.utils.get_os_executable_ext import get_executable_string_by_os
+from nfoforge.config.dependencies import FindDependencies
+from nfoforge.config.models import DependencySettings
+from nfoforge.enums.dependencies import Dependencies
 
 OS_EXE = get_executable_string_by_os()
 

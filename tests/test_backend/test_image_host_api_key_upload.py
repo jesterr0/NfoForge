@@ -1,5 +1,5 @@
 """Coverage for the shared base64+API-key image-host upload flow
-(src/backend/image_host_uploading/api_key_upload.py) and the three
+(nfoforge/backend/image_host_uploading/api_key_upload.py) and the three
 uploaders built on it: ImgBB (refactored to use it), OnlyImage, and
 Lensdump. No image host's upload logic was unit tested before this file --
 aiohttp is mocked directly rather than via a request-mocking library since
@@ -12,21 +12,21 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.backend.image_host_uploading.api_key_upload import (
+from nfoforge.backend.image_host_uploading.api_key_upload import (
     _post_image,
     api_key_image_upload,
     extract_image_urls,
 )
-from src.backend.image_host_uploading.base_image_host import ImageUploadRequest
-from src.backend.image_host_uploading.chevereto_v4 import (
+from nfoforge.backend.image_host_uploading.base_image_host import ImageUploadRequest
+from nfoforge.backend.image_host_uploading.chevereto_v4 import (
     CheveretoV4Uploader,
     _create_api_url,
 )
-from src.backend.image_host_uploading.imgbb import ImageBBUploader
-from src.backend.image_host_uploading.lensdump import LensdumpUploader
-from src.backend.image_host_uploading.onlyimage import OnlyImageUploader
-from src.exceptions import ImageUploadError
-from src.packages.custom_types import ImageUploadData
+from nfoforge.backend.image_host_uploading.imgbb import ImageBBUploader
+from nfoforge.backend.image_host_uploading.lensdump import LensdumpUploader
+from nfoforge.backend.image_host_uploading.onlyimage import OnlyImageUploader
+from nfoforge.exceptions import ImageUploadError
+from nfoforge.packages.custom_types import ImageUploadData
 
 
 class _MockResponse:

@@ -14,9 +14,9 @@ from typing import Any
 import pytest
 import tomlkit
 
-from src.config.codec import TomlConfigCodec
-from src.config.config import ConfigManager
-from src.config.migrations import (
+from nfoforge.config.codec import TomlConfigCodec
+from nfoforge.config.config import ConfigManager
+from nfoforge.config.migrations import (
     MIGRATIONS,
     SCHEMA_1_VERSION,
     check_migration_chain,
@@ -161,7 +161,7 @@ def test_every_version_fixture_is_complete_after_migrating_and_loading(
     recovery but archive+regenerate. That is caught here and nowhere else.
     """
     monkeypatch.setattr(
-        "src.config.config.FindDependencies.update_dependencies",
+        "nfoforge.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
     )
     paths = build_config_paths(tmp_path)

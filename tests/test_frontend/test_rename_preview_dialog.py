@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from src.frontend.custom_widgets.rename_preview_dialog import RenamePreviewDialog
+from nfoforge.frontend.custom_widgets.rename_preview_dialog import RenamePreviewDialog
 
 
 def test_preview_shows_full_paths_when_file_parent_changes(tmp_path: Path) -> None:

@@ -1,0 +1,1103 @@
+import asyncio
+import base64
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
+import re
+from typing import Any, cast
+import zlib
+
+from guessit import guessit
+import niquests
+from rapidfuzz import fuzz
+from unidecode import unidecode
+
+from nfoforge.backend.utils.guessit_helpers import get_guessit_title
+from nfoforge.backend.utils.http_client import new_http_session
+from nfoforge.backend.utils.tvdb_client import AsyncTVDBClient, TVDBClient
+from nfoforge.enums.media_search_mode import MediaSearchMode
+from nfoforge.enums.media_type import MediaType
+from nfoforge.enums.tmdb_genres import TMDBGenreIDsMovies, TMDBGenreIDsSeries
+from nfoforge.enums.tvdb_season_type import TVDBSeasonType
+from nfoforge.exceptions import MediaSearchError, MediaSearchUnavailableError
+from nfoforge.logger.nfo_forge_logger import LOG
+from nfoforge.utils.secret_redaction import scrub_secrets
+from nfoforge.utils.super_sub import normalize_super_sub
+
+# Shared by MatchAnilistTitle, which is instantiated fresh per search and so
+# has no long-lived session of its own to attach this to.
+_ANILIST_SESSION = new_http_session()
+
+
+def _fold_title(value: object) -> str:
+    """Collapse a title to the form two spellings have to share to be one title."""
+    if not isinstance(value, str):
+        return ""
+    return " ".join(value.split()).casefold()
+
+
+@dataclass(frozen=True, slots=True)
+class TmdbAlternativeTitle:
+    """One title TMDB publishes for a record besides the one it goes by.
+
+    `countries` is every region that offered this exact string and `type` is
+    TMDB's free-text note on it ("working title", "Netflix", often empty).
+    Neither reaches the release name -- they are there so the user can tell two
+    candidate titles apart.
+    """
+
+    title: str
+    countries: tuple[str, ...] = ()
+    type: str = ""
+
+
+class MediaSearchBackEnd:
+    _MATCH_TITLE_THRESHOLD = 70.0
+
+    def __init__(
+        self,
+        language: str = "en-US",
+        use_base_language_for_images: bool = True,
+        timeout: int = 60,
+        api_key: str = "",
+    ) -> None:
+        self.media_data: dict[str, dict[str, Any]] = {}
+        self.session = new_http_session()
+        self._tvdb_client: AsyncTVDBClient | None = None
+        self.use_base_language_for_images = use_base_language_for_images
+        self.timeout = max(1, timeout)
+        self.params = {
+            "api_key": api_key.strip() or self._get_tmdb_k(),
+            "language": language,
+            "include_adult": "false",
+        }
+
+    def update_language(self, language: str) -> None:
+        self.params["language"] = language
+
+    def update_api_key(self, api_key: str) -> None:
+        """Swap the key when settings change, mirroring `update_language`."""
+        self.params["api_key"] = api_key.strip() or self._get_tmdb_k()
+
+    def close_session(self) -> None:
+        """Properly close the session when done"""
+        if hasattr(self, "session") and self.session:
+            self.session.close()
+        if hasattr(self, "_tvdb_client") and self._tvdb_client:
+            self._tvdb_client.close()
+
+    def __del__(self) -> None:
+        """Cleanup when object is destroyed"""
+        self.close_session()
+
+    def _parse_tmdb_api(
+        self,
+        media_str: str,
+        search_mode: MediaSearchMode = MediaSearchMode.BOTH,
+    ) -> dict[str, dict[str, Any]]:
+        media_title, media_year = self._guessit(media_str)
+
+        # ensure we don't leave a previous successful search available while a new
+        # request is in flight or if that request fails.
+        self.media_data.clear()
+
+        search_params: dict[str, Any] = {
+            **self.params,
+            "page": 1,
+            "query": media_title,
+        }
+        forced_media_type: str | None = None
+        if search_mode is MediaSearchMode.MOVIES:
+            endpoint = "movie"
+            forced_media_type = "movie"
+            if media_year:
+                search_params["primary_release_year"] = media_year
+        elif search_mode is MediaSearchMode.TV:
+            endpoint = "tv"
+            forced_media_type = "tv"
+            if media_year:
+                search_params["first_air_date_year"] = media_year
+        else:
+            endpoint = "multi"
+            if media_year:
+                # Preserve the existing mixed-search request behavior.
+                search_params["year"] = media_year
+
+        search_results = self._fetch_tmdb_results(
+            f"https://api.themoviedb.org/3/search/{endpoint}",
+            params=search_params,
+        )
+
+        media_dict: dict[str, dict[str, Any]] = {}
+        base_num = 0
+
+        for result in search_results:
+            media_type_str = forced_media_type or result.get("media_type")
+
+            # skip person results, only process movie and tv
+            if media_type_str not in ["movie", "tv"]:
+                continue
+
+            media_type = (
+                MediaType.MOVIE if media_type_str == "movie" else MediaType.SERIES
+            )
+            if media_type is MediaType.MOVIE:
+                title = result.get("title", "")
+                original_title = result.get("original_title", "")
+                release_date_raw = result.get("release_date") or ""
+            else:
+                title = result.get("name", "")
+                original_title = result.get("original_name", "")
+                release_date_raw = result.get("first_air_date") or ""
+
+            row = self._build_media_row(
+                media_type=media_type,
+                tmdb_id=str(result.get("id", "")),
+                # TMDB's own title for the record. The search page offers the
+                # alternatives alongside it (`fetch_alternative_titles`), but
+                # only for the row the user settles on -- fetching them for
+                # every result would be a request per row for a list almost
+                # nobody opens.
+                title=title,
+                original_title=original_title,
+                release_date_raw=str(release_date_raw),
+                plot=result.get("overview", ""),
+                vote_average_raw=result.get("vote_average"),
+                poster_path=result.get("poster_path", ""),
+                genre_ids=result.get("genre_ids") or [],
+                raw_data=result,
+                original_language=result.get("original_language", ""),
+            )
+            if row is None:
+                continue
+
+            base_num += 1
+            media_dict[f"{base_num}) {title} ({row['year']})"] = row
+
+        self.media_data.clear()
+        self.media_data = media_dict
+        return self.media_data
+
+    @classmethod
+    def best_match_key(
+        cls,
+        input_string: str,
+        media_data: Mapping[str, Mapping[str, Any]],
+    ) -> str | None:
+        """Return the result key that best matches a title/year query.
+
+        A release year is only allowed to influence results with a credible
+        title match. This prevents an unrelated same-year result from beating
+        the intended title while still making the year a strong discriminator
+        between remakes and similarly named releases.
+        """
+
+        if not media_data:
+            return None
+
+        fallback_key = next(iter(media_data))
+        query_title, query_year_raw = cls._guessit(input_string)
+        normalized_query = cls._normalize_match_title(query_title)
+        if not normalized_query:
+            return fallback_key
+
+        query_year = cls._coerce_match_year(query_year_raw)
+        scored_results: list[tuple[str, float, int, int]] = []
+        for index, (item_key, item_data) in enumerate(media_data.items()):
+            title_score = max(
+                (
+                    fuzz.WRatio(normalized_query, normalized_title)
+                    for candidate_title in (
+                        item_data.get("title"),
+                        item_data.get("original_title"),
+                    )
+                    if (normalized_title := cls._normalize_match_title(candidate_title))
+                ),
+                default=0.0,
+            )
+            year_rank = cls._match_year_rank(
+                query_year,
+                cls._coerce_match_year(item_data.get("year")),
+            )
+            scored_results.append((item_key, title_score, year_rank, index))
+
+        credible_results = [
+            result
+            for result in scored_results
+            if result[1] >= cls._MATCH_TITLE_THRESHOLD
+        ]
+        if credible_results:
+            return max(
+                credible_results,
+                key=lambda result: (result[2], result[1], -result[3]),
+            )[0]
+
+        # With no credible title, year evidence is unsafe. Pick the closest
+        # title and retain TMDB's response order when scores tie.
+        return max(
+            scored_results,
+            key=lambda result: (result[1], -result[3]),
+        )[0]
+
+    @staticmethod
+    def _normalize_match_title(value: object) -> str:
+        if not isinstance(value, str):
+            return ""
+        normalized = unidecode(value).casefold()
+        return " ".join(re.sub(r"[^a-z0-9]+", " ", normalized).split())
+
+    @staticmethod
+    def _coerce_match_year(value: object) -> int | None:
+        if isinstance(value, bool):
+            return None
+        text = str(value).strip() if value is not None else ""
+        return int(text) if re.fullmatch(r"\d{4}", text) else None
+
+    @staticmethod
+    def _match_year_rank(query_year: int | None, result_year: int | None) -> int:
+        if query_year is None or result_year is None:
+            return 0
+        difference = abs(query_year - result_year)
+        if difference == 0:
+            return 2
+        if difference == 1:
+            return 1
+        return 0
+
+    def _build_media_row(
+        self,
+        media_type: MediaType,
+        tmdb_id: str,
+        title: str,
+        original_title: str,
+        release_date_raw: str,
+        plot: str,
+        vote_average_raw: float | int | None,
+        poster_path: str,
+        genre_ids: Sequence[int],
+        raw_data: dict[str, Any],
+        original_language: str,
+    ) -> dict[str, Any] | None:
+        """Build one `media_data` row from either a `/search/*` result or a
+        complete `/movie|tv/{id}` detail record -- the two differ only in how
+        genres are represented (`genre_ids: list[int]` vs `genres:
+        list[{id, name}]`), which callers normalize to `genre_ids` before
+        reaching this shared body.
+
+        Returns `None` when `release_date_raw` doesn't parse into a
+        `YYYY-MM-DD`-shaped date. A search result list just skips that row;
+        a direct ID lookup has nothing else to fall back on, so its caller
+        treats `None` as a failed lookup.
+        """
+        if not release_date_raw:
+            return None
+        release_date_parts = str(release_date_raw).split("-")
+        if len(release_date_parts) != 3:
+            return None
+
+        full_release_date = (
+            f"{release_date_parts[1]}-{release_date_parts[2]}-{release_date_parts[0]}"
+        )
+        year = release_date_parts[0]
+
+        genre_enum_class: type[TMDBGenreIDsMovies] | type[TMDBGenreIDsSeries] = (
+            TMDBGenreIDsMovies if media_type is MediaType.MOVIE else TMDBGenreIDsSeries
+        )
+        resolved_genre_ids = []
+        for genre in genre_ids:
+            try:
+                resolved_genre_ids.append(genre_enum_class(genre))
+            except ValueError:
+                resolved_genre_ids.append(genre_enum_class.UNDEFINED)
+
+        vote_average = str(round(vote_average_raw, 1)) if vote_average_raw else ""
+
+        return {
+            "tmdb_id": tmdb_id,
+            "plot": plot,
+            "vote_average": vote_average,
+            "full_release_date": full_release_date,
+            "year": year,
+            "title": normalize_super_sub(title),
+            "original_title": original_title,
+            "poster_path": poster_path,
+            "genre_ids": resolved_genre_ids,
+            "media_type": "Movie" if media_type is MediaType.MOVIE else "Series",
+            "raw_data": raw_data,
+            "original_language": original_language,
+        }
+
+    def resolve_tmdb_reference(
+        self,
+        tmdb_id: str,
+        media_type: MediaType | None,
+        search_mode: MediaSearchMode = MediaSearchMode.BOTH,
+    ) -> dict[str, dict[str, Any]]:
+        """Resolve a TMDB ID pulled directly from a pasted URL or a `tmdb:`
+        reference in the search box, bypassing the fuzzy title search.
+
+        When `media_type` is unknown (a bare `tmdb:` id carries no movie/tv
+        marker) the candidates tried are driven by `search_mode`, movie
+        first when both are in play -- matching this file's existing
+        default bias for mixed search.
+        """
+        candidates: list[MediaType]
+        if media_type is not None:
+            candidates = [media_type]
+        elif search_mode is MediaSearchMode.MOVIES:
+            candidates = [MediaType.MOVIE]
+        elif search_mode is MediaSearchMode.TV:
+            candidates = [MediaType.SERIES]
+        else:
+            candidates = [MediaType.MOVIE, MediaType.SERIES]
+
+        last_error: MediaSearchError | None = None
+        for candidate in candidates:
+            try:
+                complete_data = self.fetch_complete_tmdb_data_for_selection(
+                    tmdb_id, candidate
+                )
+            except MediaSearchUnavailableError:
+                # No point trying the other media type against a dead
+                # connection -- surface the outage immediately.
+                raise
+            except MediaSearchError as error:
+                last_error = error
+                continue
+
+            row = self._row_from_complete_data(candidate, complete_data)
+            if row is None:
+                last_error = MediaSearchError(
+                    "TMDB has no usable release date for this title."
+                )
+                continue
+
+            media_dict = {f"1) {row['title']} ({row['year']})": row}
+            self.media_data.clear()
+            self.media_data = media_dict
+            return media_dict
+
+        raise last_error or MediaSearchError("TMDB ID not found.")
+
+    def _row_from_complete_data(
+        self, media_type: MediaType, data: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        is_movie = media_type is MediaType.MOVIE
+        raw_genres = data.get("genres")
+        genre_ids = (
+            [
+                genre["id"]
+                for genre in raw_genres
+                if isinstance(genre, dict) and isinstance(genre.get("id"), int)
+            ]
+            if isinstance(raw_genres, list)
+            else []
+        )
+        return self._build_media_row(
+            media_type=media_type,
+            tmdb_id=str(data.get("id", "")),
+            title=data.get("title" if is_movie else "name", ""),
+            original_title=data.get(
+                "original_title" if is_movie else "original_name", ""
+            ),
+            release_date_raw=str(
+                data.get("release_date" if is_movie else "first_air_date") or ""
+            ),
+            plot=data.get("overview", ""),
+            vote_average_raw=data.get("vote_average"),
+            poster_path=data.get("poster_path", ""),
+            genre_ids=genre_ids,
+            raw_data=data,
+            original_language=data.get("original_language", ""),
+        )
+
+    def _fetch_tmdb_json(
+        self,
+        url: str,
+        params: Mapping[str, Any] | None = None,
+        subject: str = "search",
+    ) -> dict[str, Any]:
+        """GET a TMDB endpoint and return its JSON object.
+
+        `subject` names the request in the three user-facing messages, so a
+        failed alternative-title lookup does not report itself as a failed
+        search. `fetch_complete_tmdb_data_for_selection` keeps its own copy of
+        this handling: its wording differs ("metadata lookup failed" rather
+        than "metadata failed") and its messages are asserted directly.
+        """
+        try:
+            with self.session.get(
+                url,
+                params=params if params is not None else self.params,
+                timeout=self.timeout,
+            ) as response:
+                response.raise_for_status()
+                response_json = response.json()
+                if not isinstance(response_json, dict):
+                    raise MediaSearchError(
+                        f"TMDB returned an invalid {subject} response."
+                    )
+                return cast(dict[str, Any], response_json)
+        except (
+            niquests.exceptions.ConnectionError,
+            niquests.exceptions.Timeout,
+            niquests.exceptions.ProxyError,
+            niquests.exceptions.SSLError,
+        ) as error:
+            raise MediaSearchUnavailableError(
+                f"TMDB {subject} is unavailable. Check your internet connection "
+                "and try again."
+            ) from error
+        except niquests.exceptions.RequestException as error:
+            raise MediaSearchError(
+                f"TMDB {subject} failed: {scrub_secrets(str(error))}"
+            ) from error
+        except (TypeError, ValueError) as error:
+            raise MediaSearchError(
+                f"TMDB returned an invalid {subject} response."
+            ) from error
+
+    def _fetch_tmdb_results(
+        self,
+        url: str,
+        params: Mapping[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        results = self._fetch_tmdb_json(url, params).get("results", [])
+        return cast(list[dict[str, Any]], results) if isinstance(results, list) else []
+
+    def fetch_complete_tmdb_data_for_selection(
+        self, media_id: str | int, media_type: MediaType
+    ) -> dict[str, Any]:
+        """
+        Fetch complete TMDB data with alternative titles, images, and external IDs
+
+        This method fetches comprehensive data from TMDB including:
+        - Basic movie/TV show information (title, overview, release date, etc.)
+        - Alternative titles for different regions/languages
+        - All available images (posters, backdrops, logos)
+        - External IDs (IMDb, TVDB, etc.)
+
+        Note: Uses base language (e.g., 'en' instead of 'en-US') for image requests
+        to ensure all images are returned, as TMDB filters images by specific regions
+        when using country-specific language codes.
+
+        Example URL: https://api.themoviedb.org/3/movie/603?append_to_response=alternative_titles,images,external_ids&language=en
+        """
+        endpoint = "movie" if media_type is MediaType.MOVIE else "tv"
+        validated_media_id = self._validate_tmdb_id(media_id)
+        url = f"https://api.themoviedb.org/3/{endpoint}/{validated_media_id}"
+
+        # create modified params with base language for better image results
+        image_params = self.params.copy()
+
+        if self.use_base_language_for_images:
+            current_language = image_params.get("language") or "en-US"
+            # extract base language (e.g., 'en' from 'en-US')
+            base_language = current_language.split("-")[0]
+            image_params["language"] = base_language
+        image_params["append_to_response"] = "alternative_titles,images,external_ids"
+
+        try:
+            with self.session.get(
+                url, params=image_params, timeout=self.timeout
+            ) as response:
+                response.raise_for_status()
+                response_json = response.json()
+                if not isinstance(response_json, dict):
+                    raise MediaSearchError(
+                        "TMDB returned an invalid metadata response."
+                    )
+                response_data = cast(dict[str, Any], response_json)
+                if not response_data:
+                    raise MediaSearchError(
+                        "TMDB returned no metadata for the selection."
+                    )
+                if not self._returned_id_matches(response_data, validated_media_id):
+                    raise MediaSearchError(
+                        "TMDB returned metadata for a different ID than requested."
+                    )
+                return response_data
+        except (
+            niquests.exceptions.ConnectionError,
+            niquests.exceptions.Timeout,
+            niquests.exceptions.ProxyError,
+            niquests.exceptions.SSLError,
+        ) as error:
+            raise MediaSearchUnavailableError(
+                "TMDB metadata is unavailable. Check your internet connection and try again."
+            ) from error
+        except niquests.exceptions.RequestException as error:
+            raise MediaSearchError(
+                f"TMDB metadata lookup failed: {scrub_secrets(str(error))}"
+            ) from error
+        except (TypeError, ValueError) as error:
+            raise MediaSearchError(
+                "TMDB returned an invalid metadata response."
+            ) from error
+
+    @staticmethod
+    def _returned_id_matches(response: Mapping[str, Any], expected_id: str) -> bool:
+        """Whether a TMDB record answers for the ID that was asked for."""
+        returned_id = response.get("id")
+        try:
+            returned_numeric_id = (
+                int(str(returned_id))
+                if isinstance(returned_id, str | int)
+                and not isinstance(returned_id, bool)
+                else None
+            )
+        except ValueError:
+            return False
+        return returned_numeric_id is not None and returned_numeric_id == int(
+            expected_id
+        )
+
+    @staticmethod
+    def parse_alternative_titles(
+        payload: Mapping[str, Any] | None,
+        default_title: str = "",
+    ) -> tuple[TmdbAlternativeTitle, ...]:
+        """Normalize TMDB's alternative-title block into display-ready entries.
+
+        Accepts either the block itself or a whole record carrying one under
+        `alternative_titles`, so the same parser serves the dedicated endpoint
+        and the `append_to_response` copy already sitting in `tmdb_data`.
+
+        TMDB keys the list `titles` on a movie and `results` on a series -- the
+        only shape difference between the two -- so both are read here rather
+        than branching on media type at every call site.
+
+        Entries are grouped by title: TMDB lists the same string under many
+        countries, and only the string survives into the release name, so
+        separate rows for them would be noise. `default_title` is dropped for
+        the same reason -- picking it would change nothing.
+        """
+        if not payload:
+            return ()
+
+        nested = payload.get("alternative_titles")
+        if isinstance(nested, Mapping):
+            payload = cast(Mapping[str, Any], nested)
+
+        raw_entries = payload.get("titles")
+        if not isinstance(raw_entries, list):
+            raw_entries = payload.get("results")
+        if not isinstance(raw_entries, list):
+            return ()
+
+        excluded = _fold_title(default_title)
+        grouped: dict[str, tuple[str, list[str], str]] = {}
+        for entry in cast(list[Any], raw_entries):
+            if not isinstance(entry, Mapping):
+                continue
+            entry_map = cast(Mapping[str, Any], entry)
+            title = normalize_super_sub(str(entry_map.get("title") or "")).strip()
+            if not title:
+                continue
+            folded = _fold_title(title)
+            if not folded or (excluded and folded == excluded):
+                continue
+
+            country = str(entry_map.get("iso_3166_1") or "").strip().upper()
+            title_type = str(entry_map.get("type") or "").strip()
+
+            existing = grouped.get(folded)
+            if existing is None:
+                grouped[folded] = (title, [country] if country else [], title_type)
+                continue
+            _, countries, existing_type = existing
+            if country and country not in countries:
+                countries.append(country)
+            if not existing_type and title_type:
+                grouped[folded] = (existing[0], countries, title_type)
+
+        return tuple(
+            TmdbAlternativeTitle(
+                title=title, countries=tuple(countries), type=title_type
+            )
+            for title, countries, title_type in grouped.values()
+        )
+
+    def fetch_alternative_titles(
+        self,
+        media_id: str | int,
+        media_type: MediaType,
+        default_title: str = "",
+    ) -> tuple[TmdbAlternativeTitle, ...]:
+        """Fetch every title TMDB publishes for a record besides its own.
+
+        The dedicated endpoint rather than the `append_to_response` copy on the
+        detail record: this runs while the user is still choosing a search
+        result, long before anything commits to fetching that record.
+        """
+        endpoint = "movie" if media_type is MediaType.MOVIE else "tv"
+        validated_media_id = self._validate_tmdb_id(media_id)
+        url = (
+            f"https://api.themoviedb.org/3/{endpoint}/"
+            f"{validated_media_id}/alternative_titles"
+        )
+        response = self._fetch_tmdb_json(url, subject="alternative title lookup")
+        if not self._returned_id_matches(response, validated_media_id):
+            raise MediaSearchError(
+                "TMDB returned alternative titles for a different ID than requested."
+            )
+        return self.parse_alternative_titles(response, default_title)
+
+    @staticmethod
+    def _guessit(input_string: str) -> tuple[str, str]:
+        get_info = guessit(input_string, {"excludes": ["language"]})
+        title = get_guessit_title(get_info)
+        year_value = get_info.get("year", "")
+        year = str(year_value) if year_value else ""
+        if not title and year:
+            title = input_string.split(str(year))[0].strip()
+        elif not title and not year:
+            title = input_string
+        return title, year
+
+    async def parse_other_ids(
+        self,
+        media_type: MediaType,
+        imdb_id: str,
+        tmdb_title: str,
+        tmdb_year: int,
+        original_language: str,
+        tmdb_genres: Sequence[TMDBGenreIDsMovies | TMDBGenreIDsSeries],
+        tmdb_id: str = "",
+        tvdb_id: str = "",
+    ) -> dict[str, Any]:
+        # fetch complete TMDB data if we have TMDB ID
+        tmdb_complete_data: dict[str, Any] | None = None
+        resolved_tvdb_id = int(tvdb_id) if tvdb_id.isdecimal() else None
+        if tmdb_id:
+            tmdb_complete_data = self.fetch_complete_tmdb_data_for_selection(
+                tmdb_id, media_type
+            )
+            if tmdb_complete_data:
+                external_ids = tmdb_complete_data.get("external_ids", {})
+                if isinstance(external_ids, dict):
+                    remote_imdb_id = external_ids.get("imdb_id")
+                    remote_tvdb_id = external_ids.get("tvdb_id")
+                    if not imdb_id and isinstance(remote_imdb_id, str):
+                        imdb_id = remote_imdb_id
+                    if isinstance(remote_tvdb_id, int) and resolved_tvdb_id is None:
+                        resolved_tvdb_id = remote_tvdb_id
+
+        tasks: dict[str, asyncio.Task[Any]] = {}
+
+        # only add tvdb task if we're in a series and we have imdb or tvdb id
+        if media_type is MediaType.SERIES and (imdb_id or resolved_tvdb_id):
+            tasks["tvdb_data"] = asyncio.create_task(
+                self.parse_tvdb_data(imdb_id, resolved_tvdb_id)
+            )
+
+        # `tmdb_genres` and `original_language` describe the search row that was
+        # selected, which is not the record a manually entered TMDB ID resolves
+        # to. Prefer the fetched record whenever we have one, or an anime found
+        # by manual ID silently skips the AniList lookup.
+        animation_id = TMDBGenreIDsMovies.ANIMATION.value
+        genre_ids = {getattr(genre, "value", genre) for genre in tmdb_genres}
+        anime_language = original_language
+        if tmdb_complete_data:
+            raw_genres = tmdb_complete_data.get("genres")
+            if isinstance(raw_genres, list):
+                genre_ids = {
+                    entry["id"]
+                    for entry in raw_genres
+                    if isinstance(entry, dict) and isinstance(entry.get("id"), int)
+                }
+            fetched_language = tmdb_complete_data.get("original_language")
+            if isinstance(fetched_language, str) and fetched_language:
+                anime_language = fetched_language
+
+        # parse anime if needed
+        if animation_id in genre_ids and anime_language == "ja":
+            tasks["ani_list_data"] = asyncio.create_task(
+                self.parse_ani_list(tmdb_title, tmdb_year)
+            )
+
+        results: dict[str, dict[str, Any]] = {}
+
+        results["resolved_ids"] = {
+            "success": True,
+            "result": {
+                "imdb_id": imdb_id or None,
+                "tvdb_id": resolved_tvdb_id,
+            },
+        }
+
+        # add complete TMDB data to results
+        if tmdb_complete_data:
+            results["tmdb_complete_data"] = {
+                "success": True,
+                "result": tmdb_complete_data,
+            }
+
+        if media_type is MediaType.SERIES and not (imdb_id or resolved_tvdb_id):
+            results["tvdb_data"] = {
+                "success": False,
+                "error": "A TVDB ID could not be located for this series.",
+            }
+
+        for key, task in tasks.items():
+            try:
+                result = await task
+                if key == "tvdb_data" and not isinstance(result, dict):
+                    results[key] = {
+                        "success": False,
+                        "error": "TVDB returned no metadata for this series.",
+                    }
+                    continue
+                results[key] = {"success": True, "result": result}
+            except Exception as e:
+                results[key] = {"success": False, "error": str(e)}
+        return results
+
+    async def parse_tvdb_data(
+        self, imdb_id: str | None, tvdb_id: int | None
+    ) -> dict[str, Any] | None:
+        tvdb_parse = self._get_tvdb_client()
+
+        # if we have imdb_id but failed to detect tvdb_id we'll use tvdb api to find the id
+        if not tvdb_id and imdb_id:
+            find_tvdb_id = await tvdb_parse.search_by_remote_id(imdb_id)
+            if find_tvdb_id and isinstance(find_tvdb_id, list):
+                first_result = find_tvdb_id[0]
+                if isinstance(first_result, dict):
+                    tvdb_id_data = first_result.get("movie", first_result.get("series"))
+                    if isinstance(tvdb_id_data, dict):
+                        remote_tvdb_id = tvdb_id_data.get("id")
+                        if isinstance(remote_tvdb_id, int):
+                            tvdb_id = remote_tvdb_id
+
+        # if we failed to determine tvdb id log it and return early
+        if not tvdb_id:
+            LOG.warning(
+                LOG.LOG_SOURCE.BE,
+                f"Failed to determine TVDB_ID from API (IMDbID = {imdb_id}, TVDBID = {tvdb_id})",
+            )
+            return None
+
+        # now we can extensively parse the data from the API
+        if tvdb_id:
+            # get the main series data (it will have a default type)
+            raw_series_data = await tvdb_parse.get_series_extended(tvdb_id)
+
+            if not isinstance(raw_series_data, dict):
+                return None
+            series_data = cast(dict[str, Any], raw_series_data)
+
+            # extract available season types from the series data
+            available_season_types: list[TVDBSeasonType] = []
+            season_types_data = series_data.get("seasonTypes", [])
+
+            # use enum's mapping functionality to convert TVDB data to our enums
+            for season_type_info in (
+                season_types_data if isinstance(season_types_data, list) else []
+            ):
+                season_type_enum = (
+                    TVDBSeasonType.from_tvdb_season_type_info(season_type_info)
+                    if isinstance(season_type_info, dict)
+                    else None
+                )
+                if season_type_enum and season_type_enum not in available_season_types:
+                    available_season_types.append(season_type_enum)
+
+            # if no recognized season types found, fall back to our default main types
+            if not available_season_types:
+                LOG.warning(
+                    LOG.LOG_SOURCE.BE,
+                    f"No recognized season types found in series data for {tvdb_id}, using default types",
+                )
+                available_season_types = TVDBSeasonType.get_main_types()
+            else:
+                type_names = [st.display_name for st in available_season_types]
+                LOG.info(
+                    LOG.LOG_SOURCE.BE,
+                    f"Available season types for series {tvdb_id}: {', '.join(type_names)}",
+                )
+
+            # get the default episodes (aired/official order) from the main series data
+            # with meta="episodes", this will always include episodes
+            default_episodes = series_data.get("episodes", [])
+            if not isinstance(default_episodes, list):
+                default_episodes = []
+
+            # we have episodes in main data, fetch additional orderings for other season types
+            LOG.info(
+                LOG.LOG_SOURCE.BE,
+                f"Using episodes from main series data, fetching additional orderings for series {tvdb_id}...",
+            )
+
+            async def fetch_episodes_for_type(
+                season_type: TVDBSeasonType,
+            ) -> list[dict[str, Any]]:
+                """Fetch episodes for a specific season type"""
+                try:
+                    # for aired/official episodes, we already have them from main data, skip
+                    if season_type.api_param == "official":
+                        return default_episodes
+
+                    episodes_response = await tvdb_parse.get_series_episodes(
+                        tvdb_id,
+                        season_type=season_type.api_param,
+                    )
+
+                    if isinstance(episodes_response, dict):
+                        episodes = episodes_response.get("episodes")
+                    else:
+                        episodes = None
+                    if isinstance(episodes, list):
+                        LOG.info(
+                            LOG.LOG_SOURCE.BE,
+                            f"Fetched {len(episodes)} episodes for {season_type.display_name} "
+                            f"(type {season_type.type_id}) for series {tvdb_id}",
+                        )
+                        return cast(list[dict[str, Any]], episodes)
+                    else:
+                        LOG.warning(
+                            LOG.LOG_SOURCE.BE,
+                            f"No episodes found for {season_type.display_name} "
+                            f"(type {season_type.type_id}) for series {tvdb_id}",
+                        )
+                        return []
+
+                except Exception as e:
+                    LOG.error(
+                        LOG.LOG_SOURCE.BE,
+                        f"Failed to fetch episodes for {season_type.display_name} "
+                        f"(type {season_type.type_id}) for series {tvdb_id}: {e}",
+                    )
+                    return []
+
+            # create async tasks for available season types that need separate fetching
+            # (Official/Aired episodes are already in default_episodes from main series data)
+            additional_types = [
+                st for st in available_season_types if st.api_param != "official"
+            ]
+            tasks: dict[int, asyncio.Task[list[dict[str, Any]]]] = {}
+            for season_type in additional_types:
+                tasks[season_type.type_id] = asyncio.create_task(
+                    fetch_episodes_for_type(season_type)
+                )
+
+            # execute additional tasks concurrently (if any)
+            if tasks:
+                results = await asyncio.gather(*tasks.values(), return_exceptions=True)
+            else:
+                results = []
+
+            # build episodes_by_type dictionary for all available season types
+            episodes_by_type: dict[int, dict[str, str | list[dict[str, Any]]]] = {}
+            type_summary: list[str] = []
+
+            # process all available season types
+            additional_results_index = 0
+            for season_type in available_season_types:
+                if season_type.api_param == "official":
+                    # use episodes from main series data
+                    episodes_by_type[season_type.type_id] = {
+                        "type_name": season_type.display_name,
+                        "type": season_type.api_param,
+                        "episodes": default_episodes,
+                    }
+                    type_summary.append(
+                        f"{season_type.display_name}: {len(default_episodes)} episodes"
+                    )
+                else:
+                    # use episodes from additional async results
+                    if additional_results_index < len(results):
+                        result = results[additional_results_index]
+                        if (
+                            result
+                            and not isinstance(result, Exception)
+                            and isinstance(result, list)
+                        ):
+                            episodes_by_type[season_type.type_id] = {
+                                "type_name": season_type.display_name,
+                                "type": season_type.api_param,
+                                "episodes": result,
+                            }
+                            count = len(result)
+                            type_summary.append(
+                                f"{season_type.display_name}: {count} episodes"
+                            )
+                        elif isinstance(result, Exception):
+                            LOG.error(
+                                LOG.LOG_SOURCE.BE,
+                                f"Exception fetching {season_type.display_name}: {result}",
+                            )
+                    additional_results_index += 1
+
+            # add the episodes by type to the series data
+            if episodes_by_type:
+                series_data["episodes_by_type"] = episodes_by_type
+
+                LOG.info(
+                    LOG.LOG_SOURCE.BE,
+                    f"Enhanced TVDB data for series {tvdb_id} with episode types: "
+                    f"{', '.join(type_summary)}",
+                )
+            else:
+                LOG.warning(
+                    LOG.LOG_SOURCE.BE,
+                    f"No enhanced episode data could be fetched for series {tvdb_id}",
+                )
+
+            return series_data
+
+        return None
+
+    def _get_tvdb_client(self) -> AsyncTVDBClient:
+        if self._tvdb_client is None:
+            self._tvdb_client = AsyncTVDBClient(
+                TVDBClient(self._get_tvdb_k(), self.timeout)
+            )
+        return self._tvdb_client
+
+    @staticmethod
+    def _validate_tmdb_id(media_id: str | int) -> str:
+        if isinstance(media_id, bool):
+            raise MediaSearchError("TMDB ID must be a decimal number.")
+        value = str(media_id).strip()
+        if not value or not value.isdecimal():
+            raise MediaSearchError("TMDB ID must be a decimal number.")
+        try:
+            return str(int(value))
+        except ValueError as error:
+            raise MediaSearchError("TMDB ID is too large to be valid.") from error
+
+    async def parse_ani_list(
+        self, tmdb_title: str, tmdb_year: int
+    ) -> dict[str, Any] | None:
+        matcher = MatchAnilistTitle(tmdb_title, tmdb_year, self.timeout)
+        best_match = await matcher.match()
+        if best_match:
+            # {'id': 21519, 'idMal': 32281, 'title': {'romaji': 'Kimi no Na wa.', 'english': 'Your Name.', 'native': '君の名は。'}, 'seasonYear': 2016, 'episodes': 1}
+            return best_match
+        return None
+
+    @staticmethod
+    def _get_tmdb_k() -> str:
+        """A bundled key so search works out of the box, encoded to keep
+        automated credential scrapers from harvesting it off the public
+        repository. Add your own key in settings if preferred.
+        """
+        # cSpell:disable
+        k = b"eJwzT7MwNTVOsTA0ME4xTjM2NjIzMzIzTjU3sjQ2MUi2TAYAgTIH3A=="
+        # cSpell:enable
+        return zlib.decompress(base64.b64decode(k)).decode("ascii")
+
+    @staticmethod
+    def _get_tvdb_k() -> str:
+        # cSpell:disable
+        k = (
+            b"MDEwMDExMTAwMTAxMDEwMDAxMDExMDAxMDAxMTAwMDAwMTAwMTEwMTAwMTEwMDEwMDE"
+            b"wMTEwMDEwMDExMDEwMTAxMDAxMTAxMDEwMTAxMDAwMTAwMDEwMTAxMTEwMTAwMDEwMTEwMTA"
+            b"wMTAwMDExMTAxMDAwMTAxMDAxMTAxMDEwMTAwMTEwMTAxMDAwMDExMDAxMTAwMDAwMDExMDA"
+            b"wMDAxMDExMDEwMDEwMTAxMDAwMTEwMDExMTAwMTEwMTAxMDEwMDExMDAwMTAxMDExMTAxMDA"
+            b"xMDAxMDAxMTAxMDEwMTAwMTEwMTAxMDEwMTAwMDEwMDAwMDEwMTExMDEwMDAxMDAxMTEwMDEw"
+            b"MTAxMDAwMTEwMTAxMTAwMTEwMTAxMDEwMTEwMTAwMTEwMTAxMDAxMDAxMTAxMDExMTAxMTEwM"
+            b"TAwMTExMDAxMTAxMDEwMDExMDEwMDAwMTEwMTEwMDAxMDAxMTEwMDEwMTAxMDAwMTAwMTAxMDAxMTAxMDEx"
+        )
+        # cSpell:enable
+        binary_bytes = base64.b64decode(k)
+        b64_bytes = bytes(
+            int(binary_bytes[i : i + 8], 2) for i in range(0, len(binary_bytes), 8)
+        )
+        return base64.b64decode(b64_bytes).decode()
+
+
+class MatchAnilistTitle:
+    def __init__(self, title: str, year: int, timeout: int = 60) -> None:
+        self.title = title
+        self.year = year
+        self.timeout = max(1, timeout)
+        self.data: dict[str, Any] | None = None
+
+    async def parse_ani_list(self, tmdb_title: str) -> dict[str, Any]:
+        query = """
+            query ($search: String) {
+                Page (page: 1) {
+                    pageInfo {
+                        total
+                    }
+                    media (search: $search, type: ANIME, sort: SEARCH_MATCH) {
+                        id
+                        idMal
+                        title {
+                            romaji
+                            english
+                            native
+                        }
+                        seasonYear
+                        episodes
+                    }
+                }
+            }
+        """
+        variables = {"search": tmdb_title}
+        response = await asyncio.to_thread(
+            _ANILIST_SESSION.post,
+            "https://graphql.anilist.co",
+            json={"query": query, "variables": variables},
+            timeout=self.timeout,
+        )
+        response.raise_for_status()
+        response_json = response.json()
+        return cast(dict[str, Any], response_json)
+
+    def normalize_text(self, text: str) -> str:
+        """Normalize text by removing accents, lowercasing, and stripping non-alphanumeric characters."""
+        text = unidecode(text.lower())
+        return re.sub(r"[^a-z0-9]", "", text)
+
+    def filter_by_year(
+        self, media: list[dict[str, Any]], year: int
+    ) -> list[dict[str, Any]]:
+        """Filter media by the exact year."""
+        return [anime for anime in media if anime.get("seasonYear") == year]
+
+    def get_best_match(
+        self, media: list[dict[str, Any]], search_name: str
+    ) -> dict[str, Any] | None:
+        """Find the best match for a title using fuzzy string matching."""
+        search_name_normalized = self.normalize_text(search_name)
+        best_match: dict[str, Any] | None = None
+        highest_score = 0.0
+
+        for anime in media:
+            for _title_type, title in anime["title"].items():
+                if title:
+                    title_normalized = self.normalize_text(title)
+                    score = fuzz.ratio(search_name_normalized, title_normalized)
+
+                    if score > highest_score:
+                        highest_score = score
+                        best_match = anime
+
+        return best_match
+
+    async def match(self) -> dict[str, Any] | None:
+        """Match the anime title from the filtered data."""
+        # fetch the data asynchronously
+        response_data = await self.parse_ani_list(self.title)
+        self.data = response_data
+
+        # filter by year
+        if self.data is None:
+            return None
+
+        api_data = self.data.get("data")
+        page_data = api_data.get("Page") if isinstance(api_data, dict) else None
+        media = page_data.get("media") if isinstance(page_data, dict) else None
+        if not isinstance(media, list):
+            return None
+
+        filtered_media = self.filter_by_year(
+            cast(list[dict[str, Any]], media), self.year
+        )
+
+        # find best match
+        if filtered_media:
+            return self.get_best_match(filtered_media, self.title)
+        return None

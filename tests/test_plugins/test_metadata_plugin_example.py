@@ -2,8 +2,8 @@ import importlib
 
 import pytest
 
-from src.payloads.media_search import MediaSearchPayload
-from src.plugins.api import (
+from nfoforge.payloads.media_search import MediaSearchPayload
+from nfoforge.plugins.api import (
     MetadataInputContext,
     MetadataMediaKind,
     MetadataTransformContext,

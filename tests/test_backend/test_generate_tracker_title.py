@@ -19,20 +19,20 @@ from typing import cast
 
 import pytest
 
-from src.backend.process import ProcessBackEnd
-from src.backend.trackers.title_rules import TITLE_RULES, Separator
-from src.backend.utils.example_parsed_movie_data import (
+from nfoforge.backend.process import ProcessBackEnd
+from nfoforge.backend.trackers.title_rules import TITLE_RULES, Separator
+from nfoforge.backend.utils.example_parsed_movie_data import (
     EXAMPLE_MEDIA_INPUT_PAYLOAD,
     EXAMPLE_SEARCH_PAYLOAD,
 )
-from src.config.config import ConfigManager
-from src.context.processing_context import ProcessingContext
-from src.enums.multi_episode_style import MultiEpisodeStyle
-from src.enums.token_replacer import ColonReplace
-from src.enums.tracker_selection import TrackerSelection
-from src.exceptions import TrackerError
-from src.payloads.series import build_series_release_info
-from src.payloads.trackers import TrackerInfo
+from nfoforge.config.config import ConfigManager
+from nfoforge.context.processing_context import ProcessingContext
+from nfoforge.enums.multi_episode_style import MultiEpisodeStyle
+from nfoforge.enums.token_replacer import ColonReplace
+from nfoforge.enums.tracker_selection import TrackerSelection
+from nfoforge.exceptions import TrackerError
+from nfoforge.payloads.series import build_series_release_info
+from nfoforge.payloads.trackers import TrackerInfo
 
 
 def _backend(

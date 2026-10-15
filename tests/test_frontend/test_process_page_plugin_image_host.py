@@ -1,13 +1,13 @@
 from types import SimpleNamespace
 
-from src.backend.image_host_uploading.base_image_host import (
+from nfoforge.backend.image_host_uploading.base_image_host import (
     BaseImageHostUploader,
     ImageUploadRequest,
 )
-from src.frontend.wizards.process import ProcessPage
-from src.packages.custom_types import ImageUploadData
-from src.plugins.api import PluginDefinition
-from src.plugins.manager import PluginManager
+from nfoforge.frontend.wizards.process import ProcessPage
+from nfoforge.packages.custom_types import ImageUploadData
+from nfoforge.plugins.api import PluginDefinition
+from nfoforge.plugins.manager import PluginManager
 
 
 class _StubImageHostUploader(BaseImageHostUploader):

@@ -8,8 +8,8 @@ from typing import Any
 from pymediainfo import MediaInfo, Track
 import pytest
 
-from src.backend.jobs.assets import capture_mediainfo, read_job_asset
-from src.backend.jobs.codec import (
+from nfoforge.backend.jobs.assets import capture_mediainfo, read_job_asset
+from nfoforge.backend.jobs.codec import (
     JobCodecError,
     _shared_data_from_dict,
     context_from_dict,
@@ -19,27 +19,27 @@ from src.backend.jobs.codec import (
     mediainfo_xml,
     reselect_trackers,
 )
-from src.backend.jobs.store import load_job
-from src.backend.utils.media_info_utils import (
+from nfoforge.backend.jobs.store import load_job
+from nfoforge.backend.utils.media_info_utils import (
     MinimalMediaInfo,
     clear_restored_mediainfo,
 )
-from src.context.factory import create_processing_context
-from src.context.processing_context import ProcessingContext
-from src.enums.image_host import ImageHost, ImageSource
-from src.enums.media_type import MediaType
-from src.enums.series import EpisodeFormat
-from src.enums.tmdb_genres import TMDBGenreIDsMovies
-from src.enums.torrent_client import TorrentClientSelection
-from src.enums.tracker_selection import TrackerSelection
-from src.packages.custom_types import (
+from nfoforge.context.factory import create_processing_context
+from nfoforge.context.processing_context import ProcessingContext
+from nfoforge.enums.image_host import ImageHost, ImageSource
+from nfoforge.enums.media_type import MediaType
+from nfoforge.enums.series import EpisodeFormat
+from nfoforge.enums.tmdb_genres import TMDBGenreIDsMovies
+from nfoforge.enums.torrent_client import TorrentClientSelection
+from nfoforge.enums.tracker_selection import TrackerSelection
+from nfoforge.packages.custom_types import (
     ComparisonPair,
     ImageHostRef,
     ImageUploadData,
     ImageUploadFromTo,
 )
-from src.plugins.api import MetadataMediaKind
-from src.plugins.manager import PluginManager
+from nfoforge.plugins.api import MetadataMediaKind
+from nfoforge.plugins.manager import PluginManager
 from tests.conftest import SourceLessBundle, write_sample_media
 
 

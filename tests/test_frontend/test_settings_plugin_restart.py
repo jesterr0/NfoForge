@@ -3,10 +3,10 @@ from pathlib import Path
 from PySide6.QtWidgets import QMessageBox, QWidget
 import pytest
 
-from src.config.config import ConfigManager
-from src.config.paths import ConfigPaths
-import src.frontend.stacked_windows.settings.settings as settings_module
-from src.frontend.stacked_windows.settings.settings import Settings
+from nfoforge.config.config import ConfigManager
+from nfoforge.config.paths import ConfigPaths
+import nfoforge.frontend.stacked_windows.settings.settings as settings_module
+from nfoforge.frontend.stacked_windows.settings.settings import Settings
 from tests.repo_paths import build_app_paths
 
 
@@ -18,7 +18,7 @@ def _make_settings(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> tuple[Settings, ConfigManager]:
     monkeypatch.setattr(
-        "src.config.config.FindDependencies.update_dependencies",
+        "nfoforge.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
     )
     manager = ConfigManager("test", _paths(tmp_path))

@@ -5,14 +5,14 @@ from types import SimpleNamespace
 
 import pytest
 
-from src.backend.images import FrameForgeImageGeneration
-from src.backend.utils import frameforge_index_cache as cache_module
-from src.backend.utils.frameforge_index_cache import FrameForgeIndexCache
-from src.config.paths import AppPaths
-from src.enums.cropping import Cropping
-from src.enums.image_plugin import ImagePlugin
-from src.enums.indexer import Indexer
-from src.enums.subtitles import SubtitleAlignment
+from nfoforge.backend.images import FrameForgeImageGeneration
+from nfoforge.backend.utils import frameforge_index_cache as cache_module
+from nfoforge.backend.utils.frameforge_index_cache import FrameForgeIndexCache
+from nfoforge.config.paths import AppPaths
+from nfoforge.enums.cropping import Cropping
+from nfoforge.enums.image_plugin import ImagePlugin
+from nfoforge.enums.indexer import Indexer
+from nfoforge.enums.subtitles import SubtitleAlignment
 
 
 def _media_pair(tmp_path: Path, suffix: str = "") -> tuple[Path, Path, Path]:

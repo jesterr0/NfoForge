@@ -1,0 +1,505 @@
+from datetime import datetime
+from pathlib import Path
+from typing import Any
+
+import niquests
+from niquests.typing import MultiPartFilesAltType
+from pymediainfo import MediaInfo
+
+from nfoforge.backend.trackers.cookie_storage import load_cookies, save_cookies
+from nfoforge.backend.trackers.utils import TRACKER_HEADERS
+from nfoforge.backend.upload_retry import classify_upload_post_error
+from nfoforge.backend.utils.file_utilities import release_stem
+from nfoforge.backend.utils.http_client import new_http_session
+from nfoforge.backend.utils.resolution import VideoResolutionAnalyzer
+from nfoforge.backend.utils.tvmaze_client import TVmazeClient, normalize_imdb_id
+from nfoforge.enums.media_type import MediaType
+from nfoforge.enums.tracker_selection import TrackerSelection
+from nfoforge.enums.trackers.torrentleech import TLCategories
+from nfoforge.exceptions import TrackerError
+from nfoforge.logger.nfo_forge_logger import LOG
+from nfoforge.payloads.tracker_search_result import TrackerSearchResult
+from nfoforge.utils.secret_redaction import scrub_mapping
+
+
+def tl_upload(
+    announce_key: str,
+    nfo: str,
+    tracker_title: str | None,
+    torrent_file: Path,
+    mediainfo_obj: MediaInfo,
+    media_type: MediaType,
+    is_pack: bool,
+    timeout: int,
+    is_anime: bool = False,
+    imdb_id: str | None = None,
+    tvdb_id: str | None = None,
+    season: int | None = None,
+    episode: int | None = None,
+) -> bool | None:
+    uploader = TLUploader(
+        announce_key=announce_key,
+        timeout=timeout,
+        imdb_id=imdb_id,
+        tvdb_id=tvdb_id,
+        season=season,
+        episode=episode,
+    )
+    return uploader.upload(
+        nfo=nfo,
+        tracker_title=tracker_title,
+        torrent_file=torrent_file,
+        mediainfo_obj=mediainfo_obj,
+        media_type=media_type,
+        is_pack=is_pack,
+        is_anime=is_anime,
+    )
+
+
+_SESSION = new_http_session()
+
+
+class TLUploader:
+    UPLOAD_URL: str = (
+        f"{TrackerSelection.TORRENT_LEECH.get_root_url()}torrents/upload/apiupload"
+    )
+
+    def __init__(
+        self,
+        announce_key: str,
+        timeout: int = 60,
+        imdb_id: str | None = None,
+        tvdb_id: str | None = None,
+        season: int | None = None,
+        episode: int | None = None,
+        tvmaze_client: TVmazeClient | None = None,
+    ):
+        self.announce_key = announce_key
+        self.timeout = timeout
+        self.imdb_id = imdb_id
+        self.tvdb_id = tvdb_id
+        self.season = season
+        self.episode = episode
+        self._tvmaze_client = tvmaze_client
+
+    def upload(
+        self,
+        nfo: str,
+        tracker_title: str | None,
+        torrent_file: Path,
+        mediainfo_obj: MediaInfo,
+        media_type: MediaType,
+        is_pack: bool,
+        is_anime: bool = False,
+    ) -> bool | None:
+        files = self._get_files(nfo, torrent_file)
+        get_resolution = VideoResolutionAnalyzer(mediainfo_obj).get_resolution()
+        data = self._get_data(
+            torrent_file.stem,
+            get_resolution,
+            media_type,
+            is_pack,
+            is_anime,
+        )
+        if tracker_title:
+            data["name"] = tracker_title
+
+        LOG.info(LOG.LOG_SOURCE.BE, "Uploading torrent to TorrentLeech")
+        LOG.debug(LOG.LOG_SOURCE.BE, f"TorrentLeech 'data': {scrub_mapping(data)}")
+
+        try:
+            request = _SESSION.post(
+                url=self.UPLOAD_URL,
+                files=files,
+                data=data,
+                headers=TRACKER_HEADERS,
+                timeout=self.timeout,
+            )
+            if request.ok and request.status_code == 200:
+                request_text = request.text
+                LOG.info(LOG.LOG_SOURCE.BE, f"Upload completed: {request_text}")
+                return True
+            else:
+                upload_error_msg = (
+                    "There was an error uploading to TorrentLeech: "
+                    f"{request.status_code} ({request.reason} - {request.text})"
+                )
+                LOG.error(LOG.LOG_SOURCE.BE, upload_error_msg)
+                status_code = request.status_code
+                # 408/429 mean the request was rejected before it could be
+                # processed. A 5xx means TorrentLeech received and answered
+                # the upload -- it may have recorded the torrent before
+                # failing, so that must route to the user instead of an
+                # automatic retry.
+                retryable = isinstance(status_code, int) and (
+                    status_code == 408 or status_code == 429 or status_code >= 500
+                )
+                server_accepted = isinstance(status_code, int) and status_code >= 500
+                raise TrackerError(
+                    upload_error_msg,
+                    retryable=retryable,
+                    server_accepted=server_accepted,
+                    status_code=status_code if isinstance(status_code, int) else None,
+                )
+        except niquests.exceptions.RequestException as e:
+            request_error_msg = f"There was an error uploading (niquests): {e}"
+            LOG.error(LOG.LOG_SOURCE.BE, request_error_msg)
+            retryable, server_accepted = classify_upload_post_error(e)
+            raise TrackerError(
+                request_error_msg,
+                retryable=retryable,
+                server_accepted=server_accepted,
+            ) from e
+
+    def _get_files(self, nfo: str, torrent_file: Path) -> MultiPartFilesAltType:
+        with open(torrent_file, "rb") as t_file:
+            return {"nfo": nfo, "torrent": (str(torrent_file), t_file.read())}
+
+    def _get_data(
+        self,
+        title: str,
+        resolution: str,
+        media_type: MediaType,
+        is_pack: bool = False,
+        is_anime: bool = False,
+    ) -> dict[str, str | int]:
+        data: dict[str, str | int] = {
+            "announcekey": self.announce_key,
+            "category": self._detect_category(
+                title, resolution, media_type, is_pack, is_anime
+            ),
+        }
+        data.update(self._metadata_fields(media_type, is_pack, is_anime))
+        return data
+
+    def _metadata_fields(
+        self, media_type: MediaType, is_pack: bool, is_anime: bool
+    ) -> dict[str, str | int]:
+        """Build the optional ID fields that pin the upload to the right title.
+
+        Without these TorrentLeech falls back to matching on the release name
+        alone, which picks the wrong entry for titles with several versions
+        (theatrical vs. extended, remakes sharing a name). Each category takes
+        a different ID, and sending the wrong one is worse than sending none
+        -- it overrides the tracker's own detection with something incorrect
+        -- so anything we cannot resolve confidently is logged and omitted.
+        """
+        # anime uploads take `animeid`, which is not one of the IDs the
+        # media-search pipeline resolves (we carry AniList and MAL; which of
+        # those -- if either -- TL expects is undocumented). Guessing risks
+        # pinning the upload to an unrelated title, so let TL auto-detect.
+        if is_anime:
+            LOG.info(
+                LOG.LOG_SOURCE.BE,
+                "TorrentLeech anime uploads take an 'animeid' NfoForge cannot "
+                "resolve; leaving the title to TorrentLeech's auto-detection.",
+            )
+            return {}
+
+        if media_type is MediaType.MOVIE:
+            imdb_id = normalize_imdb_id(self.imdb_id)
+            if imdb_id:
+                LOG.info(LOG.LOG_SOURCE.BE, f"Attaching IMDb ID to upload: {imdb_id}")
+                return {"imdb": imdb_id}
+            LOG.info(
+                LOG.LOG_SOURCE.BE,
+                "No IMDb ID available; leaving the title to TorrentLeech's "
+                "auto-detection.",
+            )
+            return {}
+
+        if media_type is MediaType.SERIES:
+            return self._tvmaze_fields(is_pack)
+
+        return {}
+
+    def _tvmaze_fields(self, is_pack: bool) -> dict[str, str | int]:
+        """Resolve TorrentLeech's tvmaze/tvmazetype pair for a series upload.
+
+        ``tvmazetype`` tells TL what the accompanying ID refers to: 1 for the
+        show, 2 for a single episode. A pack covers a whole season, so it
+        points at the show; a lone episode points at that episode. If the
+        episode lookup misses (TVmaze files specials outside the regular
+        numbering, among other gaps) we fall back to the show -- still a
+        correct title, just less specific.
+        """
+        client = self._tvmaze_client or TVmazeClient(timeout=self.timeout)
+        try:
+            show_id = client.lookup_show_id(imdb_id=self.imdb_id, tvdb_id=self.tvdb_id)
+            if show_id is None:
+                LOG.info(
+                    LOG.LOG_SOURCE.BE,
+                    "Could not resolve a TVmaze show; leaving the title to "
+                    "TorrentLeech's auto-detection.",
+                )
+                return {}
+
+            if not is_pack and self.season is not None and self.episode is not None:
+                episode_id = client.get_episode_id(show_id, self.season, self.episode)
+                if episode_id is not None:
+                    LOG.info(
+                        LOG.LOG_SOURCE.BE,
+                        f"Attaching TVmaze episode ID to upload: {episode_id} "
+                        f"(S{self.season:02d}E{self.episode:02d})",
+                    )
+                    return {"tvmazeid": episode_id, "tvmazetype": 2}
+                LOG.info(
+                    LOG.LOG_SOURCE.BE,
+                    "Could not resolve a TVmaze episode; falling back to the "
+                    f"show ID {show_id}.",
+                )
+
+            LOG.info(
+                LOG.LOG_SOURCE.BE, f"Attaching TVmaze show ID to upload: {show_id}"
+            )
+            return {"tvmazeid": show_id, "tvmazetype": 1}
+        finally:
+            if self._tvmaze_client is None:
+                client.close()
+
+    @staticmethod
+    def _detect_category(
+        title: str,
+        resolution: str,
+        media_type: MediaType,
+        is_pack: bool = False,
+        is_anime: bool = False,
+    ) -> int:
+        if is_anime:
+            return int(TLCategories.ANIME.value)
+
+        title_lowered = title.lower()
+        if media_type is MediaType.SERIES:
+            if is_pack:
+                return int(TLCategories.TV_BOX_SETS.value)
+            if resolution in {"720p", "1080p", "1080i", "2160p", "4320p"}:
+                return int(TLCategories.TV_EPISODES_HD.value)
+            return int(TLCategories.TV_EPISODES.value)
+
+        if "bluray" in title_lowered or "blu-ray" in title_lowered:
+            if resolution in {"720p", "1080p"}:
+                return int(TLCategories.MOVIE_BLURAY_RIP.value)
+            elif resolution == "2160p":
+                return int(TLCategories.MOVIE_4K.value)
+            else:
+                raise TrackerError(
+                    "Resolution must be one of '720p', '1080p' or '2160p'"
+                )
+        # TODO: will need to add check if it's a movie for SERIES
+        elif "webrip" in title_lowered or "webdl" in title_lowered:
+            return int(TLCategories.MOVIE_WEB_RIP.value)
+        elif "dvd" in title_lowered:
+            if "rip" in title_lowered:
+                return int(TLCategories.MOVIE_DVD_RIP.value)
+            return int(TLCategories.MOVIE_DVD.value)
+        elif "hdtv" in title_lowered:
+            return int(TLCategories.MOVIE_HD_RIP.value)
+        else:
+            raise TrackerError("Failed to determine proper TorrentLeech category")
+
+
+class TLSearch:
+    LOGIN_URL: str = (
+        f"{TrackerSelection.TORRENT_LEECH.get_root_url()}user/account/login/"
+    )
+    SEARCH_URL: str = (
+        f"{TrackerSelection.TORRENT_LEECH.get_root_url()}torrents/browse/list/exact/1/query/"
+        "{media_title}/orderby/added/order/desc"
+    )
+    # TORRENT_URL needs to be .me
+    TORRENT_URL: str = (
+        TrackerSelection.TORRENT_LEECH.get_root_url().replace(".org", ".me")
+        + "torrent/{torrent_id}"
+    )
+
+    def __init__(
+        self,
+        username: str,
+        password: str,
+        cookie_dir: Path,
+        alt_2_fa_token: str | None,
+        timeout: int = 60,
+    ) -> None:
+        self.username = username
+        self.password = password
+        self.cookie_path = cookie_dir / "tl_cookie.json"
+        self.alt_2_fa_token = alt_2_fa_token
+        self.timeout = timeout
+
+        self._session = new_http_session()
+
+    def search(self, file_input: Path) -> list[TrackerSearchResult]:
+        LOG.info(
+            LOG.LOG_SOURCE.BE,
+            f"Searching TorrentLeech for title: {release_stem(file_input)}",
+        )
+        self._login()
+
+        # if isinstance(file_input, Path):
+        #     search_movie = self._search_movie(Path(file_input).stem)
+        # else:
+        #     search_movie = self._search_movie(file_input)
+        results = []
+        search_movie = self._search_movie(release_stem(file_input))
+        if search_movie:
+            LOG.info(LOG.LOG_SOURCE.BE, f"Total results found: {len(search_movie)}")
+            LOG.debug(LOG.LOG_SOURCE.BE, f"Total results found: {search_movie}")
+            results = search_movie
+        return results
+
+    def _search_movie(self, file_input: str) -> list[TrackerSearchResult] | None:
+        """
+        Example output:
+        [{'fid': '241265476', 'filename': 'Some.File.2007.REPACK.BluRay.1080p.DD.5.1.x264-SomeGROUP.torrent',
+        'name': 'Some File 2007 REPACK BluRay 1080p DD 5 1 x264-SomeGROUP', 'addedTimestamp': '2024-04-22 00:13:12',
+        'categoryID': 14, 'size': 5297940903, 'completed': 49, 'seeders': 23, 'leechers': 0, 'numComments': 0, 'tags':
+        ['comedy', 'Drama', 'Romance'], 'new': False, 'imdbID': 'tt0460745', 'rating': 6.9, 'genres': 'Comedy, Drama,
+        Romance', 'tvmazeID': '', 'igdbID': '', 'download_multiplier': 1, 'uploader': 'jlw4049'}]
+
+        We convert the above with the sort_results method to a different format to be parsed in the UI
+        """
+        response = self._session.get(
+            self.SEARCH_URL.format(media_title=file_input), timeout=self.timeout
+        )
+        if response.ok and response.status_code == 200:
+            results = response.json()["torrentList"]
+            search_results = self._sort_results(results)
+            return search_results
+        else:
+            raise TrackerError(
+                f"Error searching for media. Status code: {response.status_code} "
+                f"Message: {(response.content or b'').decode(errors='replace')}"
+            )
+
+    def _sort_results(
+        self, results_list: list[dict[str, Any] | None]
+    ) -> list[TrackerSearchResult]:
+        """Convert TL Torznab output to easily parse in the UI"""
+        results: list[TrackerSearchResult] = []
+        for release in results_list:
+            if release:
+                result = TrackerSearchResult(
+                    name=release.get("name"),
+                    url=self.TORRENT_URL.format(torrent_id=release.get("fid")),
+                    release_size=release.get("size"),
+                    created_at=self._convert_date_time(release.get("addedTimestamp")),
+                    seeders=release.get("seeders"),
+                    leechers=release.get("leechers"),
+                    grabs=release.get("completed"),
+                    imdb_id=release.get("imdbID"),
+                    uploader=release.get("uploader"),
+                )
+                results.append(result)
+        return results
+
+    @staticmethod
+    def _convert_date_time(value: str | None) -> datetime | None:
+        if not value:
+            return None
+        try:
+            return datetime.strptime(value, "%Y-%m-%d %H:%M:%S")
+        except ValueError:
+            return None
+
+    @staticmethod
+    def _get_resolution(name: str) -> str:
+        lowered_name = name.lower()
+        if "720p" in lowered_name:
+            return "720p"
+        elif "1080p" in lowered_name:
+            return "1080p"
+        elif "2160p" in lowered_name:
+            return "2160p"
+        else:
+            return ""
+
+    def _login(self) -> bool:
+        if self._load_cookies():
+            try:
+                cookie_token = self._validate_session()
+                if cookie_token:
+                    LOG.debug(
+                        LOG.LOG_SOURCE.BE, "TorrentLeech cookies valid, skipping login"
+                    )
+                    return True
+                else:
+                    # cookie invalid/expired, delete and retry login
+                    try:
+                        self.cookie_path.unlink()
+                        LOG.debug(
+                            LOG.LOG_SOURCE.BE,
+                            f"Deleted expired TorrentLeech cookie: {self.cookie_path}",
+                        )
+                    except Exception as e:
+                        LOG.warning(
+                            LOG.LOG_SOURCE.BE, f"Failed to delete expired cookie: {e}"
+                        )
+            except TrackerError as e:
+                # cookie invalid/expired, delete and retry login
+                try:
+                    self.cookie_path.unlink()
+                    LOG.debug(
+                        LOG.LOG_SOURCE.BE,
+                        f"Deleted expired TorrentLeech cookie (exception): {self.cookie_path}",
+                    )
+                except Exception as ex:
+                    LOG.warning(
+                        LOG.LOG_SOURCE.BE, f"Failed to delete expired cookie: {ex}"
+                    )
+                LOG.info(
+                    LOG.LOG_SOURCE.BE,
+                    f"TL cookie invalid: {e}. Retrying login with fresh session.",
+                )
+
+        response = self._session.get(self.LOGIN_URL, timeout=self.timeout)
+        # below isn't properly typed in niquests
+        cookies: dict[Any, Any] = response.cookies  # type: ignore
+        csrf_token = cookies.get("csrf_token")
+
+        data = {
+            "username": self.username,
+            "password": self.password,
+            "csrf_token": csrf_token,
+        }
+
+        if self.alt_2_fa_token:
+            data.update({"alt2FAToken": self.alt_2_fa_token})
+
+        response = self._session.post(self.LOGIN_URL, data=data, timeout=self.timeout)
+        if not response.ok:
+            login_error_message = (
+                f"Failed to login to TorrentLeech. Status code: {response.status_code} "
+                f"Message: {(response.content or b'').decode(errors='replace')}"
+            )
+            LOG.error(LOG.LOG_SOURCE.BE, login_error_message)
+            raise TrackerError(login_error_message)
+
+        if response.text and "loggedin" in response.text:
+            LOG.debug(LOG.LOG_SOURCE.BE, "Successfully logged into TorrentLeech")
+            self._save_cookies()
+            return True
+        return False
+
+    def _validate_session(self) -> bool | None:
+        """Perform a lightweight request to validate the session, if valid the required token is returned."""
+        try:
+            with self._session.get(self.LOGIN_URL, timeout=self.timeout) as response:
+                if response.text and "loggedin" in response.text:
+                    return True
+        except niquests.RequestException:
+            return False
+        return False
+
+    def _save_cookies(self) -> None:
+        save_cookies(self._session.cookies, self.cookie_path)
+        LOG.debug(LOG.LOG_SOURCE.BE, f"TorrentLeech cookies saved: {self.cookie_path}")
+
+    def _load_cookies(self) -> bool:
+        if load_cookies(self._session.cookies, self.cookie_path):
+            LOG.debug(
+                LOG.LOG_SOURCE.BE,
+                f"TorrentLeech cookies loaded from {self.cookie_path}",
+            )
+            return True
+        LOG.debug(LOG.LOG_SOURCE.BE, "TorrentLeech cookies not found")
+        return False

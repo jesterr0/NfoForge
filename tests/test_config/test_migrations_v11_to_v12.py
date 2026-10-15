@@ -8,7 +8,7 @@ button that used to sit next to the checkbox in Settings -> General.
 
 from typing import Any
 
-from src.config.migrations import migrate_v11_to_v12
+from nfoforge.config.migrations import migrate_v11_to_v12
 
 
 def _doc(

@@ -3,7 +3,7 @@ from pathlib import Path
 
 import niquests
 
-from src.backend.trackers.cookie_storage import load_cookies, save_cookies
+from nfoforge.backend.trackers.cookie_storage import load_cookies, save_cookies
 
 
 def test_cookie_storage_round_trips_json_and_restricts_permissions(

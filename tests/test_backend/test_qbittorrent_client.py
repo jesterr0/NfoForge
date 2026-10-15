@@ -6,13 +6,13 @@ import qbittorrentapi
 from qbittorrentapi.exceptions import Conflict409Error
 from qbittorrentapi.torrents import TorrentsAddedMetadata
 
-from src.backend.torrent_clients.qbittorrent import QBittorrentClient
-from src.backend.torrent_clients.qbittorrent.save_path import (
+from nfoforge.backend.torrent_clients.qbittorrent import QBittorrentClient
+from nfoforge.backend.torrent_clients.qbittorrent.save_path import (
     get_qbittorrent_save_path_warning,
 )
-from src.enums.torrent_client import QBittorrentAuthMode, QBittorrentSavePathMode
-from src.exceptions import TrackerClientError
-from src.payloads.clients import QBittorrentConfig
+from nfoforge.enums.torrent_client import QBittorrentAuthMode, QBittorrentSavePathMode
+from nfoforge.exceptions import TrackerClientError
+from nfoforge.payloads.clients import QBittorrentConfig
 
 
 def _config(super_seeding: bool = False) -> QBittorrentConfig:
@@ -57,7 +57,7 @@ def _added(count: int = 1) -> TorrentsAddedMetadata:
     )
 
 
-@patch("src.backend.torrent_clients.qbittorrent.client.QBitClient")
+@patch("nfoforge.backend.torrent_clients.qbittorrent.client.QBitClient")
 def test_inject_without_save_path_keeps_automatic_management(
     qbit_api: MagicMock,
 ) -> None:
@@ -80,7 +80,7 @@ def test_inject_without_save_path_keeps_automatic_management(
     )
 
 
-@patch("src.backend.torrent_clients.qbittorrent.client.QBitClient")
+@patch("nfoforge.backend.torrent_clients.qbittorrent.client.QBitClient")
 def test_inject_with_save_path_uses_manual_management_and_preserves_path(
     qbit_api: MagicMock,
 ) -> None:
@@ -104,7 +104,7 @@ def test_inject_with_save_path_uses_manual_management_and_preserves_path(
     )
 
 
-@patch("src.backend.torrent_clients.qbittorrent.client.QBitClient")
+@patch("nfoforge.backend.torrent_clients.qbittorrent.client.QBitClient")
 def test_blank_save_path_keeps_automatic_management(qbit_api: MagicMock) -> None:
     api = qbit_api.return_value
     api.torrents_add.return_value = "Ok."
@@ -116,7 +116,7 @@ def test_blank_save_path_keeps_automatic_management(qbit_api: MagicMock) -> None
     assert api.torrents_add.call_args.kwargs["use_auto_torrent_management"] is True
 
 
-@patch("src.backend.torrent_clients.qbittorrent.client.QBitClient")
+@patch("nfoforge.backend.torrent_clients.qbittorrent.client.QBitClient")
 def test_inject_accepts_the_json_answer_from_web_api_2_15(
     qbit_api: MagicMock,
 ) -> None:
@@ -136,8 +136,8 @@ def test_inject_accepts_the_json_answer_from_web_api_2_15(
     )
 
 
-@patch("src.backend.torrent_clients.qbittorrent.client.Torrent")
-@patch("src.backend.torrent_clients.qbittorrent.client.QBitClient")
+@patch("nfoforge.backend.torrent_clients.qbittorrent.client.Torrent")
+@patch("nfoforge.backend.torrent_clients.qbittorrent.client.QBitClient")
 def test_super_seeding_still_runs_after_a_json_answer(
     qbit_api: MagicMock, torrent: MagicMock
 ) -> None:
@@ -153,7 +153,7 @@ def test_super_seeding_still_runs_after_a_json_answer(
     assert api.torrents_set_super_seeding.call_args.kwargs["torrent_hashes"] == "a" * 40
 
 
-@patch("src.backend.torrent_clients.qbittorrent.client.QBitClient")
+@patch("nfoforge.backend.torrent_clients.qbittorrent.client.QBitClient")
 def test_an_add_that_lands_nothing_is_a_soft_failure(qbit_api: MagicMock) -> None:
     """A 409 is 2.15's "nothing was added", most often a duplicate.
 
@@ -173,7 +173,7 @@ def test_an_add_that_lands_nothing_is_a_soft_failure(qbit_api: MagicMock) -> Non
     assert "already in the client" in message
 
 
-@patch("src.backend.torrent_clients.qbittorrent.client.QBitClient")
+@patch("nfoforge.backend.torrent_clients.qbittorrent.client.QBitClient")
 def test_the_older_string_verdict_is_still_read(qbit_api: MagicMock) -> None:
     # Web API 2.14 and below. Only the string form carries a verdict, and it
     # still has to be honoured -- ignoring every non-"Ok." answer would make
@@ -188,7 +188,7 @@ def test_the_older_string_verdict_is_still_read(qbit_api: MagicMock) -> None:
     )
 
 
-@patch("src.backend.torrent_clients.qbittorrent.client.QBitClient")
+@patch("nfoforge.backend.torrent_clients.qbittorrent.client.QBitClient")
 def test_qbittorrent_rejects_blank_host(qbit_api: MagicMock) -> None:
     config = _config()
     config.host = "  "
@@ -199,7 +199,7 @@ def test_qbittorrent_rejects_blank_host(qbit_api: MagicMock) -> None:
     qbit_api.assert_not_called()
 
 
-@patch("src.backend.torrent_clients.qbittorrent.client.QBitClient")
+@patch("nfoforge.backend.torrent_clients.qbittorrent.client.QBitClient")
 def test_user_pass_mode_sends_credentials_and_no_api_key(qbit_api: MagicMock) -> None:
     QBittorrentClient(_config())
 
@@ -211,7 +211,7 @@ def test_user_pass_mode_sends_credentials_and_no_api_key(qbit_api: MagicMock) ->
     )
 
 
-@patch("src.backend.torrent_clients.qbittorrent.client.QBitClient")
+@patch("nfoforge.backend.torrent_clients.qbittorrent.client.QBitClient")
 def test_api_key_mode_sends_the_key_and_no_credentials(qbit_api: MagicMock) -> None:
     # The two are alternatives. A username sent alongside the key would be
     # dead weight at best; qBittorrent answers `auth/login` with 403 once a
@@ -225,7 +225,7 @@ def test_api_key_mode_sends_the_key_and_no_credentials(qbit_api: MagicMock) -> N
     )
 
 
-@patch("src.backend.torrent_clients.qbittorrent.client.QBitClient")
+@patch("nfoforge.backend.torrent_clients.qbittorrent.client.QBitClient")
 def test_api_key_mode_rejects_a_blank_key(qbit_api: MagicMock) -> None:
     config = _api_key_config()
     config.api_key = "  "
@@ -236,7 +236,7 @@ def test_api_key_mode_rejects_a_blank_key(qbit_api: MagicMock) -> None:
     qbit_api.assert_not_called()
 
 
-@patch("src.backend.torrent_clients.qbittorrent.client.QBitClient")
+@patch("nfoforge.backend.torrent_clients.qbittorrent.client.QBitClient")
 def test_api_key_login_failure_names_the_api_key(qbit_api: MagicMock) -> None:
     api = qbit_api.return_value
     api.auth_log_in.side_effect = qbittorrentapi.LoginFailed("nope")
@@ -252,7 +252,7 @@ def test_api_key_login_failure_names_the_api_key(qbit_api: MagicMock) -> None:
     assert "5.2.0" in message
 
 
-@patch("src.backend.torrent_clients.qbittorrent.client.QBitClient")
+@patch("nfoforge.backend.torrent_clients.qbittorrent.client.QBitClient")
 def test_an_api_key_accepted_by_a_client_too_old_for_keys_is_refused(
     qbit_api: MagicMock,
 ) -> None:
@@ -271,7 +271,7 @@ def test_an_api_key_accepted_by_a_client_too_old_for_keys_is_refused(
     assert "5.2.0" in message
 
 
-@patch("src.backend.torrent_clients.qbittorrent.client.QBitClient")
+@patch("nfoforge.backend.torrent_clients.qbittorrent.client.QBitClient")
 def test_the_first_web_api_version_with_key_support_is_accepted(
     qbit_api: MagicMock,
 ) -> None:
@@ -282,7 +282,7 @@ def test_the_first_web_api_version_with_key_support_is_accepted(
     assert client.login() == (True, "Login successful")
 
 
-@patch("src.backend.torrent_clients.qbittorrent.client.QBitClient")
+@patch("nfoforge.backend.torrent_clients.qbittorrent.client.QBitClient")
 def test_a_two_part_web_api_version_compares_correctly(qbit_api: MagicMock) -> None:
     # qBittorrent publishes both "2.15" and "2.14.1"; a string compare would
     # read the shorter one as the older.
@@ -293,7 +293,7 @@ def test_a_two_part_web_api_version_compares_correctly(qbit_api: MagicMock) -> N
     assert client.login() == (True, "Login successful")
 
 
-@patch("src.backend.torrent_clients.qbittorrent.client.QBitClient")
+@patch("nfoforge.backend.torrent_clients.qbittorrent.client.QBitClient")
 def test_an_unreadable_web_api_version_does_not_block_a_login(
     qbit_api: MagicMock,
 ) -> None:
@@ -306,7 +306,7 @@ def test_an_unreadable_web_api_version_does_not_block_a_login(
     assert client.login() == (True, "Login successful")
 
 
-@patch("src.backend.torrent_clients.qbittorrent.client.QBitClient")
+@patch("nfoforge.backend.torrent_clients.qbittorrent.client.QBitClient")
 def test_user_pass_login_does_not_read_the_web_api_version(
     qbit_api: MagicMock,
 ) -> None:
@@ -317,7 +317,7 @@ def test_user_pass_login_does_not_read_the_web_api_version(
     api.app_web_api_version.assert_not_called()
 
 
-@patch("src.backend.torrent_clients.qbittorrent.client.QBitClient")
+@patch("nfoforge.backend.torrent_clients.qbittorrent.client.QBitClient")
 def test_test_reports_why_the_login_failed(qbit_api: MagicMock) -> None:
     # `test` is wired to the Test button, and reporting a bare "Failed" left
     # the reason in a return value nothing read.

@@ -5,15 +5,15 @@ from typing import Any
 
 import pytest
 
-from src.backend import images as images_module
-from src.backend.images import (
+from nfoforge.backend import images as images_module
+from nfoforge.backend.images import (
     COMPARISON_FONT_PATH,
     ComparisonImageGeneration,
     _build_drawtext_filter,
 )
-from src.backend.utils import subprocess_flags
-from src.config.paths import default_paths
-from src.enums.cropping import Cropping
+from nfoforge.backend.utils import subprocess_flags
+from nfoforge.config.paths import default_paths
+from nfoforge.enums.cropping import Cropping
 
 
 class SignalSpy:

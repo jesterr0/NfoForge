@@ -6,13 +6,13 @@ from PySide6.QtGui import QMouseEvent
 from PySide6.QtWidgets import QAbstractItemView, QLineEdit, QWidget
 import pytest
 
-from src.config.config import ConfigManager
-from src.config.paths import ConfigPaths
-from src.enums.torrent_client import QBittorrentAuthMode, TorrentClientSelection
-from src.frontend.custom_widgets.client_listbox import QBittorrentClientEdit
-from src.frontend.custom_widgets.client_settings import ClientSettingsWidget
-from src.frontend.custom_widgets.masked_qline_edit import MaskedQLineEdit
-from src.frontend.stacked_windows.settings.clients import ClientsSettings
+from nfoforge.config.config import ConfigManager
+from nfoforge.config.paths import ConfigPaths
+from nfoforge.enums.torrent_client import QBittorrentAuthMode, TorrentClientSelection
+from nfoforge.frontend.custom_widgets.client_listbox import QBittorrentClientEdit
+from nfoforge.frontend.custom_widgets.client_settings import ClientSettingsWidget
+from nfoforge.frontend.custom_widgets.masked_qline_edit import MaskedQLineEdit
+from nfoforge.frontend.stacked_windows.settings.clients import ClientsSettings
 from tests.repo_paths import build_app_paths
 
 
@@ -22,7 +22,7 @@ def _paths(tmp_path: Path) -> ConfigPaths:
 
 def _config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> ConfigManager:
     monkeypatch.setattr(
-        "src.config.config.FindDependencies.update_dependencies",
+        "nfoforge.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
     )
     return ConfigManager("test", _paths(tmp_path))

@@ -1,0 +1,549 @@
+from datetime import datetime
+from pathlib import Path
+import re
+from typing import Any
+
+import niquests
+from niquests.typing import MultiPartFilesAltType
+
+from nfoforge.backend.trackers.utils import (
+    API_TRACKER_HEADERS,
+    DISC_TITLE_REGEX,
+    TRACKER_HEADERS,
+)
+from nfoforge.backend.upload_retry import classify_upload_post_error
+from nfoforge.backend.utils.file_utilities import release_stem
+from nfoforge.backend.utils.http_client import new_http_session
+from nfoforge.backend.utils.media_info_utils import MinimalMediaInfo
+from nfoforge.enums.media_type import MediaType
+from nfoforge.enums.tracker_selection import TrackerSelection
+from nfoforge.enums.trackers.beyondhd import (
+    BHDCategoryID,
+    BHDEdition,
+    BHDLiveRelease,
+    BHDPromo,
+    BHDSource,
+    BHDType,
+)
+from nfoforge.exceptions import TrackerError
+from nfoforge.logger.nfo_forge_logger import LOG
+from nfoforge.payloads.tracker_search_result import TrackerSearchResult
+
+_SESSION = new_http_session()
+
+
+def process_edition(edition: str | None) -> tuple[str, str] | None:
+    """
+    Process edition string and return appropriate field name and value for BHD API.
+
+    Args:
+        edition: Edition string from rename wizard (e.g., "Theatrical Cut", "The Final Cut")
+
+    Returns:
+        Tuple of (field_name, value) where field_name is either 'edition' or 'custom_edition',
+        or None if edition is empty/whitespace
+    """
+    if not edition or not edition.strip():
+        return None
+
+    edition = edition.strip()
+
+    # try to map to BHD predefined edition
+    bhd_edition = BHDEdition.from_nfoforge_edition(edition)
+    if bhd_edition:
+        return ("edition", bhd_edition.value)
+
+    # use custom_edition for unmapped editions
+    return ("custom_edition", edition)
+
+
+def process_localization(
+    custom_edition_value: str | None,
+    localization: str | None,
+    add_localization_enabled: bool,
+) -> str | None:
+    """
+    Process localization and append to custom_edition if enabled.
+
+    Args:
+        custom_edition_value: Current value of custom_edition field (may be None or empty)
+        localization: Localization value from rename wizard ("Dubbed" or "Subbed")
+        add_localization_enabled: Whether the setting is enabled
+
+    Returns:
+        Updated custom_edition value with localization appended, or original value if not applicable
+    """
+    if not add_localization_enabled:
+        return custom_edition_value
+
+    if not localization or localization.strip() not in ("Dubbed", "Subbed"):
+        return custom_edition_value
+
+    localization = localization.strip()
+
+    # If custom_edition is empty, just use localization
+    if not custom_edition_value or not custom_edition_value.strip():
+        return localization
+
+    # Append localization with separator
+    return f"{custom_edition_value.strip()} / {localization}"
+
+
+def bhd_uploader(
+    api_key: str,
+    torrent_file: Path,
+    input_path: Path,
+    tracker_title: str | None,
+    media_type: MediaType,
+    imdb_id: str | None,
+    tmdb_id: str | None,
+    nfo: str,
+    is_pack: bool,
+    is_special: bool,
+    internal: bool,
+    live_release: BHDLiveRelease,
+    anonymous: bool,
+    promo: BHDPromo,
+    timeout: int,
+    edition: str | None = None,
+    localization: str | None = None,
+    add_localization_to_custom_edition: bool = False,
+    stream_optimized: bool = False,
+    content_size: int | None = None,
+) -> str | None:
+    uploader = BHDUploader(
+        api_key=api_key,
+        torrent_file=torrent_file,
+        input_path=input_path,
+        media_type=media_type,
+        timeout=timeout,
+        content_size=content_size,
+    )
+    return uploader.upload(
+        tracker_title=tracker_title,
+        imdb_id=imdb_id,
+        tmdb_id=tmdb_id,
+        nfo=nfo,
+        is_pack=is_pack,
+        is_special=is_special,
+        internal=internal,
+        live_release=live_release,
+        anonymous=anonymous,
+        promo=promo,
+        edition=edition,
+        localization=localization,
+        add_localization_to_custom_edition=add_localization_to_custom_edition,
+        stream_optimized=stream_optimized,
+    )
+
+
+class BHDUploader:
+    """BeyondHD Uploader utilizing their API"""
+
+    __slots__ = (
+        "_upload_url",
+        "torrent_file",
+        "input_path",
+        "media_type",
+        "is_pack",
+        "is_special",
+        "timeout",
+        "content_size",
+    )
+
+    def __init__(
+        self,
+        api_key: str,
+        torrent_file: Path,
+        input_path: Path,
+        media_type: MediaType,
+        is_pack: bool = False,
+        is_special: bool = False,
+        timeout: int = 60,
+        content_size: int | None = None,
+    ) -> None:
+        self._upload_url = (
+            f"{TrackerSelection.BEYOND_HD.get_root_url()}api/upload/{api_key}"
+        )
+        self.torrent_file = torrent_file
+        self.input_path = input_path
+        self.media_type = media_type
+        self.is_pack = is_pack
+        self.is_special = is_special
+        self.timeout = timeout
+        self.content_size = content_size
+
+    def upload(
+        self,
+        tracker_title: str | None,
+        imdb_id: str | None = None,
+        tmdb_id: str | None = None,
+        nfo: str | None = None,
+        is_pack: bool = False,
+        is_special: bool = False,
+        internal: bool = False,
+        live_release: BHDLiveRelease = BHDLiveRelease.LIVE,
+        anonymous: bool = False,
+        promo: BHDPromo | None = None,
+        edition: str | None = None,
+        localization: str | None = None,
+        add_localization_to_custom_edition: bool = False,
+        stream_optimized: bool = False,
+    ) -> str | None:
+        upload_payload = self._build_upload_payload(
+            tracker_title=tracker_title,
+            imdb_id=imdb_id,
+            tmdb_id=tmdb_id,
+            nfo=nfo,
+            is_pack=is_pack,
+            is_special=is_special,
+            internal=internal,
+            live_release=live_release,
+            anonymous=anonymous,
+            promo=promo,
+            edition=edition,
+            localization=localization,
+            add_localization_to_custom_edition=add_localization_to_custom_edition,
+            stream_optimized=stream_optimized,
+        )
+
+        LOG.debug(
+            LOG.LOG_SOURCE.BE,
+            f"BeyondHD payload: {upload_payload}",
+        )
+
+        try:
+            response = _SESSION.post(
+                self._upload_url,
+                data=upload_payload,
+                files=self._files(),
+                headers=API_TRACKER_HEADERS,
+                timeout=self.timeout,
+            )
+            if not response.ok or response.status_code != 200:
+                response_error_msg = f"Failed to upload torrent. Reason: {response.reason}, Status Code: {response.status_code}"
+                LOG.error(LOG.LOG_SOURCE.BE, response_error_msg)
+                status_code = response.status_code
+                # 408/429 mean the request was rejected before it could be
+                # processed. A 5xx means BeyondHD received and answered the
+                # upload -- it may have recorded the torrent before failing,
+                # so that must route to the user instead of an automatic
+                # retry.
+                retryable = isinstance(status_code, int) and (
+                    status_code == 408 or status_code == 429 or status_code >= 500
+                )
+                server_accepted = isinstance(status_code, int) and status_code >= 500
+                raise TrackerError(
+                    response_error_msg,
+                    retryable=retryable,
+                    server_accepted=server_accepted,
+                    status_code=status_code if isinstance(status_code, int) else None,
+                )
+
+            response_json = response.json()
+            if response_json.get("success"):
+                status_code = response_json.get("status_code")
+                if status_code == 0:
+                    status_0_error_msg = f"Failed to upload torrent: {response_json.get('status_message')}"
+                    LOG.error(LOG.LOG_SOURCE.BE, status_0_error_msg)
+                    raise TrackerError(status_0_error_msg)
+                elif status_code == 1:
+                    status_1_msg = "Successfully uploaded as a draft"
+                    LOG.info(LOG.LOG_SOURCE.BE, status_1_msg)
+                    return status_1_msg
+                elif status_code == 2:
+                    status_2_msg = f"Successfully uploaded (live): {response_json.get('status_message')}"
+                    LOG.info(LOG.LOG_SOURCE.BE, status_2_msg)
+                    return status_2_msg
+            else:
+                failed_error_msg = (
+                    f"Failed to upload torrent: {response_json.get('status_message')}"
+                )
+                LOG.error(LOG.LOG_SOURCE.BE, failed_error_msg)
+                raise TrackerError(failed_error_msg)
+
+        except niquests.exceptions.RequestException as error:
+            requests_exc_error_msg = f"Failed to upload to BeyondHD: {error}"
+            LOG.error(LOG.LOG_SOURCE.BE, requests_exc_error_msg)
+            retryable, server_accepted = classify_upload_post_error(error)
+            raise TrackerError(
+                requests_exc_error_msg,
+                retryable=retryable,
+                server_accepted=server_accepted,
+            ) from error
+
+        return None
+
+    def _build_upload_payload(
+        self,
+        tracker_title: str | None,
+        imdb_id: str | None = None,
+        tmdb_id: str | None = None,
+        nfo: str | None = None,
+        is_pack: bool = False,
+        is_special: bool = False,
+        internal: bool = False,
+        live_release: BHDLiveRelease = BHDLiveRelease.LIVE,
+        anonymous: bool = False,
+        promo: BHDPromo | None = None,
+        edition: str | None = None,
+        localization: str | None = None,
+        add_localization_to_custom_edition: bool = False,
+        stream_optimized: bool = False,
+    ) -> dict[str, Any]:
+        upload_payload: dict[str, Any] = {
+            "name": tracker_title,
+            "category_id": self._category_id(),
+            "type": self._type(),
+            "source": self._source(),
+            "internal": int(internal),
+            "live": live_release.value,
+            "anon": int(anonymous),
+        }
+        if stream_optimized:
+            upload_payload["stream"] = 1
+        if imdb_id:
+            upload_payload["imdb_id"] = imdb_id
+        if tmdb_id:
+            upload_payload["tmdb_id"] = tmdb_id
+        if self.media_type is MediaType.SERIES:
+            if is_pack or self.is_pack:
+                upload_payload["pack"] = 1
+            if is_special or self.is_special:
+                upload_payload["special"] = 1
+        if nfo:
+            upload_payload["description"] = nfo
+            upload_payload["nfo"] = nfo
+        if promo:
+            upload_payload["promo"] = promo.value
+
+        edition_result = process_edition(edition)
+        custom_edition_value = None
+
+        if edition_result:
+            field_name, field_value = edition_result
+            if field_name == "edition":
+                upload_payload["edition"] = field_value
+                LOG.debug(
+                    LOG.LOG_SOURCE.BE,
+                    f"BeyondHD edition: using predefined edition '{field_value}'",
+                )
+            else:
+                custom_edition_value = field_value
+                LOG.debug(
+                    LOG.LOG_SOURCE.BE,
+                    f"BeyondHD edition: using custom edition '{field_value}'",
+                )
+
+        final_custom_edition = process_localization(
+            custom_edition_value, localization, add_localization_to_custom_edition
+        )
+
+        if final_custom_edition:
+            upload_payload["custom_edition"] = final_custom_edition
+            if (
+                custom_edition_value
+                and localization
+                and add_localization_to_custom_edition
+            ):
+                LOG.debug(
+                    LOG.LOG_SOURCE.BE,
+                    f"BeyondHD custom_edition: appended localization '{localization}' to result in '{final_custom_edition}'",
+                )
+            else:
+                LOG.debug(
+                    LOG.LOG_SOURCE.BE,
+                    f"BeyondHD custom_edition: '{final_custom_edition}'",
+                )
+
+        return upload_payload
+
+    def _category_id(self) -> int | None:
+        if self.media_type is MediaType.MOVIE:
+            return BHDCategoryID.MOVIE.value
+        elif self.media_type is MediaType.SERIES:
+            return BHDCategoryID.TV.value
+        return None
+
+    def _type(self) -> str:
+        title_lowered = release_stem(self.input_path).lower()
+        title_lowered_strip_periods = title_lowered.replace(".", "")
+
+        # remux
+        if "remux" in title_lowered:
+            if "dvd" in title_lowered:
+                return BHDType.DVD_REMUX.value
+            elif "1080i" in title_lowered or "1080p" in title_lowered:
+                return BHDType.BD_REMUX.value
+            elif "2160p" in title_lowered or "uhd" in title_lowered:
+                return BHDType.UHD_REMUX.value
+
+        # disc
+        elif DISC_TITLE_REGEX.search(title_lowered):
+            input_file_size = (
+                self.content_size
+                if self.content_size is not None
+                else self.input_path.stat().st_size
+            )
+            if input_file_size <= 26_843_545_600:
+                return BHDType.BD_25.value
+            elif input_file_size <= 53_687_091_200:
+                if "1080i" in title_lowered or "1080p" in title_lowered:
+                    return BHDType.BD_50.value
+                elif "2160p" in title_lowered:
+                    return BHDType.UHD_50.value
+            elif input_file_size <= 70_866_960_384:
+                return BHDType.UHD_66.value
+            elif input_file_size <= 107_374_182_400:
+                return BHDType.UHD_100.value
+
+        # dvd5/dvd9
+        elif "dvd5" in title_lowered_strip_periods:
+            return BHDType.DVD_5.value
+        elif "dvd9" in title_lowered_strip_periods:
+            return BHDType.DVD_9.value
+
+        # encodes
+        elif any(
+            codec in title_lowered_strip_periods
+            for codec in (
+                "h264",
+                "x264",
+                "h265",
+                "x265",
+            )
+        ):
+            if "480p" in title_lowered:
+                return BHDType.P_480P.value
+            elif "540p" in title_lowered:
+                return BHDType.P_540P.value
+            elif "576p" in title_lowered:
+                return BHDType.P_576P.value
+            elif "720p" in title_lowered:
+                return BHDType.P_720P.value
+            elif "1080i" in title_lowered:
+                return BHDType.P_1080I.value
+            elif "1080p" in title_lowered:
+                return BHDType.P_1080P.value
+            elif "2160p" in title_lowered:
+                return BHDType.P_2160P.value
+
+        return BHDType.OTHER.value
+
+    def _source(self) -> str:
+        title_lowered = release_stem(self.input_path).lower()
+        title_lowered = re.sub(r"\W", ".", title_lowered)
+        title_lowered = re.sub(r"\.{2,}", ".", title_lowered)
+        if "bluray" in title_lowered:
+            return BHDSource.BLURAY.value
+        elif "hddvd" in title_lowered:
+            return BHDSource.HD_DVD.value
+        elif "dvd" in title_lowered:
+            return BHDSource.DVD.value
+        elif "hdtv" in title_lowered:
+            return BHDSource.HDTV.value
+        elif "web" in title_lowered:
+            return BHDSource.WEB.value
+        else:
+            raise TrackerError(
+                f"Input file name must contain one of {', '.join([x.value for x in BHDSource])} "
+                "to upload to BeyondHD"
+            )
+
+    def _files(self) -> MultiPartFilesAltType:
+        with open(self.torrent_file, "rb") as torrent_file:
+            return {
+                "file": torrent_file.read(),
+                "mediainfo": self._cleaned_media_info(),
+            }
+
+    def _cleaned_media_info(self) -> str:
+        return MinimalMediaInfo(self.input_path).get_full_mi_str(cleansed=True)
+
+
+class BHDSearch:
+    """Search BeyondHD utilizing their API"""
+
+    __slots__ = ("_search_url", "_rss_key", "_timeout")
+
+    def __init__(
+        self, api_key: str, rss_key: str | None = None, timeout: int = 60
+    ) -> None:
+        self._search_url = (
+            f"{TrackerSelection.BEYOND_HD.get_root_url()}api/torrents/{api_key}"
+        )
+        self._rss_key = rss_key
+        self._timeout = timeout
+
+    def search(self, input_path: Path) -> list[TrackerSearchResult]:
+        payload = {"action": "search", "file_name": input_path.name}
+        if self._rss_key:
+            payload["rsskey"] = self._rss_key
+
+        results = []
+        try:
+            LOG.info(
+                LOG.LOG_SOURCE.BE, f"Searching BeyondHD for release: {input_path.name}"
+            )
+            response = _SESSION.post(
+                url=self._search_url,
+                params=payload,
+                headers=TRACKER_HEADERS,
+                timeout=self._timeout,
+            )
+            response_json = response.json()
+            self._check_response(response_json)
+            results = self._convert_response(response_json.get("results", []))
+            LOG.info(LOG.LOG_SOURCE.BE, f"Total results found: {len(results)}")
+            LOG.debug(LOG.LOG_SOURCE.BE, f"Total results found: {results}")
+        except niquests.exceptions.RequestException as error_message:
+            raise TrackerError(str(error_message)) from error_message
+
+        return results
+
+    def _convert_response(
+        self, data: list[dict[str, Any]]
+    ) -> list[TrackerSearchResult]:
+        results: list[TrackerSearchResult] = []
+
+        for release in data:
+            result = TrackerSearchResult(
+                name=release.get("name"),
+                url=release.get("url"),
+                download_link=release.get("download_url"),
+                release_type=release.get("type"),
+                created_at=self._handle_date(release.get("created_at")),
+                seeders=release.get("seeders"),
+                leechers=release.get("leechers"),
+                grabs=release.get("times_completed"),
+                imdb_id=release.get("imdb_id"),
+                tmdb_id=self._tmdb_id_format(release.get("tmdb_id", "")),
+                uploader=release.get("uploaded_by"),
+                info_hash=release.get("info_hash"),
+            )
+            results.append(result)
+
+        return results
+
+    @staticmethod
+    def _check_response(response_json: dict[str, Any]) -> None:
+        try:
+            if not response_json["status_code"]:
+                if "invalid api key" in str(response_json["status_message"]).lower():
+                    raise TrackerError("Invalid API Key")
+                else:
+                    raise TrackerError(response_json["status_message"])
+        except Exception as error:
+            raise TrackerError(str(error)) from error
+
+    @staticmethod
+    def _handle_date(timestamp: str | None) -> datetime | None:
+        if timestamp:
+            return datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S")
+        return timestamp if timestamp else None
+
+    @staticmethod
+    def _tmdb_id_format(id_str: str | None) -> str | None:
+        if id_str:
+            id_str = id_str.replace("movie/", "")
+        return id_str

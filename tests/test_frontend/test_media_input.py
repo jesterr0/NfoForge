@@ -5,9 +5,9 @@ from pymediainfo import MediaInfo
 from PySide6.QtWidgets import QMessageBox
 import pytest
 
-from src.context.processing_context import ProcessingContext
-from src.exceptions import MediaFileNotFoundError
-from src.frontend.wizards.media_input import MediaInput
+from nfoforge.context.processing_context import ProcessingContext
+from nfoforge.exceptions import MediaFileNotFoundError
+from nfoforge.frontend.wizards.media_input import MediaInput
 
 
 def test_media_info_failure_reports_missing_files_and_restores_page(

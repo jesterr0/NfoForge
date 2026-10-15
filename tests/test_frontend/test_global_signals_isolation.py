@@ -15,7 +15,7 @@ second timeout on CI.
 
 from typing import Any
 
-from src.frontend.global_signals import GSigs
+from nfoforge.frontend.global_signals import GSigs
 
 _received: list[object] = []
 

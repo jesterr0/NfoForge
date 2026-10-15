@@ -5,21 +5,23 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QDialog, QMessageBox
 import pytest
 
-from src.backend.rename_encode_series import RenameEncodeSeriesBackEnd
-from src.backend.utils.filename_claims import PER_FILE_CLAIM_KEYS
-from src.config.config import ConfigManager
-from src.config.paths import ConfigPaths
-from src.context.processing_context import ProcessingContext
-from src.enums.media_type import MediaType
-from src.enums.series import EpisodeFormat
-from src.frontend.custom_widgets.episode_claims_table import (
+from nfoforge.backend.rename_encode_series import RenameEncodeSeriesBackEnd
+from nfoforge.backend.utils.filename_claims import PER_FILE_CLAIM_KEYS
+from nfoforge.config.config import ConfigManager
+from nfoforge.config.paths import ConfigPaths
+from nfoforge.context.processing_context import ProcessingContext
+from nfoforge.core.rename.choices import rename_override_tokens
+from nfoforge.core.rename.series import detect_series_choices
+from nfoforge.enums.media_type import MediaType
+from nfoforge.enums.series import EpisodeFormat
+from nfoforge.frontend.custom_widgets.episode_claims_table import (
     CLAIM_COLUMNS,
     VALUE_CLAIMS,
     _is_checked,
 )
-from src.frontend.wizards.rename_encode_series import RenameEncodeSeries
-from src.payloads.media_inputs import MediaInputPayload
-from src.payloads.media_search import MediaSearchPayload
+from nfoforge.frontend.wizards.rename_encode_series import RenameEncodeSeries
+from nfoforge.payloads.media_inputs import MediaInputPayload
+from nfoforge.payloads.media_search import MediaSearchPayload
 from tests.repo_paths import build_app_paths
 
 # a token template that exercises the same "{token|filter}" shape used by the
@@ -39,7 +41,7 @@ def _make_series_rename_page(
     episode_map: dict | None = None,
 ) -> RenameEncodeSeries:
     monkeypatch.setattr(
-        "src.config.config.FindDependencies.update_dependencies",
+        "nfoforge.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
     )
 
@@ -249,7 +251,7 @@ def test_partial_episode_rename_failure_warns_but_does_not_abort(
         lambda self, **kwargs: None,
     )
     monkeypatch.setattr(
-        "src.frontend.wizards.rename_encode_series.RenamePreviewDialog.exec",
+        "nfoforge.frontend.wizards.rename_encode_series.RenamePreviewDialog.exec",
         lambda self: QDialog.DialogCode.Rejected,
     )
 
@@ -326,11 +328,11 @@ def _captured_plan(
         captured["directories"] = directory_map
 
     monkeypatch.setattr(
-        "src.frontend.wizards.rename_encode_series.RenamePreviewDialog.set_renames",
+        "nfoforge.frontend.wizards.rename_encode_series.RenamePreviewDialog.set_renames",
         _capture,
     )
     monkeypatch.setattr(
-        "src.frontend.wizards.rename_encode_series.RenamePreviewDialog.exec",
+        "nfoforge.frontend.wizards.rename_encode_series.RenamePreviewDialog.exec",
         lambda self: QDialog.DialogCode.Rejected,
     )
 
@@ -1122,3 +1124,38 @@ def test_every_per_file_claim_has_a_column() -> None:
     separately, so adding a field to `FilenameClaims` would otherwise give it
     a resolved value with nowhere on screen to set it."""
     assert set(CLAIM_COLUMNS) == PER_FILE_CLAIM_KEYS
+
+
+@pytest.mark.parametrize(
+    "files",
+    [
+        (
+            "Show.S01E01.REPACK.1080p.BluRay.REMUX-GRP.mkv",
+            "Show.S01E02.720p.WEB-DL-OTHER.mkv",
+        ),
+        (
+            "Show.S01E01.HYBRID.1080p.AMZN.WEB-DL.DDP5.1.H.264-GRP.mkv",
+            "Show.S01E02.HYBRID.1080p.AMZN.WEB-DL.DDP5.1.H.264-GRP.mkv",
+        ),
+    ],
+)
+def test_the_page_prefills_the_same_tokens_core_produces(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, files: tuple[str, str]
+) -> None:
+    """The GUI and a headless run must name a pack the same way."""
+    first, second = (Path(name) for name in files)
+    page = _make_series_rename_page(
+        tmp_path,
+        monkeypatch,
+        episode_map={
+            first: {"season": 1, "episode": 1},
+            second: {"season": 1, "episode": 2},
+        },
+    )
+
+    page.initializePage()
+
+    expected = rename_override_tokens(
+        detect_series_choices(page.context, page.config.settings)
+    )
+    assert page.backend.override_tokens == expected

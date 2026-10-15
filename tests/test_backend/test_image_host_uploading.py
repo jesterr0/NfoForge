@@ -5,15 +5,17 @@ from typing import Any, cast
 
 import pytest
 
-from src.backend.image_host_uploading.base_image_host import (
+from nfoforge.backend.image_host_uploading.base_image_host import (
     BaseImageHostUploader,
     ImageUploadRequest,
 )
-from src.backend.image_host_uploading.img_uploader import assert_all_images_uploaded
-from src.backend.process import ProcessBackEnd
-from src.enums.image_host import ImageHost
-from src.exceptions import ImageUploadError
-from src.packages.custom_types import ImageHostRef, ImageUploadData
+from nfoforge.backend.image_host_uploading.img_uploader import (
+    assert_all_images_uploaded,
+)
+from nfoforge.backend.process import ProcessBackEnd
+from nfoforge.enums.image_host import ImageHost
+from nfoforge.exceptions import ImageUploadError
+from nfoforge.packages.custom_types import ImageHostRef, ImageUploadData
 
 
 def test_partial_upload_failure_is_surfaced() -> None:

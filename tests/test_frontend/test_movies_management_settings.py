@@ -4,19 +4,19 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QWidget
 import pytest
 
-from src.backend.rename_encode import RenameEncodeBackEnd
-from src.backend.utils.example_parsed_movie_data import (
+from nfoforge.backend.rename_encode import RenameEncodeBackEnd
+from nfoforge.backend.utils.example_parsed_movie_data import (
     EXAMPLE_MEDIA_INPUT_PAYLOAD,
     EXAMPLE_SEARCH_PAYLOAD,
 )
-from src.config.config import ConfigManager
-from src.config.paths import ConfigPaths
-from src.context.factory import create_processing_context
-from src.enums.token_replacer import ColonReplace
-from src.frontend.stacked_windows.settings.movies_management import (
+from nfoforge.config.config import ConfigManager
+from nfoforge.config.paths import ConfigPaths
+from nfoforge.context.factory import create_processing_context
+from nfoforge.enums.token_replacer import ColonReplace
+from nfoforge.frontend.stacked_windows.settings.movies_management import (
     MoviesManagementSettings,
 )
-from src.plugins.api import PluginDefinition
+from nfoforge.plugins.api import PluginDefinition
 from tests.repo_paths import build_app_paths
 
 
@@ -28,7 +28,7 @@ def _make_movies_management_settings(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> tuple[MoviesManagementSettings, ConfigManager]:
     monkeypatch.setattr(
-        "src.config.config.FindDependencies.update_dependencies",
+        "nfoforge.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
     )
 

@@ -16,9 +16,9 @@ from unittest.mock import MagicMock
 from PySide6.QtCore import QCoreApplication
 import pytest
 
-from src.backend.process import ProcessBackEnd
-from src.context.processing_context import ProcessingContext
-from src.frontend.wizards.process import ProcessWorker
+from nfoforge.backend.process import ProcessBackEnd
+from nfoforge.context.processing_context import ProcessingContext
+from nfoforge.frontend.wizards.process import ProcessWorker
 
 
 def _process_worker() -> ProcessWorker:

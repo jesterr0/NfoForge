@@ -54,36 +54,36 @@ import re
 
 import pytest
 
-from src.backend.process import ProcessBackEnd
-from src.backend.token_replacer import TokenReplacer
-from src.backend.tokens import FileToken
-from src.backend.trackers.title_render import (
+from nfoforge.backend.process import ProcessBackEnd
+from nfoforge.backend.token_replacer import TokenReplacer
+from nfoforge.backend.tokens import FileToken
+from nfoforge.backend.trackers.title_render import (
     compose_token_string,
     normalise_title,
     render_tracker_title,
     resolve_dynamic_range,
 )
-from src.backend.trackers.title_rules import (
+from nfoforge.backend.trackers.title_rules import (
     TITLE_RULES,
     Composition,
     ConditionalOrder,
     DynamicRangeRule,
     ReleaseProperties,
 )
-from src.backend.utils.example_parsed_movie_data import (
+from nfoforge.backend.utils.example_parsed_movie_data import (
     EXAMPLE_MEDIA_INPUT_PAYLOAD,
     EXAMPLE_SEARCH_PAYLOAD,
 )
-from src.backend.utils.filename_claims import detect_filename_claims
-from src.backend.utils.hdr_identity import resolve_hdr_identity
-from src.config.models import ClaimSwitches
-from src.config.tv_tokens import SUPPORTED_TVR_FORMATS
-from src.context.processing_context import ProcessingContext
-from src.enums.media_type import MediaType
-from src.enums.token_replacer import ColonReplace, UnfilledTokenRemoval
-from src.enums.tracker_selection import TrackerSelection
-from src.payloads.media_search import MediaSearchPayload
-from src.payloads.series import build_series_release_info
+from nfoforge.backend.utils.filename_claims import detect_filename_claims
+from nfoforge.backend.utils.hdr_identity import resolve_hdr_identity
+from nfoforge.config.models import ClaimSwitches
+from nfoforge.config.tv_tokens import SUPPORTED_TVR_FORMATS
+from nfoforge.context.processing_context import ProcessingContext
+from nfoforge.enums.media_type import MediaType
+from nfoforge.enums.token_replacer import ColonReplace, UnfilledTokenRemoval
+from nfoforge.enums.tracker_selection import TrackerSelection
+from nfoforge.payloads.media_search import MediaSearchPayload
+from nfoforge.payloads.series import build_series_release_info
 
 # The release shapes the rules distinguish. Only the *name* matters here: it
 # drives the filename attributes (REMUX/HYBRID/REPACK) and the source guess,
@@ -371,7 +371,7 @@ def test_lst_formats_eac3_atmos_as_codec_channels_atmos(
     audio.other_channel_s = ["6 channels"]
     audio.channel_positions = "L R C LFE Ls Rs"
     monkeypatch.setattr(
-        "src.backend.token_replacer.AudioCodecs.get_codec",
+        "nfoforge.backend.token_replacer.AudioCodecs.get_codec",
         lambda *_args: "DDP Atmos",
     )
     composition = TITLE_RULES[TrackerSelection.LST].composition
@@ -438,7 +438,7 @@ def test_a_non_atmos_remux_leaves_no_gap_before_the_tag(
     Aither's published example, which ends "DTS-HD MA 7.1-FraMeSToR".
     """
     monkeypatch.setattr(
-        "src.backend.token_replacer.AudioCodecs.get_codec",
+        "nfoforge.backend.token_replacer.AudioCodecs.get_codec",
         lambda *_args: "DTS-HD MA",
     )
 
@@ -458,7 +458,7 @@ def test_no_entry_ships_a_gap_before_its_tag(
     empty one must not strand a space against the tag cannot.
     """
     monkeypatch.setattr(
-        "src.backend.token_replacer.AudioCodecs.get_codec",
+        "nfoforge.backend.token_replacer.AudioCodecs.get_codec",
         lambda *_args: "DTS-HD MA",
     )
 
@@ -510,7 +510,7 @@ def test_a_transcribed_entry_keeps_both_shipped_rewrites(
     assert vocabulary["HDR10Plus"] == "HDR10+"
 
     monkeypatch.setattr(
-        "src.backend.token_replacer.AudioCodecs.get_codec", lambda *_args: "DDP"
+        "nfoforge.backend.token_replacer.AudioCodecs.get_codec", lambda *_args: "DDP"
     )
     rendered = _render(tracker, WEB_NAME, "WEB-DL")
 
@@ -528,12 +528,12 @@ def test_beyondhd_glues_dd_to_its_channel_layout(
     matching the DDP form that the same rule leaves alone.
     """
     monkeypatch.setattr(
-        "src.backend.token_replacer.AudioCodecs.get_codec", lambda *_args: "DD"
+        "nfoforge.backend.token_replacer.AudioCodecs.get_codec", lambda *_args: "DD"
     )
     assert "DD7.1" in _render(TrackerSelection.BEYOND_HD, WEB_NAME, "WEB-DL")
 
     monkeypatch.setattr(
-        "src.backend.token_replacer.AudioCodecs.get_codec", lambda *_args: "DDP"
+        "nfoforge.backend.token_replacer.AudioCodecs.get_codec", lambda *_args: "DDP"
     )
     ddp = _render(TrackerSelection.BEYOND_HD, WEB_NAME, "WEB-DL")
     assert "DDP 7.1" in ddp

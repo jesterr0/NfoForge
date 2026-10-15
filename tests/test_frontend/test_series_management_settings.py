@@ -3,11 +3,11 @@ from pathlib import Path
 from PySide6.QtWidgets import QWidget
 import pytest
 
-from src.config.config import ConfigManager
-from src.config.paths import ConfigPaths
-from src.enums.multi_episode_style import MultiEpisodeStyle
-from src.enums.token_replacer import ColonReplace
-from src.frontend.stacked_windows.settings.series_management import (
+from nfoforge.config.config import ConfigManager
+from nfoforge.config.paths import ConfigPaths
+from nfoforge.enums.multi_episode_style import MultiEpisodeStyle
+from nfoforge.enums.token_replacer import ColonReplace
+from nfoforge.frontend.stacked_windows.settings.series_management import (
     SeriesManagementSettings,
 )
 from tests.repo_paths import build_app_paths
@@ -21,7 +21,7 @@ def _make_series_management_settings(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> tuple[SeriesManagementSettings, ConfigManager]:
     monkeypatch.setattr(
-        "src.config.config.FindDependencies.update_dependencies",
+        "nfoforge.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
     )
 

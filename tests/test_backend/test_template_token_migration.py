@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 
-from src.backend.utils.template_token_migration import (
+from nfoforge.backend.utils.template_token_migration import (
     REMOVED_TEMPLATE_TOKENS,
     TEMPLATE_TOKEN_RENAMES,
     rewrite_template_text,
@@ -265,7 +265,7 @@ def test_rewrite_still_finds_a_token_after_a_block_with_a_bounded_broken_literal
 
 
 def test_migrate_template_file_rewrites_and_backs_up(tmp_path: Path) -> None:
-    from src.backend.utils.template_token_migration import migrate_template_file
+    from nfoforge.backend.utils.template_token_migration import migrate_template_file
 
     template = tmp_path / "movie.txt"
     template.write_text("Title: {{ movie_title }}", encoding="utf-8")
@@ -282,7 +282,7 @@ def test_migrate_template_file_rewrites_and_backs_up(tmp_path: Path) -> None:
 def test_migrate_template_file_never_clobbers_an_existing_backup(
     tmp_path: Path,
 ) -> None:
-    from src.backend.utils.template_token_migration import migrate_template_file
+    from nfoforge.backend.utils.template_token_migration import migrate_template_file
 
     template = tmp_path / "movie.txt"
     template.write_text("{{ movie_title }}", encoding="utf-8")
@@ -297,7 +297,7 @@ def test_migrate_template_file_never_clobbers_an_existing_backup(
 
 
 def test_migrate_templates_reports_each_pair(tmp_path: Path) -> None:
-    from src.backend.utils.template_token_migration import (
+    from nfoforge.backend.utils.template_token_migration import (
         migrate_templates,
         scan_template_dir,
     )
@@ -315,7 +315,7 @@ def test_migrate_templates_reports_each_pair(tmp_path: Path) -> None:
 def test_migrate_templates_continues_after_one_file_fails(
     tmp_path: Path, monkeypatch
 ) -> None:
-    from src.backend.utils import template_token_migration
+    from nfoforge.backend.utils import template_token_migration
 
     (tmp_path / "a.txt").write_text("{{ movie_title }}", encoding="utf-8")
     (tmp_path / "b.txt").write_text("{{ movie_title }}", encoding="utf-8")
@@ -337,7 +337,7 @@ def test_migrate_templates_continues_after_one_file_fails(
 
 
 def test_build_diff_shows_changed_lines(tmp_path: Path) -> None:
-    from src.backend.utils.template_token_migration import build_diff
+    from nfoforge.backend.utils.template_token_migration import build_diff
 
     diff = build_diff(Path("movie.txt"), "{{ movie_title }}", "{{ title }}")
 
@@ -349,7 +349,7 @@ def test_migrate_template_file_preserves_lf_line_endings(tmp_path: Path) -> None
     # Universal-newline decoding on read, or newline translation on write,
     # would silently turn these into the platform's own line separator.
     # Asserted on bytes so that hazard can't hide behind text-mode decoding.
-    from src.backend.utils.template_token_migration import migrate_template_file
+    from nfoforge.backend.utils.template_token_migration import migrate_template_file
 
     template = tmp_path / "movie.txt"
     template.write_bytes(b"Title: {{ movie_title }}\nYear: {{ year }}\n")
@@ -360,7 +360,7 @@ def test_migrate_template_file_preserves_lf_line_endings(tmp_path: Path) -> None
 
 
 def test_migrate_template_file_preserves_crlf_line_endings(tmp_path: Path) -> None:
-    from src.backend.utils.template_token_migration import migrate_template_file
+    from nfoforge.backend.utils.template_token_migration import migrate_template_file
 
     template = tmp_path / "movie.txt"
     template.write_bytes(b"Title: {{ movie_title }}\r\nYear: {{ year }}\r\n")
@@ -376,7 +376,7 @@ def test_migrate_template_file_backup_is_byte_identical_to_original(
     # Deliberately the opposite of this platform's own line separator, so a
     # backup step that copies through text mode (and so normalizes endings)
     # is caught regardless of which platform the suite runs on.
-    from src.backend.utils.template_token_migration import migrate_template_file
+    from nfoforge.backend.utils.template_token_migration import migrate_template_file
 
     non_native_newline = b"\n" if os.linesep != "\n" else b"\r\n"
     original_bytes = (
@@ -394,7 +394,7 @@ def test_migrate_template_file_backup_is_byte_identical_to_original(
 
 
 def test_migrate_templates_skips_a_file_that_fails_to_decode(tmp_path: Path) -> None:
-    from src.backend.utils.template_token_migration import (
+    from nfoforge.backend.utils.template_token_migration import (
         TemplateTokenReport,
         migrate_templates,
     )
@@ -420,7 +420,7 @@ def test_migrate_templates_skips_a_file_that_fails_to_decode(tmp_path: Path) -> 
 def test_migrate_templates_skips_a_report_with_only_removed_tokens(
     tmp_path: Path,
 ) -> None:
-    from src.backend.utils.template_token_migration import (
+    from nfoforge.backend.utils.template_token_migration import (
         TemplateTokenReport,
         migrate_templates,
     )

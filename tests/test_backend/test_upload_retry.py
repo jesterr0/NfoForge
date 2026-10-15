@@ -3,26 +3,25 @@ from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import MagicMock
 
-from PySide6.QtCore import SignalInstance
 import pytest
 from tenacity.wait import wait_none
 
-import src.backend.process as process_module
-from src.backend.process import ProcessBackEnd
-from src.backend.upload_retry import (
+import nfoforge.backend.process as process_module
+from nfoforge.backend.process import ProcessBackEnd
+from nfoforge.backend.upload_retry import (
     RETRY_ATTEMPTS,
     UploadFailurePhase,
     UploadRetryAction,
 )
-from src.config.config import ConfigManager
-from src.config.models import ClaimSwitches
-from src.context.processing_context import ProcessingContext
-from src.enums.media_type import MediaType
-from src.enums.tracker_selection import TrackerSelection
-from src.exceptions import ProcessCancelled, TrackerClientError, TrackerError
-from src.payloads.shared_data import SharedPayload
-from src.plugins.api import PluginDefinition, PostUploadOutcome, PostUploadRequest
-from src.plugins.manager import PluginManager
+from nfoforge.config.config import ConfigManager
+from nfoforge.config.models import ClaimSwitches
+from nfoforge.context.processing_context import ProcessingContext
+from nfoforge.enums.media_type import MediaType
+from nfoforge.enums.tracker_selection import TrackerSelection
+from nfoforge.exceptions import ProcessCancelled, TrackerClientError, TrackerError
+from nfoforge.payloads.shared_data import SharedPayload
+from nfoforge.plugins.api import PluginDefinition, PostUploadOutcome, PostUploadRequest
+from nfoforge.plugins.manager import PluginManager
 
 _CLAIMS_OFF = ClaimSwitches(
     enabled=False,
@@ -52,7 +51,7 @@ def _kwargs(tmp_path: Path) -> dict[str, Any]:
         "tracker_health_cache": {},
         "queued_status_update": MagicMock(),
         "queued_text_update": MagicMock(),
-        "caught_error": cast(SignalInstance, MagicMock()),
+        "caught_error": MagicMock(),
     }
 
 
@@ -283,7 +282,7 @@ def test_injection_retry_prompts_and_succeeds(tmp_path: Path) -> None:
         file_input=tmp_path / "release.mkv",
         queued_text_update=MagicMock(),
         queued_status_update=MagicMock(),
-        caught_error=cast(SignalInstance, MagicMock()),
+        caught_error=MagicMock(),
         upload_retry_cb=callback,
     )
 
@@ -309,7 +308,7 @@ def test_injection_failure_without_callback_is_reported_once(tmp_path: Path) -> 
         file_input=tmp_path / "release.mkv",
         queued_text_update=MagicMock(),
         queued_status_update=status_update,
-        caught_error=cast(SignalInstance, MagicMock()),
+        caught_error=MagicMock(),
         upload_retry_cb=None,
     )
 
@@ -332,7 +331,7 @@ def test_injection_status_text_scrubs_credentials_without_callback(
         )
     )
     status_update = MagicMock()
-    caught_error = cast(SignalInstance, MagicMock())
+    caught_error = MagicMock()
 
     injected, injection_error = backend._inject_with_user_retry(
         tracker=TrackerSelection.AITHER,
@@ -374,7 +373,7 @@ def test_injection_status_and_message_scrub_credentials_after_skip(
         file_input=tmp_path / "release.mkv",
         queued_text_update=MagicMock(),
         queued_status_update=status_update,
-        caught_error=cast(SignalInstance, MagicMock()),
+        caught_error=MagicMock(),
         upload_retry_cb=callback,
     )
 
@@ -496,7 +495,7 @@ def test_injection_cancel_marks_remaining_trackers_and_disconnects(
             queued_text_update=MagicMock(),
             queued_text_update_replace_last_line=MagicMock(),
             progress_bar_cb=MagicMock(),
-            caught_error=cast(SignalInstance, MagicMock()),
+            caught_error=MagicMock(),
             context=context,
             upload_retry_cb=lambda _failure: UploadRetryAction.CANCEL,
         )
@@ -548,7 +547,7 @@ def _process_trackers_backend(
     )
     pre_upload_plugin_id = ""
     if skip_via_pre_upload:
-        from src.plugins.api import PreUploadDecision, PreUploadRequest
+        from nfoforge.plugins.api import PreUploadDecision, PreUploadRequest
 
         def skip(request: PreUploadRequest) -> PreUploadDecision:
             return PreUploadDecision.SKIP
@@ -643,7 +642,7 @@ def _run_process_trackers(
         queued_text_update=MagicMock(),
         queued_text_update_replace_last_line=MagicMock(),
         progress_bar_cb=MagicMock(),
-        caught_error=cast(SignalInstance, MagicMock()),
+        caught_error=MagicMock(),
         context=context,
         upload_retry_cb=upload_retry_cb,  # type: ignore[arg-type]
     )

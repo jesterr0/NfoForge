@@ -1,6 +1,6 @@
 from jinja2 import Environment
 
-from src.backend.utils.token_validation import (
+from nfoforge.backend.utils.token_validation import (
     build_unknown_token_pattern,
     find_unknown_tokens,
 )

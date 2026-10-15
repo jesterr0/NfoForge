@@ -2,8 +2,8 @@ from pathlib import Path
 
 import pytest
 
-from src.backend.utils.title_inference import MediaTitleInferer
-from src.exceptions import MediaParsingError
+from nfoforge.backend.utils.title_inference import MediaTitleInferer
+from nfoforge.exceptions import MediaParsingError
 
 
 def _touch(path: Path) -> Path:

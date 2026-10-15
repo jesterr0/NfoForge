@@ -12,15 +12,15 @@ from PySide6.QtWidgets import QDialog, QFileDialog, QMessageBox, QWidget
 import pytest
 import tomlkit
 
-from src.config.config import ConfigManager
-from src.config.transfer import (
+from nfoforge.config.config import ConfigManager
+from nfoforge.config.transfer import (
     Disposition,
     EntryKind,
     NameConflict,
     export_bundle,
     read_bundle,
 )
-from src.frontend.windows.config_transfer import (
+from nfoforge.frontend.windows.config_transfer import (
     ConfigExportDialog,
     ConfigImportDialog,
     TransferSummaryDialog,
@@ -33,7 +33,7 @@ from tests.repo_paths import build_app_paths
 @pytest.fixture(autouse=True)
 def _no_dependency_detection(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
-        "src.config.config.FindDependencies.update_dependencies",
+        "nfoforge.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
     )
 

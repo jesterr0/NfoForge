@@ -1,4 +1,4 @@
-from src.backend.tokens import FileToken, NfoToken, Tokens
+from nfoforge.backend.tokens import FileToken, NfoToken, Tokens
 
 
 def test_video_dimensions_are_registered_as_file_and_nfo_tokens() -> None:

@@ -2,10 +2,10 @@ from threading import Lock
 
 import pytest
 
-from src.enums.media_type import MediaType
-from src.enums.tmdb_genres import TMDBGenreIDsMovies
-from src.payloads.media_search import MediaSearchPayload
-from src.plugins.api import MetadataMediaKind
+from nfoforge.enums.media_type import MediaType
+from nfoforge.enums.tmdb_genres import TMDBGenreIDsMovies
+from nfoforge.payloads.media_search import MediaSearchPayload
+from nfoforge.plugins.api import MetadataMediaKind
 
 
 def _tmdb_payload() -> MediaSearchPayload:

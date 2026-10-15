@@ -12,6 +12,7 @@ nav:
       - Using The Wizard: view/getting-started/using-the-wizard.md
       - How Torrents Are Built: view/getting-started/how-torrents-are-built.md
       - Series Support: view/getting-started/series-support.md
+      - Command Line: view/cli/command-line.md
   - TokenReplacer:
       - Introduction: view/token-replacer/introduction.md
       - Tokens: view/token-replacer/tokens.md

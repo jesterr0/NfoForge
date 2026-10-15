@@ -5,15 +5,18 @@ from PySide6.QtCore import QCoreApplication, Qt
 from PySide6.QtWidgets import QMessageBox, QTreeWidget, QTreeWidgetItem
 import pytest
 
-from src.config.config import ConfigManager
-from src.config.paths import ConfigPaths
-from src.context.processing_context import ProcessingContext
-from src.enums.media_type import MediaType
-from src.enums.series import EpisodeFormat
-from src.frontend.custom_widgets.series_episode_mapper import SeriesEpisodeMapper
-from src.frontend.wizards.series_match import SeriesMatch, _incomplete_mapping_message
-from src.payloads.media_inputs import MediaInputPayload
-from src.payloads.media_search import MediaSearchPayload
+from nfoforge.config.config import ConfigManager
+from nfoforge.config.paths import ConfigPaths
+from nfoforge.context.processing_context import ProcessingContext
+from nfoforge.enums.media_type import MediaType
+from nfoforge.enums.series import EpisodeFormat
+from nfoforge.frontend.custom_widgets.series_episode_mapper import SeriesEpisodeMapper
+from nfoforge.frontend.wizards.series_match import (
+    SeriesMatch,
+    _incomplete_mapping_message,
+)
+from nfoforge.payloads.media_inputs import MediaInputPayload
+from nfoforge.payloads.media_search import MediaSearchPayload
 from tests.repo_paths import build_app_paths
 
 
@@ -682,33 +685,6 @@ def test_a_title_resolves_an_episode_number_the_ordering_does_not_list() -> None
     assert mapper.file_episode_mappings[unknown]["verified"] is False
 
 
-def test_the_episode_title_comes_from_the_filename_not_its_directory() -> None:
-    """GuessIt was handed the whole path, so the folders competed for it.
-
-    For a pack inside a folder carrying its own release info, the grandparent
-    was read as the show and every file's episode title came back as the
-    containing directory's name -- the same wrong value for the whole pack,
-    invisible until fuzzy matching read it.
-    """
-    parsed = SeriesEpisodeMapper._parse_file(
-        Path(
-            "C:/Users/someone/Downloads/Show.S01.BluRay.1080p.x264-G/Show.S01E03.Starstruck.1080p.mkv"
-        )
-    )
-
-    assert parsed["episode_title"] == "Starstruck"
-    assert parsed["season"] == 1
-    assert parsed["episode"] == 3
-
-
-def test_a_season_carried_only_by_a_parent_folder_is_still_found() -> None:
-    """Nested packs keep bare filenames under a ``Season NN`` directory."""
-    parsed = SeriesEpisodeMapper._parse_file(Path("X:/Show/Season 02/ep05.mkv"))
-
-    assert parsed["season"] == 2
-    assert parsed["episode"] == 5
-
-
 def test_get_episode_map_returns_a_copy() -> None:
     file_path = Path("Show.S01E01.mkv")
     mapper = _make_mapper_with_files([file_path])
@@ -884,7 +860,7 @@ def _make_series_match_page(
     mappings: dict[Path, dict[str, object]],
 ) -> SeriesMatch:
     monkeypatch.setattr(
-        "src.config.config.FindDependencies.update_dependencies",
+        "nfoforge.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
     )
     manager = ConfigManager("test", _paths(tmp_path))

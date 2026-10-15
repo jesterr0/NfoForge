@@ -10,7 +10,7 @@ import zipfile
 
 import pytest
 
-from src.utils.safe_archive import (
+from nfoforge.utils.safe_archive import (
     UnsafeArchiveError,
     extract_safely,
     member_path,

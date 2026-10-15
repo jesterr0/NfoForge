@@ -4,19 +4,19 @@ import re
 
 import pytest
 
-from src.backend.utils.example_parsed_series_data import (
+from nfoforge.backend.utils.example_parsed_series_data import (
     EXAMPLE_MEDIA_INPUT_PAYLOAD,
     EXAMPLE_SEARCH_PAYLOAD,
 )
-from src.config.config import ConfigManager
-from src.config.paths import ConfigPaths
-from src.context.processing_context import ProcessingContext
-from src.frontend.custom_widgets.basic_code_editor import HighlightKeywords
-from src.frontend.custom_widgets.template_selector import (
+from nfoforge.config.config import ConfigManager
+from nfoforge.config.paths import ConfigPaths
+from nfoforge.context.processing_context import ProcessingContext
+from nfoforge.frontend.custom_widgets.basic_code_editor import HighlightKeywords
+from nfoforge.frontend.custom_widgets.template_selector import (
     TemplateSelector,
     saved_status_message,
 )
-from src.plugins.api import PluginDefinition, TokenReplaceRequest
+from nfoforge.plugins.api import PluginDefinition, TokenReplaceRequest
 from tests.repo_paths import build_app_paths
 
 
@@ -26,7 +26,7 @@ def _paths(tmp_path: Path) -> ConfigPaths:
 
 def _make_selector(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TemplateSelector:
     monkeypatch.setattr(
-        "src.config.config.FindDependencies.update_dependencies",
+        "nfoforge.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
     )
     manager = ConfigManager("test", _paths(tmp_path))
@@ -293,7 +293,7 @@ def test_save_template_warns_and_reloads_when_selection_is_stale(
 
     warnings = []
     monkeypatch.setattr(
-        "src.frontend.custom_widgets.template_selector.QMessageBox.warning",
+        "nfoforge.frontend.custom_widgets.template_selector.QMessageBox.warning",
         lambda *args, **kwargs: warnings.append(args),
     )
     reload_calls = []
@@ -417,7 +417,7 @@ def test_preview_reports_a_plugin_failure_instead_of_discarding_it(
         raise ValueError("no images for Aither")
 
     monkeypatch.setattr(
-        "src.frontend.custom_widgets.template_selector.QMessageBox.warning",
+        "nfoforge.frontend.custom_widgets.template_selector.QMessageBox.warning",
         lambda *args, **kwargs: warnings.append(args),
     )
     selector = _selector_with_plugin(tmp_path, monkeypatch, fake_plugin)

@@ -6,14 +6,16 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QDialog
 import pytest
 
-from src.backend.rename_encode import RenameEncodeBackEnd
-from src.config.config import ConfigManager
-from src.config.paths import ConfigPaths
-from src.context.processing_context import ProcessingContext
-from src.enums.media_type import MediaType
-from src.frontend.wizards.rename_encode import RenameEncode
-from src.payloads.media_inputs import MediaInputPayload
-from src.payloads.media_search import MediaSearchPayload
+from nfoforge.backend.rename_encode import RenameEncodeBackEnd
+from nfoforge.config.config import ConfigManager
+from nfoforge.config.paths import ConfigPaths
+from nfoforge.context.processing_context import ProcessingContext
+from nfoforge.core.rename.choices import rename_override_tokens
+from nfoforge.core.rename.movie import detect_movie_choices
+from nfoforge.enums.media_type import MediaType
+from nfoforge.frontend.wizards.rename_encode import RenameEncode
+from nfoforge.payloads.media_inputs import MediaInputPayload
+from nfoforge.payloads.media_search import MediaSearchPayload
 from tests.repo_paths import build_app_paths
 
 
@@ -28,7 +30,7 @@ def _make_movie_rename_page(
     file_list: list[Path] | None = None,
 ) -> RenameEncode:
     monkeypatch.setattr(
-        "src.config.config.FindDependencies.update_dependencies",
+        "nfoforge.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
     )
 
@@ -84,7 +86,7 @@ def test_confirmed_folder_and_file_rename_updates_payload_asynchronously(
     monkeypatch.setattr(page, "_name_validations", lambda: True)
     monkeypatch.setattr(page, "_quality_validations", lambda: True)
     monkeypatch.setattr(
-        "src.frontend.wizards.rename_encode.RenamePreviewDialog.exec",
+        "nfoforge.frontend.wizards.rename_encode.RenamePreviewDialog.exec",
         lambda self: QDialog.DialogCode.Accepted,
     )
 
@@ -295,3 +297,25 @@ def test_clearing_the_field_beats_the_configured_group_tag(
     page.update_generated_name()
 
     assert page.backend.override_tokens["release_group"] == ""
+
+
+@pytest.mark.parametrize(
+    "filename",
+    [
+        "Movie.2024.Directors.Cut.IMAX.REPACK.1080p.BluRay.REMUX.AVC-GRP.mkv",
+        "Movie.2024.HYBRID.1080p.AMZN.WEB-DL.DDP5.1.H.264-GRP.mkv",
+        "Movie.2024.1080p.x264.mkv",
+    ],
+)
+def test_the_page_prefills_the_same_tokens_core_produces(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, filename: str
+) -> None:
+    """The GUI and a headless run must name a release the same way."""
+    page = _make_movie_rename_page(tmp_path, monkeypatch, file_path=Path(filename))
+
+    page.initializePage()
+
+    expected = rename_override_tokens(
+        detect_movie_choices(page.context, page.config.settings)
+    )
+    assert page.backend.override_tokens == expected

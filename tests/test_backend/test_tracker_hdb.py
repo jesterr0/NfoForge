@@ -6,20 +6,20 @@ from unittest.mock import MagicMock, patch
 from pymediainfo import MediaInfo
 import pytest
 
-from src.backend.trackers.hdb import (
+from nfoforge.backend.trackers.hdb import (
     HDBSearch,
     HDBUploader,
     hdb_category_id,
     hdb_codec_id,
     hdb_medium_id,
 )
-from src.backend.trackers.title_render import normalise_title
-from src.backend.trackers.title_rules import TITLE_RULES
-from src.enums.media_type import MediaType
-from src.enums.token_replacer import ColonReplace
-from src.enums.tracker_selection import TrackerSelection
-from src.enums.trackers.hdb import HDBCategory, HDBCodec, HDBMedium
-from src.exceptions import TrackerError
+from nfoforge.backend.trackers.title_render import normalise_title
+from nfoforge.backend.trackers.title_rules import TITLE_RULES
+from nfoforge.enums.media_type import MediaType
+from nfoforge.enums.token_replacer import ColonReplace
+from nfoforge.enums.tracker_selection import TrackerSelection
+from nfoforge.enums.trackers.hdb import HDBCategory, HDBCodec, HDBMedium
+from nfoforge.exceptions import TrackerError
 
 
 def _mediainfo(video_format: str | None) -> MediaInfo:

@@ -18,10 +18,10 @@ from PySide6.QtWidgets import QDialogButtonBox, QHeaderView, QMessageBox
 import pytest
 import qtawesome as qta
 
-from src.backend.jobs import store
-from src.backend.jobs.models import JobSummary
-from src.frontend.custom_widgets import load_job_dialog as load_job_dialog_module
-from src.frontend.custom_widgets.load_job_dialog import LoadJobDialog
+from nfoforge.backend.jobs import store
+from nfoforge.backend.jobs.models import JobSummary
+from nfoforge.frontend.custom_widgets import load_job_dialog as load_job_dialog_module
+from nfoforge.frontend.custom_widgets.load_job_dialog import LoadJobDialog
 
 
 @pytest.fixture
@@ -1454,7 +1454,7 @@ def test_an_unreadable_job_does_not_break_the_details_pane(
     dialog = _open_dialog(qapp)
 
     # listing skips unreadable jobs, so add the row by hand to exercise the pane
-    from src.backend.jobs.models import JobListing
+    from nfoforge.backend.jobs.models import JobListing
 
     listing = JobListing(
         job_id="x",

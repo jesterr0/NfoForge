@@ -18,7 +18,6 @@ dependencies = [
     "torf>=4.3.0",
     "pillow>=12.3.0",
     "platformdirs>=4.11.11",
-    "pyside6-essentials==6.11.2",
     "psutil>=7.2.0",
     "pyimgbox>=1.0.7",
     "aiohttp>=3.13.3",
@@ -34,7 +33,6 @@ dependencies = [
     "jinja2>=3.1.6",
     "beautifulsoup4>=4.13.4",
     "rapidfuzz>=3.14.3",
-    "qtawesome>=1.4.0",
     "urllib3>=2.7.0",
     "tenacity>=9.1.4",
     "python-dotenv>=1.2.3",
@@ -42,7 +40,13 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# The desktop app. Everything outside `nfoforge.frontend` runs without it, so
+# the command line installs and runs where Qt is not available (a server, a
+# container); `tests/test_core/test_core_is_qt_free.py` holds that boundary.
+gui = ["pyside6-essentials==6.11.2", "qtawesome>=1.4.0"]
 dev = [
+    # the suite covers the desktop app too
+    "nfoforge[gui]",
     "basedpyright",
     "ruff>=0.16.2",
     "cython>=3.2.9,!=3.3.0",
@@ -55,6 +59,8 @@ dev = [
     "poethepoet>=0.48.0",
 ]
 build = [
+    # the release ships the desktop app, so the build needs it installed
+    "nfoforge[gui]",
     "pyinstaller-hooks-contrib>=2025.1",
     "pyinstaller>=6.9.0",
     # PyInstaller's altgraph dependency does an unconditional `import
@@ -68,11 +74,27 @@ build = [
 ]
 docs = ["mkdocs>=1.6.1", "mkdocs-material>=9.6.11", "pymdown-extensions"]
 
+[project.scripts]
+nfoforge = "nfoforge.launcher:cli"
+
+[project.gui-scripts]
+nfoforge-gui = "nfoforge.launcher:gui"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+# Not a distributable wheel: `assets/` sits beside the package, not in it, and
+# `asset_root()` finds it from the checkout. Run from a checkout (`uv sync`,
+# which installs editable) or a release build; a built wheel has no assets.
+packages = ["nfoforge"]
+
 [tool.ruff]
 line-length = 88
 include = [
     "pyproject.toml",
-    "src/**/*.py",
+    "nfoforge/**/*.py",
     "plugins/**/*.py",
     "assets/plugin_examples/**/*.py",
     "scripts/**/*.py",
@@ -129,8 +151,7 @@ timeout_method = "thread"
 
 [tool.basedpyright]
 include = [
-    "src",
-    "start_ui.py",
+    "nfoforge",
     "build.py",
     "assets/plugin_examples/jinja2_plugin_example",
     "assets/plugin_examples/metadata_plugin_example",

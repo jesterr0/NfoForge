@@ -1,7 +1,7 @@
 import errno
 from pathlib import Path
 
-from src.backend.rename_files import (
+from nfoforge.backend.rename_files import (
     _MAX_NAME_LENGTH,
     RenameExecutor,
     RenamePlan,
