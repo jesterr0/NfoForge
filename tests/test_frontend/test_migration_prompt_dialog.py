@@ -10,9 +10,9 @@ from pathlib import Path
 
 import pytest
 
-from src.config.layout_migration import LegacyInstall
-import src.frontend.windows.migration_prompt_dialog as prompt_module
-from src.frontend.windows.migration_prompt_dialog import MigrationPromptDialog
+from nfoforge.config.layout_migration import LegacyInstall
+import nfoforge.frontend.windows.migration_prompt_dialog as prompt_module
+from nfoforge.frontend.windows.migration_prompt_dialog import MigrationPromptDialog
 
 
 def _install(tmp_path: Path, name: str = "previous install") -> LegacyInstall:

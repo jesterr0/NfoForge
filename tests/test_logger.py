@@ -4,15 +4,15 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from src.config.paths import (
+from nfoforge.config.paths import (
     DATA_DIR_ENV_VAR,
     DataLocation,
     default_data_root,
     default_paths,
     write_data_location,
 )
-from src.enums.logging_settings import LogSource
-from src.logger.nfo_forge_logger import Logger, default_log_file
+from nfoforge.enums.logging_settings import LogSource
+from nfoforge.logger.nfo_forge_logger import Logger, default_log_file
 
 
 def _session_log(log_dir: Path, timestamp: str, suffix: str) -> Path:

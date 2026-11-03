@@ -9,7 +9,7 @@ from pymediainfo import MediaInfo
 import pytest
 from torf import Torrent
 
-from src.backend.jobs.assets import (
+from nfoforge.backend.jobs.assets import (
     JobAssetError,
     MediaFingerprint,
     archived_base_is_valid,
@@ -23,7 +23,7 @@ from src.backend.jobs.assets import (
     read_job_asset,
     torrent_content_files,
 )
-from src.backend.utils.media_info_utils import (
+from nfoforge.backend.utils.media_info_utils import (
     MinimalMediaInfo,
     cache_full_mi_str,
     clear_full_mi_str_cache,

@@ -2,10 +2,10 @@ from io import BytesIO
 from pathlib import Path
 from unittest.mock import ANY, MagicMock, patch
 
-from src.backend.trackers.aither import AitherUploader
-from src.backend.trackers.huno import HunoUploader
-from src.backend.trackers.utils import API_TRACKER_HEADERS
-from src.enums.media_type import MediaType
+from nfoforge.backend.trackers.aither import AitherUploader
+from nfoforge.backend.trackers.huno import HunoUploader
+from nfoforge.backend.trackers.utils import API_TRACKER_HEADERS
+from nfoforge.enums.media_type import MediaType
 
 
 def _huno_uploader(tmp_path: Path) -> HunoUploader:

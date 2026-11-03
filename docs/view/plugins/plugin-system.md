@@ -45,7 +45,7 @@ NfoForge loads that module directly from the repository without adding the repos
 The module exports one typed definition:
 
 ```python
-from src.plugins.api import PluginDefinition
+from nfoforge.plugins.api import PluginDefinition
 
 plugin = PluginDefinition(
     display_name="My Plugin",
@@ -54,7 +54,7 @@ plugin = PluginDefinition(
 )
 ```
 
-Plugin code should import its public contracts from `src.plugins.api`. Assigning a function with the wrong signature to `PluginDefinition` is reported by BasedPyright without requiring NfoForge to inspect annotations at runtime.
+Plugin code should import its public contracts from `nfoforge.plugins.api`. Assigning a function with the wrong signature to `PluginDefinition` is reported by BasedPyright without requiring NfoForge to inspect annotations at runtime.
 
 The current runtime contract is plugin API version 2. Version 2 replaces the live `ProcessingContext` previously exposed to metadata transformers with the isolated `MetadataTransformContext` snapshot documented under Metadata Transformers.
 
@@ -66,7 +66,7 @@ Plugins load from your data folder, not from wherever you keep the source. Witho
 
 ```powershell
 $env:NFOFORGE_DEV_PLUGINS = "D:\src\nfoforge-plugins"
-uv run start_ui.py
+uv run nfoforge-gui
 ```
 
 ```
@@ -111,6 +111,21 @@ The full order is your plugins folder, then the examples shipped with the releas
 
 Wizard pages, token replacers, pre-upload processors, post-upload processors, metadata transformers, image host uploaders, and duplicate checkers are single-select capabilities. Jinja filters/functions, flat token filters, and custom edition/cut contributions from every valid plugin are combined while external plugins are enabled.
 
+### Wizard pages
+
+A wizard page is Qt, and the [command line](../cli/command-line.md) has no Qt. So name the page as a string, `"package.module:ClassName"`, rather than importing the class:
+
+```python
+plugin = PluginDefinition(
+    display_name="My Plugin",
+    version="1.0.0",
+    wizard_page="my_plugin.wizard_page:MyInputPage",
+    token_replacer=my_token_replacer,
+)
+```
+
+The desktop app imports it when it builds the wizard. The command line never does, so the plugin's other capabilities -- here the token replacer -- still load and run there. Passing the class itself still works, but it imports Qt as the plugin loads, and the command line then cannot load the plugin at all.
+
 ### Post-upload processors
 
 A post-upload processor runs once per tracker, after that tracker's upload and torrent- client injection have both finished (or failed). Unlike a pre-upload processor, it makes no decision -- the tracker's work is already done -- so it receives a `PostUploadRequest` and returns nothing.
@@ -130,14 +145,14 @@ A post-upload processor that raises is logged and otherwise ignored: the tracker
 
 ### Image host uploaders
 
-An image host uploader plugin contributes a custom upload destination for screenshots, without waiting on a built-in host to be added to NfoForge. Set `image_host_uploader` on `PluginDefinition` to an instance of `BaseImageHostUploader` (`src.backend.image_host_uploading.base_image_host`) -- the same abstract base every built-in host implements:
+An image host uploader plugin contributes a custom upload destination for screenshots, without waiting on a built-in host to be added to NfoForge. Set `image_host_uploader` on `PluginDefinition` to an instance of `BaseImageHostUploader` (`nfoforge.backend.image_host_uploading.base_image_host`) -- the same abstract base every built-in host implements:
 
 ```python
-from src.backend.image_host_uploading.base_image_host import (
+from nfoforge.backend.image_host_uploading.base_image_host import (
     BaseImageHostUploader,
     ImageUploadRequest,
 )
-from src.packages.custom_types import ImageUploadData
+from nfoforge.packages.custom_types import ImageUploadData
 
 class MyHostUploader(BaseImageHostUploader):
     async def upload(
@@ -162,11 +177,11 @@ Results are only merged into a tracker's dupe log when the built-in check for th
 
 ### Custom edition/cut contributions
 
-`{edition}` and `{cut}` are backed by a closed, curated table (`EDITION_INFO`/`CUT_EDITION_NAMES` in `src.backend.utils.rename_normalizations`). A plugin can extend that table rather than fork it: set `custom_editions` on `PluginDefinition` to a sequence of `CustomEditionContribution`, each pairing a `RenameNormalization` (`normalized` display value, `re_gex` case-insensitive detection patterns) with `is_cut`:
+`{edition}` and `{cut}` are backed by a closed, curated table (`EDITION_INFO`/`CUT_EDITION_NAMES` in `nfoforge.backend.utils.rename_normalizations`). A plugin can extend that table rather than fork it: set `custom_editions` on `PluginDefinition` to a sequence of `CustomEditionContribution`, each pairing a `RenameNormalization` (`normalized` display value, `re_gex` case-insensitive detection patterns) with `is_cut`:
 
 ```python
-from src.packages.custom_types import RenameNormalization
-from src.plugins.api import CustomEditionContribution, PluginDefinition
+from nfoforge.packages.custom_types import RenameNormalization
+from nfoforge.plugins.api import CustomEditionContribution, PluginDefinition
 
 plugin = PluginDefinition(
     display_name="My Editions",

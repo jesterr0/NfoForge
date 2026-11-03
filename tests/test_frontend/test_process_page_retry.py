@@ -6,15 +6,15 @@ from PySide6.QtCore import QObject, QThread, QTimer, Signal, Slot
 from PySide6.QtWidgets import QMessageBox, QTextBrowser, QWidget
 import pytest
 
-from src.backend.upload_retry import (
+from nfoforge.backend.upload_retry import (
     UploadFailure,
     UploadFailurePhase,
     UploadRetryAction,
 )
-from src.enums.tracker_selection import TrackerSelection
-from src.frontend.global_signals import GSigs
-import src.frontend.wizards.process as page_module
-from src.frontend.wizards.process import ProcessPage, ProcessWorker
+from nfoforge.enums.tracker_selection import TrackerSelection
+from nfoforge.frontend.global_signals import GSigs
+import nfoforge.frontend.wizards.process as page_module
+from nfoforge.frontend.wizards.process import ProcessPage, ProcessWorker
 
 
 class _FakeButton:

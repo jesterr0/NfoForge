@@ -10,14 +10,14 @@ from typing import Any
 
 import pytest
 
-from src.backend import job_queue as job_queue_module
-from src.backend.job_queue import (
+from nfoforge.backend import job_queue as job_queue_module
+from nfoforge.backend.job_queue import (
     JobDisposition,
     JobQueueRunner,
     QueuedJobOutcome,
     QueuedJobResult,
 )
-from src.backend.jobs import (
+from nfoforge.backend.jobs import (
     JobCodecError,
     JobStoreError,
     context_from_dict,
@@ -25,12 +25,16 @@ from src.backend.jobs import (
     read_job_asset,
     store,
 )
-from src.backend.jobs.models import JobSummary
-from src.backend.upload_retry import TrackerRunOutcome
-from src.context.processing_context import ProcessingContext
-from src.enums.image_host import ImageHost, ImageSource
-from src.enums.tracker_selection import TrackerSelection
-from src.packages.custom_types import ImageHostRef, ImageUploadData, ImageUploadFromTo
+from nfoforge.backend.jobs.models import JobSummary
+from nfoforge.backend.upload_retry import TrackerRunOutcome
+from nfoforge.context.processing_context import ProcessingContext
+from nfoforge.enums.image_host import ImageHost, ImageSource
+from nfoforge.enums.tracker_selection import TrackerSelection
+from nfoforge.packages.custom_types import (
+    ImageHostRef,
+    ImageUploadData,
+    ImageUploadFromTo,
+)
 
 _TRACKERS = (TrackerSelection.AITHER, TrackerSelection.HUNO)
 _NFOS = {TrackerSelection.AITHER: "a", TrackerSelection.HUNO: "h"}

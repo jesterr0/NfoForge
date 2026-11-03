@@ -4,7 +4,7 @@ No Qt here -- these are the rules the matcher widget applies, extracted so
 they can be pinned without a ``QApplication``.
 """
 
-from src.backend.utils.episode_matching import (
+from nfoforge.backend.utils.episode_matching import (
     ParsedFile,
     check_title_against_episode,
     claimed_season_episodes,

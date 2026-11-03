@@ -10,8 +10,8 @@ from pathlib import Path
 
 import pytest
 
-from src.backend.utils.working_dir import asset_root
-from src.config.data_location import (
+from nfoforge.backend.utils.working_dir import asset_root
+from nfoforge.config.data_location import (
     DataDestination,
     RelocationError,
     check_data_destination,
@@ -19,8 +19,8 @@ from src.config.data_location import (
     copy_data,
     repoint_settings,
 )
-from src.config.layout_version import LAYOUT_RECORD_NAME
-from src.config.paths import LOCATION_FILE_NAME, AppPaths
+from nfoforge.config.layout_version import LAYOUT_RECORD_NAME
+from nfoforge.config.paths import LOCATION_FILE_NAME, AppPaths
 
 
 def _paths(tmp_path: Path) -> AppPaths:

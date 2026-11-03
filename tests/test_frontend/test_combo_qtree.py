@@ -1,6 +1,6 @@
-from src.enums.image_host import ImageHost, ImageSource
-from src.frontend.custom_widgets.combo_qtree import ComboBoxTreeWidget
-from src.packages.custom_types import ImageUploadFromTo
+from nfoforge.enums.image_host import ImageHost, ImageSource
+from nfoforge.frontend.custom_widgets.combo_qtree import ComboBoxTreeWidget
+from nfoforge.packages.custom_types import ImageUploadFromTo
 
 
 def _tree_with_payload(payload: object) -> ComboBoxTreeWidget:

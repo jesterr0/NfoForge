@@ -1,6 +1,6 @@
 import pytest
 
-from src.backend.utils.rename_normalizations import is_imax
+from nfoforge.backend.utils.rename_normalizations import is_imax
 
 
 @pytest.mark.parametrize(

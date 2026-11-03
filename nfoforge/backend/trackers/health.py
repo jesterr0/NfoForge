@@ -1,0 +1,92 @@
+from collections.abc import MutableMapping
+
+from niquests import RequestException
+from tenacity import (
+    Retrying,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
+
+from nfoforge.backend.trackers.utils import TRACKER_HEADERS
+from nfoforge.backend.upload_retry import RETRY_ATTEMPTS
+from nfoforge.backend.utils.http_client import new_http_session
+from nfoforge.enums.tracker_selection import TrackerSelection
+from nfoforge.exceptions import TrackerError
+
+HEALTH_CHECK_TIMEOUT_SECONDS = 5
+
+_SESSION = new_http_session()
+
+
+def _probe_tracker_once(url: str, timeout: int) -> tuple[int, str | None]:
+    with _SESSION.get(
+        url,
+        headers=TRACKER_HEADERS,
+        timeout=timeout,
+        stream=True,
+    ) as response:
+        if response.status_code is None:
+            raise RequestException("No HTTP status code received")
+        return response.status_code, response.reason
+
+
+def _probe_tracker(url: str, timeout: int, attempts: int) -> tuple[int, str | None]:
+    """Probe the tracker root, retrying up to ``attempts`` times."""
+    return Retrying(
+        retry=retry_if_exception_type(RequestException),
+        stop=stop_after_attempt(attempts),
+        wait=wait_exponential(multiplier=0.5, min=0.5, max=2),
+        reraise=True,
+    )(_probe_tracker_once, url, timeout)
+
+
+def ensure_tracker_health(
+    tracker: TrackerSelection,
+    timeout: int,
+    cache: MutableMapping[TrackerSelection, bool],
+    *,
+    attempts: int = RETRY_ATTEMPTS,
+) -> None:
+    """Verify a tracker root is reachable once per processing run."""
+    cached = cache.get(tracker)
+    if cached is not None:
+        if not cached:
+            raise TrackerError(
+                f"{tracker} is unavailable",
+                retryable=True,
+                phase="health_check",
+            )
+        return
+
+    probe_timeout = max(1, min(timeout, HEALTH_CHECK_TIMEOUT_SECONDS))
+
+    try:
+        status_code, reason = _probe_tracker(
+            tracker.get_root_url(),
+            probe_timeout,
+            attempts,
+        )
+    except RequestException as error:
+        cache[tracker] = False
+        raise TrackerError(
+            f"{tracker} is unavailable: {error}",
+            retryable=True,
+            phase="health_check",
+        ) from error
+
+    # The probe is intentionally unauthenticated.  Client errors (including
+    # Cloudflare's 403 and rate limiting) prove that the host answered and
+    # should not prevent the authenticated upload from proceeding.  Only a
+    # server-side failure indicates that the tracker itself is unavailable.
+    if status_code >= 500:
+        cache[tracker] = False
+        detail = f" ({reason})" if reason else ""
+        raise TrackerError(
+            f"{tracker} is unavailable (HTTP {status_code}{detail})",
+            retryable=True,
+            phase="health_check",
+            status_code=status_code,
+        )
+
+    cache[tracker] = True

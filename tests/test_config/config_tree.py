@@ -9,7 +9,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from src.config.paths import ConfigPaths
+from nfoforge.config.paths import ConfigPaths
 from tests.repo_paths import build_app_paths
 
 

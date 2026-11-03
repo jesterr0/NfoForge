@@ -11,11 +11,11 @@ import zipfile
 import pytest
 import tomlkit
 
-from src.config.codec import TomlConfigCodec
-from src.config.config import ConfigManager
-from src.config.layout_apply import SUMMARY_LOG_NAME
-from src.config.paths import ConfigPaths
-from src.config.transfer import (
+from nfoforge.config.codec import TomlConfigCodec
+from nfoforge.config.config import ConfigManager
+from nfoforge.config.layout_apply import SUMMARY_LOG_NAME
+from nfoforge.config.paths import ConfigPaths
+from nfoforge.config.transfer import (
     EXPORT_MANIFEST_NAME,
     EXPORT_VERSION,
     Disposition,
@@ -43,7 +43,7 @@ def _no_dependency_detection(monkeypatch: pytest.MonkeyPatch) -> None:
     assertions depend on the runner.
     """
     monkeypatch.setattr(
-        "src.config.config.FindDependencies.update_dependencies",
+        "nfoforge.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
     )
 
@@ -415,7 +415,7 @@ def test_a_later_write_failure_rolls_back_every_completed_write(
     original_profile = profile.read_text(encoding="utf-8")
     original_template = template.read_text(encoding="utf-8")
 
-    from src.config import transfer
+    from nfoforge.config import transfer
 
     real_write = transfer.atomic_write_text
     writes = 0

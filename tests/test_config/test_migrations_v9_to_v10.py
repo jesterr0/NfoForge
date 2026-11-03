@@ -8,7 +8,7 @@ which is the feature, not a cost of it.
 
 from typing import Any
 
-from src.config.migrations import migrate_v9_to_v10
+from nfoforge.config.migrations import migrate_v9_to_v10
 
 
 def _doc(**overrides: Any) -> dict[str, Any]:

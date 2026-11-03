@@ -8,7 +8,7 @@ instance, so nothing a user selected per tracker is lost.
 
 from typing import Any
 
-from src.config.migrations import migrate_v10_to_v11
+from nfoforge.config.migrations import migrate_v10_to_v11
 
 
 def _doc(

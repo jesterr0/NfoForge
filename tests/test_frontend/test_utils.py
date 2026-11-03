@@ -3,7 +3,7 @@ import sys
 from PySide6.QtWidgets import QLabel
 import shiboken6
 
-from src.frontend.utils import QWidgetTempStyle
+from nfoforge.frontend.utils import QWidgetTempStyle
 
 
 def test_style_restore_survives_a_deleted_widget(qapp, monkeypatch) -> None:

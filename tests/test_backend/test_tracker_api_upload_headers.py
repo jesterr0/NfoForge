@@ -1,9 +1,9 @@
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from src.backend.trackers.beyondhd import BHDUploader
-from src.backend.trackers.utils import API_TRACKER_HEADERS, TRACKER_HEADERS
-from src.enums.media_type import MediaType
+from nfoforge.backend.trackers.beyondhd import BHDUploader
+from nfoforge.backend.trackers.utils import API_TRACKER_HEADERS, TRACKER_HEADERS
+from nfoforge.enums.media_type import MediaType
 
 
 def test_json_api_headers_do_not_change_browser_form_headers() -> None:

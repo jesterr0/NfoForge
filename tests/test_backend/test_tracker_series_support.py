@@ -9,15 +9,15 @@ from unittest.mock import MagicMock, patch
 from pymediainfo import MediaInfo
 import pytest
 
-from src.backend.process import ProcessBackEnd
-from src.backend.trackers.aither import AitherUploader
-from src.backend.trackers.beyondhd import BHDUploader
-from src.backend.trackers.blutopia import BlutopiaUploader
-from src.backend.trackers.darkpeers import DarkPeersUploader
-from src.backend.trackers.fearnopeer import FearNoPeerUploader
-from src.backend.trackers.huno import HunoUploader, huno_uploader
-from src.backend.trackers.lst import LSTUploader
-from src.backend.trackers.media_support import (
+from nfoforge.backend.process import ProcessBackEnd
+from nfoforge.backend.trackers.aither import AitherUploader
+from nfoforge.backend.trackers.beyondhd import BHDUploader
+from nfoforge.backend.trackers.blutopia import BlutopiaUploader
+from nfoforge.backend.trackers.darkpeers import DarkPeersUploader
+from nfoforge.backend.trackers.fearnopeer import FearNoPeerUploader
+from nfoforge.backend.trackers.huno import HunoUploader, huno_uploader
+from nfoforge.backend.trackers.lst import LSTUploader
+from nfoforge.backend.trackers.media_support import (
     TRACKER_SUPPORTED_MEDIA,
     UNIT3D_TRACKERS,
     UNSUPPORTED_MOVIE_TRACKERS,
@@ -25,35 +25,35 @@ from src.backend.trackers.media_support import (
     supports_media,
     supports_series_upload,
 )
-from src.backend.trackers.onlyencodes import OnlyEncodesUploader
-from src.backend.trackers.passthepopcorn import ptp_uploader
-from src.backend.trackers.reelflix import ReelFlixUploader
-from src.backend.trackers.seedpool import SeedPoolUploader
-from src.backend.trackers.shareisland import ShareIslandUploader
-from src.backend.trackers.title_rules import accepts_a_release_name
-from src.backend.trackers.torrentleech import TLUploader
-from src.backend.trackers.unit3d_base import Unit3dBaseUploader
-from src.backend.trackers.uploadcx import UploadCXUploader
-from src.backend.trackers.utp import UTPUploader
-from src.backend.trackers.yuscene import YuSceneUploader
-from src.backend.utils.anime import is_anime_release
-from src.context.processing_context import ProcessingContext
-from src.enums.media_type import MediaType
-from src.enums.series import EpisodeFormat
-from src.enums.tracker_selection import TrackerSelection
-from src.enums.trackers.aither import AitherType
-from src.enums.trackers.beyondhd import (
+from nfoforge.backend.trackers.onlyencodes import OnlyEncodesUploader
+from nfoforge.backend.trackers.passthepopcorn import ptp_uploader
+from nfoforge.backend.trackers.reelflix import ReelFlixUploader
+from nfoforge.backend.trackers.seedpool import SeedPoolUploader
+from nfoforge.backend.trackers.shareisland import ShareIslandUploader
+from nfoforge.backend.trackers.title_rules import accepts_a_release_name
+from nfoforge.backend.trackers.torrentleech import TLUploader
+from nfoforge.backend.trackers.unit3d_base import Unit3dBaseUploader
+from nfoforge.backend.trackers.uploadcx import UploadCXUploader
+from nfoforge.backend.trackers.utp import UTPUploader
+from nfoforge.backend.trackers.yuscene import YuSceneUploader
+from nfoforge.backend.utils.anime import is_anime_release
+from nfoforge.context.processing_context import ProcessingContext
+from nfoforge.enums.media_type import MediaType
+from nfoforge.enums.series import EpisodeFormat
+from nfoforge.enums.tracker_selection import TrackerSelection
+from nfoforge.enums.trackers.aither import AitherType
+from nfoforge.enums.trackers.beyondhd import (
     BHDCategoryID,
     BHDLiveRelease,
     BHDPromo,
     BHDSource,
     BHDType,
 )
-from src.enums.trackers.torrentleech import TLCategories
-from src.exceptions import TrackerError
-from src.payloads.media_inputs import MediaInputPayload
-from src.payloads.media_search import MediaSearchPayload
-from src.payloads.series import SeriesReleaseInfo, build_series_release_info
+from nfoforge.enums.trackers.torrentleech import TLCategories
+from nfoforge.exceptions import TrackerError
+from nfoforge.payloads.media_inputs import MediaInputPayload
+from nfoforge.payloads.media_search import MediaSearchPayload
+from nfoforge.payloads.series import SeriesReleaseInfo, build_series_release_info
 
 
 @pytest.mark.parametrize(
@@ -192,7 +192,7 @@ def test_torrentleech_anime_signal_uses_metadata_or_series_format(
     assert is_anime_release(media_input, media_search) is expected
 
 
-@patch("src.backend.process.tl_upload", return_value=True)
+@patch("nfoforge.backend.process.tl_upload", return_value=True)
 def test_torrentleech_upload_receives_derived_anime_signal(
     tl_upload: MagicMock,
 ) -> None:
@@ -675,9 +675,9 @@ def test_unit3d_series_upload_is_refused_without_a_season_or_episode(
 @pytest.mark.parametrize(
     ("tracker", "dispatch"),
     [
-        (TrackerSelection.TORRENT_LEECH, "src.backend.process.tl_upload"),
-        (TrackerSelection.BEYOND_HD, "src.backend.process.bhd_uploader"),
-        (TrackerSelection.HDB, "src.backend.process.hdb_uploader"),
+        (TrackerSelection.TORRENT_LEECH, "nfoforge.backend.process.tl_upload"),
+        (TrackerSelection.BEYOND_HD, "nfoforge.backend.process.bhd_uploader"),
+        (TrackerSelection.HDB, "nfoforge.backend.process.hdb_uploader"),
     ],
 )
 def test_non_unit3d_series_uploads_are_not_blocked_by_the_episode_guard(
@@ -712,7 +712,9 @@ def test_a_resolved_series_upload_passes_the_episode_guard(
     """The guard must not fire on the normal SxxExx path."""
     backend = _process_backend()
 
-    with patch("src.backend.process.aither_uploader", return_value=True) as dispatched:
+    with patch(
+        "nfoforge.backend.process.aither_uploader", return_value=True
+    ) as dispatched:
         backend.upload(
             tracker=TrackerSelection.AITHER,
             torrent_file=series_context.torrent_file,

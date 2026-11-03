@@ -8,27 +8,29 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QGroupBox, QLabel, QMessageBox, QSizePolicy
 import pytest
 
-from src.backend.media_search import MediaSearchBackEnd, TmdbAlternativeTitle
-from src.backend.utils.tmdb_reference import TmdbReference
-from src.config.config import ConfigManager
-from src.config.paths import ConfigPaths
-from src.context.processing_context import ProcessingContext
-from src.enums.media_search_mode import MediaSearchMode
-from src.enums.media_type import MediaType
-from src.enums.tmdb_genres import TMDBGenreIDsMovies, TMDBGenreIDsSeries
-from src.exceptions import MediaSearchError, MediaSearchUnavailableError
-from src.frontend.custom_widgets.custom_splitter import CustomSplitter
-from src.frontend.utils.general_worker import GeneralWorker
-from src.frontend.wizards.media_search import (
-    MediaSearch,
+from nfoforge.backend.media_search import MediaSearchBackEnd, TmdbAlternativeTitle
+from nfoforge.backend.utils.tmdb_reference import TmdbReference
+from nfoforge.config.config import ConfigManager
+from nfoforge.config.paths import ConfigPaths
+from nfoforge.context.processing_context import ProcessingContext
+from nfoforge.core.metadata.resolve import (
     MediaSearchJobResult,
-    _alternative_title_regions,
-    _run_media_search_job,
-    _run_tmdb_id_lookup_job,
+    run_media_search,
+    run_tmdb_id_lookup,
 )
-from src.payloads.media_inputs import MediaInputPayload
-from src.payloads.media_search import MediaSearchPayload
-from src.plugins.api import (
+from nfoforge.enums.media_search_mode import MediaSearchMode
+from nfoforge.enums.media_type import MediaType
+from nfoforge.enums.tmdb_genres import TMDBGenreIDsMovies, TMDBGenreIDsSeries
+from nfoforge.exceptions import MediaSearchError, MediaSearchUnavailableError
+from nfoforge.frontend.custom_widgets.custom_splitter import CustomSplitter
+from nfoforge.frontend.utils.general_worker import GeneralWorker
+from nfoforge.frontend.wizards.media_search import (
+    MediaSearch,
+    _alternative_title_regions,
+)
+from nfoforge.payloads.media_inputs import MediaInputPayload
+from nfoforge.payloads.media_search import MediaSearchPayload
+from nfoforge.plugins.api import (
     MetadataTransformRequest,
     PluginDefinition,
 )
@@ -406,11 +408,9 @@ def test_automatic_search_uses_inferred_title_and_selected_files(
         def resolve_tmdb_reference(self, tmdb_id, media_type, search_mode):
             raise AssertionError("not used by this test")
 
-    monkeypatch.setattr(
-        "src.frontend.wizards.media_search.MediaTitleInferer", FakeInferer
-    )
+    monkeypatch.setattr("nfoforge.core.metadata.resolve.MediaTitleInferer", FakeInferer)
 
-    result = _run_media_search_job(
+    result = run_media_search(
         FakeBackend(),
         None,
         input_path,
@@ -442,10 +442,10 @@ def test_manual_search_bypasses_title_inference(monkeypatch) -> None:
             raise AssertionError("not used by this test")
 
     monkeypatch.setattr(
-        "src.frontend.wizards.media_search.MediaTitleInferer", FailingInferer
+        "nfoforge.core.metadata.resolve.MediaTitleInferer", FailingInferer
     )
 
-    result = _run_media_search_job(
+    result = run_media_search(
         FakeBackend(),
         "Manual Movie",
         None,
@@ -475,10 +475,10 @@ def test_title_inference_failure_returns_manual_search_error(
             raise AssertionError("not used by this test")
 
     monkeypatch.setattr(
-        "src.frontend.wizards.media_search.MediaTitleInferer", FailingInferer
+        "nfoforge.core.metadata.resolve.MediaTitleInferer", FailingInferer
     )
 
-    result = _run_media_search_job(
+    result = run_media_search(
         FakeBackend(),
         None,
         tmp_path,
@@ -502,7 +502,7 @@ def test_id_lookup_job_returns_the_resolved_row() -> None:
         def _parse_tmdb_api(self, media_str, search_mode):
             raise AssertionError("not used by this test")
 
-    result = _run_tmdb_id_lookup_job(FakeBackend(), reference, MediaSearchMode.BOTH)
+    result = run_tmdb_id_lookup(FakeBackend(), reference, MediaSearchMode.BOTH)
 
     assert result == MediaSearchJobResult(
         query=None,
@@ -523,7 +523,7 @@ def test_id_lookup_job_reports_a_bad_id_as_zero_results() -> None:
         def _parse_tmdb_api(self, media_str, search_mode):
             raise AssertionError("not used by this test")
 
-    result = _run_tmdb_id_lookup_job(FakeBackend(), reference, MediaSearchMode.BOTH)
+    result = run_tmdb_id_lookup(FakeBackend(), reference, MediaSearchMode.BOTH)
 
     assert result == MediaSearchJobResult(query=None, results=OrderedDict())
 
@@ -540,7 +540,7 @@ def test_id_lookup_job_propagates_a_network_outage() -> None:
             raise AssertionError("not used by this test")
 
     with pytest.raises(MediaSearchUnavailableError):
-        _run_tmdb_id_lookup_job(FakeBackend(), reference, MediaSearchMode.BOTH)
+        run_tmdb_id_lookup(FakeBackend(), reference, MediaSearchMode.BOTH)
 
 
 class _FakeSignal:
@@ -574,13 +574,15 @@ def test_search_box_routes_a_pasted_tmdb_url_to_the_id_lookup_job(
 ) -> None:
     page = _make_page(tmp_path)
     page.search_entry.setText("https://www.themoviedb.org/movie/603-the-matrix")
-    monkeypatch.setattr("src.frontend.wizards.media_search.GeneralWorker", _FakeWorker)
+    monkeypatch.setattr(
+        "nfoforge.frontend.wizards.media_search.GeneralWorker", _FakeWorker
+    )
 
     page._search_tmdb_api()
 
     worker = page.search_worker
     assert isinstance(worker, _FakeWorker)
-    assert worker.func is _run_tmdb_id_lookup_job
+    assert worker.func is run_tmdb_id_lookup
     assert worker.args[0] is page.backend
     assert worker.args[1] == TmdbReference(tmdb_id="603", media_type=MediaType.MOVIE)
     assert worker.started is True
@@ -591,13 +593,15 @@ def test_search_box_routes_a_tmdb_id_prefix_to_the_id_lookup_job(
 ) -> None:
     page = _make_page(tmp_path)
     page.search_entry.setText("tmdb:603")
-    monkeypatch.setattr("src.frontend.wizards.media_search.GeneralWorker", _FakeWorker)
+    monkeypatch.setattr(
+        "nfoforge.frontend.wizards.media_search.GeneralWorker", _FakeWorker
+    )
 
     page._search_tmdb_api()
 
     worker = page.search_worker
     assert isinstance(worker, _FakeWorker)
-    assert worker.func is _run_tmdb_id_lookup_job
+    assert worker.func is run_tmdb_id_lookup
     assert worker.args[1] == TmdbReference(tmdb_id="603", media_type=None)
 
 
@@ -606,13 +610,15 @@ def test_search_box_still_runs_a_plain_text_search(monkeypatch, tmp_path: Path) 
     URL/prefix reroutes to the id-lookup job."""
     page = _make_page(tmp_path)
     page.search_entry.setText("300")
-    monkeypatch.setattr("src.frontend.wizards.media_search.GeneralWorker", _FakeWorker)
+    monkeypatch.setattr(
+        "nfoforge.frontend.wizards.media_search.GeneralWorker", _FakeWorker
+    )
 
     page._search_tmdb_api()
 
     worker = page.search_worker
     assert isinstance(worker, _FakeWorker)
-    assert worker.func is _run_media_search_job
+    assert worker.func is run_media_search
 
 
 def test_failed_search_clears_payload_and_preserves_query(
@@ -1077,7 +1083,7 @@ def test_series_row_genres_reach_the_id_parse_worker(
             return None
 
     monkeypatch.setattr(
-        "src.frontend.wizards.media_search.IDParseWorker", _CapturingWorker
+        "nfoforge.frontend.wizards.media_search.IDParseWorker", _CapturingWorker
     )
 
     page = _media_search_page_with_selected_row(
@@ -1087,7 +1093,7 @@ def test_series_row_genres_reach_the_id_parse_worker(
     )
     page._search_other_ids()
 
-    assert TMDBGenreIDsSeries.ANIMATION in captured["tmdb_genres"]  # type: ignore[operator]
+    assert TMDBGenreIDsSeries.ANIMATION in captured["item_data"]["genre_ids"]  # type: ignore[index]
 
 
 def test_reset_page_restores_tmdb_placeholder(tmp_path: Path) -> None:

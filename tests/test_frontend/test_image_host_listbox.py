@@ -3,11 +3,11 @@ from pathlib import Path
 from PySide6.QtWidgets import QApplication
 import pytest
 
-from src.config.config import ConfigManager
-from src.config.paths import ConfigPaths
-from src.enums.image_host import ImageHost
-from src.enums.tracker_selection import TrackerSelection
-from src.frontend.custom_widgets.image_host_listbox import (
+from nfoforge.config.config import ConfigManager
+from nfoforge.config.paths import ConfigPaths
+from nfoforge.enums.image_host import ImageHost
+from nfoforge.enums.tracker_selection import TrackerSelection
+from nfoforge.frontend.custom_widgets.image_host_listbox import (
     CHEVERETO_V4_PRESETS,
     CheveretoV4Edit,
     ImageHostListBox,
@@ -15,7 +15,7 @@ from src.frontend.custom_widgets.image_host_listbox import (
     OnlyImageEdit,
     PixhostEdit,
 )
-from src.packages.custom_types import ImageHostRef
+from nfoforge.packages.custom_types import ImageHostRef
 from tests.repo_paths import build_app_paths
 
 
@@ -25,7 +25,7 @@ def _paths(tmp_path: Path) -> ConfigPaths:
 
 def _manager(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> ConfigManager:
     monkeypatch.setattr(
-        "src.config.config.FindDependencies.update_dependencies",
+        "nfoforge.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
     )
     return ConfigManager("test", _paths(tmp_path))

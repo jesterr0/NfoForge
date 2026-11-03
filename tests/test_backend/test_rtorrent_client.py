@@ -6,13 +6,13 @@ import xmlrpc.client
 
 import pytest
 
-from src.backend.torrent_clients.rtorrent import (
+from nfoforge.backend.torrent_clients.rtorrent import (
     RTorrentClient,
     _TimeoutSafeTransport,
     _TimeoutTransport,
 )
-from src.exceptions import TrackerClientError
-from src.payloads.clients import RTorrentConfig
+from nfoforge.exceptions import TrackerClientError
+from nfoforge.payloads.clients import RTorrentConfig
 
 
 def _config(**kwargs: Any) -> RTorrentConfig:
@@ -22,7 +22,7 @@ def _config(**kwargs: Any) -> RTorrentConfig:
     )
 
 
-@patch("src.backend.torrent_clients.rtorrent.xmlrpc.client.Server")
+@patch("nfoforge.backend.torrent_clients.rtorrent.xmlrpc.client.Server")
 def test_rtorrent_uses_verified_tls_and_socket_timeout(server: MagicMock) -> None:
     RTorrentClient(_config(), timeout=23)
 
@@ -32,10 +32,10 @@ def test_rtorrent_uses_verified_tls_and_socket_timeout(server: MagicMock) -> Non
     assert server.call_args.args[0] == "https://user:password@rtorrent.example/rpc"
 
 
-@patch("src.backend.torrent_clients.rtorrent.xmlrpc.client.Server")
+@patch("nfoforge.backend.torrent_clients.rtorrent.xmlrpc.client.Server")
 def test_rtorrent_can_explicitly_disable_tls_verification(server: MagicMock) -> None:
     with patch(
-        "src.backend.torrent_clients.rtorrent.ssl._create_unverified_context"
+        "nfoforge.backend.torrent_clients.rtorrent.ssl._create_unverified_context"
     ) as create_context:
         RTorrentClient(_config(verify_tls=False), timeout=12)
 
@@ -43,7 +43,7 @@ def test_rtorrent_can_explicitly_disable_tls_verification(server: MagicMock) -> 
     assert isinstance(server.call_args.kwargs["transport"], _TimeoutSafeTransport)
 
 
-@patch("src.backend.torrent_clients.rtorrent.xmlrpc.client.Server")
+@patch("nfoforge.backend.torrent_clients.rtorrent.xmlrpc.client.Server")
 def test_rtorrent_http_transport_also_applies_timeout(server: MagicMock) -> None:
     RTorrentClient(RTorrentConfig(host="http://127.0.0.1/rpc"), timeout=9)
 
@@ -71,7 +71,7 @@ def test_rtorrent_requires_a_host() -> None:
         RTorrentClient(RTorrentConfig(host="  "))
 
 
-@patch("src.backend.torrent_clients.rtorrent.xmlrpc.client.Server")
+@patch("nfoforge.backend.torrent_clients.rtorrent.xmlrpc.client.Server")
 def test_rtorrent_confirm_fault_is_a_normal_missing_torrent(server: MagicMock) -> None:
     server.return_value.d.name.side_effect = xmlrpc.client.Fault(404, "not found")
     client = RTorrentClient(_config())
@@ -79,7 +79,7 @@ def test_rtorrent_confirm_fault_is_a_normal_missing_torrent(server: MagicMock) -
     assert client.confirm_injection("deadbeef") is False
 
 
-@patch("src.backend.torrent_clients.rtorrent.xmlrpc.client.Server")
+@patch("nfoforge.backend.torrent_clients.rtorrent.xmlrpc.client.Server")
 def test_rtorrent_injection_errors_are_wrapped_and_scrubbed(server: MagicMock) -> None:
     client = RTorrentClient(_config())
     client._get_torrent_obj = lambda _path: SimpleNamespace(infohash="deadbeef")  # type: ignore[method-assign]

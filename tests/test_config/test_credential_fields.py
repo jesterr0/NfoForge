@@ -17,10 +17,10 @@ from typing import Any
 
 import pytest
 
-import src.payloads.clients as clients
-import src.payloads.image_hosts as image_hosts
-import src.payloads.trackers as trackers
-from src.utils.secret_redaction import CREDENTIAL_FIELD_NAMES
+import nfoforge.payloads.clients as clients
+import nfoforge.payloads.image_hosts as image_hosts
+import nfoforge.payloads.trackers as trackers
+from nfoforge.utils.secret_redaction import CREDENTIAL_FIELD_NAMES
 
 KNOWN_NON_CREDENTIAL_FIELDS = frozenset(
     {
@@ -82,7 +82,9 @@ def _payload_classes() -> tuple[type[Any], ...]:
     for module_path in Path(image_hosts.__file__).parent.glob("*.py"):
         if module_path.stem != "__init__":
             modules.append(
-                importlib.import_module(f"src.payloads.image_hosts.{module_path.stem}")
+                importlib.import_module(
+                    f"nfoforge.payloads.image_hosts.{module_path.stem}"
+                )
             )
 
     found: list[type[Any]] = []
@@ -129,7 +131,7 @@ def test_the_classification_is_found_to_be_missing_when_it_is() -> None:
 
 def test_the_names_the_logger_scrubs_are_all_stripped_from_an_export() -> None:
     """Exporting asks a wider question than logging, never a narrower one."""
-    from src.utils.secret_redaction import _SECRET_FIELD_NAMES
+    from nfoforge.utils.secret_redaction import _SECRET_FIELD_NAMES
 
     assert _SECRET_FIELD_NAMES <= CREDENTIAL_FIELD_NAMES
 

@@ -3,22 +3,22 @@ from pathlib import Path
 from pymediainfo import MediaInfo
 import pytest
 
-from src.backend.token_replacer import TokenReplacer
-from src.backend.tokens import FileToken, TokenData
-from src.backend.utils.audio_codecs import AudioCodecs
-from src.backend.utils.example_parsed_movie_data import (
+from nfoforge.backend.token_replacer import TokenReplacer
+from nfoforge.backend.tokens import FileToken, TokenData
+from nfoforge.backend.utils.audio_codecs import AudioCodecs
+from nfoforge.backend.utils.example_parsed_movie_data import (
     EXAMPLE_MEDIA_INPUT_PAYLOAD,
     EXAMPLE_SEARCH_PAYLOAD,
 )
-from src.backend.utils.filename_claims import detect_filename_claims
-from src.backend.utils.resolution import VideoResolutionAnalyzer
-from src.config.models import ClaimSwitches
-from src.enums.media_type import MediaType
-from src.enums.token_replacer import UnfilledTokenRemoval
-from src.nf_jinja2 import Jinja2TemplateEngine
-from src.packages.custom_types import RenameNormalization
-from src.payloads.media_inputs import MediaInputPayload
-from src.payloads.media_search import MediaSearchPayload
+from nfoforge.backend.utils.filename_claims import detect_filename_claims
+from nfoforge.backend.utils.resolution import VideoResolutionAnalyzer
+from nfoforge.config.models import ClaimSwitches
+from nfoforge.enums.media_type import MediaType
+from nfoforge.enums.token_replacer import UnfilledTokenRemoval
+from nfoforge.nf_jinja2 import Jinja2TemplateEngine
+from nfoforge.packages.custom_types import RenameNormalization
+from nfoforge.payloads.media_inputs import MediaInputPayload
+from nfoforge.payloads.media_search import MediaSearchPayload
 
 
 def _td() -> TokenData:
@@ -80,7 +80,7 @@ def _movie_replacer() -> TokenReplacer:
 
 def _detected_claims_for(stem: str) -> str:
     """The frame size stage 1 reads from a filename."""
-    from src.backend.utils.filename_claims import detect_filename_claims
+    from nfoforge.backend.utils.filename_claims import detect_filename_claims
 
     return detect_filename_claims(
         [stem],
@@ -277,8 +277,8 @@ def test_custom_edition_is_recognized_by_the_detector() -> None:
     before the token engine, so a plugin's entry has to be handed to the
     detector or it becomes invisible to every caller.
     """
-    from src.backend.utils.filename_claims import detect_filename_claims
-    from src.config.models import ClaimSwitches
+    from nfoforge.backend.utils.filename_claims import detect_filename_claims
+    from nfoforge.config.models import ClaimSwitches
 
     claims = detect_filename_claims(
         ["Movie.2024.Fan.Edit.1080p.BluRay.x264-GRP"],
@@ -322,7 +322,7 @@ def test_title_tokens_use_first_guessit_title_when_list_shaped(
     monkeypatch,
 ) -> None:
     monkeypatch.setattr(
-        "src.backend.token_replacer.guessit",
+        "nfoforge.backend.token_replacer.guessit",
         lambda *_args, **_kwargs: {"title": ["Primary Title", "Alternative"]},
     )
     replacer = TokenReplacer(
@@ -1052,8 +1052,8 @@ def test_settings_preview_and_rename_render_the_same_claims() -> None:
     output for the same input. Both now resolve claims through one
     detector over one set of tables, fed in as override_tokens.
     """
-    from src.backend.utils.filename_claims import detect_filename_claims
-    from src.config.models import ClaimSwitches
+    from nfoforge.backend.utils.filename_claims import detect_filename_claims
+    from nfoforge.config.models import ClaimSwitches
 
     switches = ClaimSwitches(
         enabled=True,

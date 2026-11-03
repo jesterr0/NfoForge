@@ -15,22 +15,22 @@ from pathlib import Path
 
 import pytest
 
-from src.backend.token_replacer import TokenReplacer
-from src.backend.tokens import FileToken
-from src.backend.utils.example_parsed_movie_data import (
+from nfoforge.backend.token_replacer import TokenReplacer
+from nfoforge.backend.tokens import FileToken
+from nfoforge.backend.utils.example_parsed_movie_data import (
     EXAMPLE_MEDIA_INPUT_PAYLOAD as MOVIE_PAYLOAD,
     EXAMPLE_SEARCH_PAYLOAD as MOVIE_SEARCH,
 )
-from src.config.config import ConfigManager
-from src.config.tv_tokens import SUPPORTED_TVR_FORMATS, get_tvr_title_token
-from src.enums.series import EpisodeFormat
-from src.enums.token_replacer import ColonReplace, UnfilledTokenRemoval
+from nfoforge.config.config import ConfigManager
+from nfoforge.config.tv_tokens import SUPPORTED_TVR_FORMATS, get_tvr_title_token
+from nfoforge.enums.series import EpisodeFormat
+from nfoforge.enums.token_replacer import ColonReplace, UnfilledTokenRemoval
 from tests.test_config.config_tree import build_config_paths
 
 
 def _config_manager(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> ConfigManager:
     monkeypatch.setattr(
-        "src.config.config.FindDependencies.update_dependencies",
+        "nfoforge.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
     )
     return ConfigManager("test", build_config_paths(tmp_path))

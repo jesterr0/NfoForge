@@ -5,12 +5,12 @@ from pathlib import Path
 from PySide6.QtWidgets import QDialog, QFileDialog, QMessageBox, QWidget
 import pytest
 
-from src.frontend.windows.plugin_install import (
+from nfoforge.frontend.windows.plugin_install import (
     PluginTrustDialog,
     install_from_archive,
     install_from_folder,
 )
-from src.plugins.install import inspect_folder
+from nfoforge.plugins.install import inspect_folder
 from tests.repo_paths import build_app_paths
 
 MANIFEST = """\

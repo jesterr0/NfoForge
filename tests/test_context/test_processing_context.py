@@ -1,11 +1,11 @@
 from types import SimpleNamespace
 from typing import Any
 
-from src.context.factory import create_processing_context
-from src.context.processing_context import ProcessingContext
-from src.packages.custom_types import RenameNormalization
-from src.plugins.api import CustomEditionContribution, PluginDefinition
-from src.plugins.manager import PluginManager
+from nfoforge.context.factory import create_processing_context
+from nfoforge.context.processing_context import ProcessingContext
+from nfoforge.packages.custom_types import RenameNormalization
+from nfoforge.plugins.api import CustomEditionContribution, PluginDefinition
+from nfoforge.plugins.manager import PluginManager
 
 
 def _config_payload(**overrides) -> Any:

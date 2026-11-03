@@ -4,9 +4,9 @@ from PySide6.QtCore import QObject
 from PySide6.QtTest import QTest
 import pytest
 
-from src.backend.rename_files import RenameExecutor, RenamePlan, RenameResult
-from src.frontend.global_signals import GSigs
-from src.frontend.utils.rename_operation import RenameOperationController
+from nfoforge.backend.rename_files import RenameExecutor, RenamePlan, RenameResult
+from nfoforge.frontend.global_signals import GSigs
+from nfoforge.frontend.utils.rename_operation import RenameOperationController
 
 
 def test_controller_restores_ui_and_emits_success(

@@ -6,8 +6,8 @@ from unittest.mock import MagicMock
 import pytest
 from torf import Torrent
 
-from src.backend.torrents import torrent as torrent_module
-from src.backend.torrents.torrent import (
+from nfoforge.backend.torrents import torrent as torrent_module
+from nfoforge.backend.torrents.torrent import (
     INDEX_SIDECAR_GLOBS,
     NFO_FORGE_CREATOR,
     _validate_torrent_contents,
@@ -17,9 +17,9 @@ from src.backend.torrents.torrent import (
     neutralize_base,
     write_torrent,
 )
-from src.enums.tracker_selection import TrackerSelection
-from src.exceptions import ProcessError
-from src.payloads.trackers import TrackerInfo
+from nfoforge.enums.tracker_selection import TrackerSelection
+from nfoforge.exceptions import ProcessError
+from nfoforge.payloads.trackers import TrackerInfo
 
 # small enough to hash instantly, large enough to span several pieces at 2^16
 _EXPONENT = 16

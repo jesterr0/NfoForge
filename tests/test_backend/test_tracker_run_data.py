@@ -4,14 +4,14 @@ from pathlib import Path
 
 import pytest
 
-from src.backend.tracker_run_data import (
+from nfoforge.backend.tracker_run_data import (
     build_tracker_data,
     image_host_label,
     tracker_output_dir,
 )
-from src.enums.image_host import ImageHost, ImageSource
-from src.enums.tracker_selection import TrackerSelection
-from src.packages.custom_types import ImageHostRef, ImageUploadFromTo
+from nfoforge.enums.image_host import ImageHost, ImageSource
+from nfoforge.enums.tracker_selection import TrackerSelection
+from nfoforge.packages.custom_types import ImageHostRef, ImageUploadFromTo
 
 
 def _hosts() -> dict[TrackerSelection, ImageUploadFromTo]:

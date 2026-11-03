@@ -7,7 +7,7 @@ Everything here is anchored to this file instead.
 
 from pathlib import Path
 
-from src.config.paths import AppPaths
+from nfoforge.config.paths import AppPaths
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 

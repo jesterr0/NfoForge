@@ -11,11 +11,11 @@ from unittest.mock import Mock
 from pymediainfo import MediaInfo, Track
 import pytest
 
-from src.backend.utils.resolution import (
+from nfoforge.backend.utils.resolution import (
     CommercialResolutionInfer,
     VideoResolutionAnalyzer,
 )
-from src.exceptions import MissingVideoTrackError
+from nfoforge.exceptions import MissingVideoTrackError
 
 
 class TestCommercialResolutionInfer:

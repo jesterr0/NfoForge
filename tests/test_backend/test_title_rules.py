@@ -1,8 +1,8 @@
 import pytest
 
-from src.backend.trackers.title_rules import TITLE_RULES, Separator
-from src.enums.token_replacer import ColonReplace
-from src.enums.tracker_selection import TrackerSelection
+from nfoforge.backend.trackers.title_rules import TITLE_RULES, Separator
+from nfoforge.enums.token_replacer import ColonReplace
+from nfoforge.enums.tracker_selection import TrackerSelection
 
 
 def test_every_tracker_has_an_entry() -> None:

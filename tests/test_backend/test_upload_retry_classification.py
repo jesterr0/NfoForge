@@ -4,14 +4,14 @@ from unittest.mock import MagicMock, patch
 import niquests
 import pytest
 
-from src.backend.process import ProcessBackEnd
-from src.backend.trackers.beyondhd import BHDUploader
-from src.backend.trackers.huno import HunoUploader
-from src.backend.trackers.torrentleech import TLUploader
-from src.backend.upload_retry import classify_upload_post_error
-from src.enums.media_type import MediaType
-from src.exceptions import TrackerError
-from src.utils.secret_redaction import scrub_mapping, scrub_secrets
+from nfoforge.backend.process import ProcessBackEnd
+from nfoforge.backend.trackers.beyondhd import BHDUploader
+from nfoforge.backend.trackers.huno import HunoUploader
+from nfoforge.backend.trackers.torrentleech import TLUploader
+from nfoforge.backend.upload_retry import classify_upload_post_error
+from nfoforge.enums.media_type import MediaType
+from nfoforge.exceptions import TrackerError
+from nfoforge.utils.secret_redaction import scrub_mapping, scrub_secrets
 
 
 @pytest.mark.parametrize(
@@ -269,7 +269,7 @@ def test_torrentleech_408_response_is_retryable(tmp_path: Path) -> None:
     )
     with (
         patch.object(TLUploader, "_get_data", return_value={}),
-        patch("src.backend.trackers.torrentleech.VideoResolutionAnalyzer"),
+        patch("nfoforge.backend.trackers.torrentleech.VideoResolutionAnalyzer"),
         patch(
             "niquests.Session.post",
             return_value=mock_response,
@@ -300,7 +300,7 @@ def _tl_upload_raising(status_code: int, tmp_path: Path) -> TrackerError:
     )
     with (
         patch.object(TLUploader, "_get_data", return_value={}),
-        patch("src.backend.trackers.torrentleech.VideoResolutionAnalyzer"),
+        patch("nfoforge.backend.trackers.torrentleech.VideoResolutionAnalyzer"),
         patch(
             "niquests.Session.post",
             return_value=mock_response,

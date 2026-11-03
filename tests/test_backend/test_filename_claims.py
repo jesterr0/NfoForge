@@ -1,13 +1,13 @@
 import pytest
 
-from src.backend.utils.filename_claims import (
+from nfoforge.backend.utils.filename_claims import (
     PER_FILE_CLAIM_KEYS,
     FilenameClaims,
     detect_file_claims,
     detect_filename_claims,
     resolve_file_claims,
 )
-from src.config.models import ClaimSwitches
+from nfoforge.config.models import ClaimSwitches
 
 
 def _switches(**overrides: bool) -> ClaimSwitches:

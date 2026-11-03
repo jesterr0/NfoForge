@@ -6,12 +6,12 @@ from typing import Any
 import niquests
 import pytest
 
-from src.backend.media_search import MediaSearchBackEnd, TmdbAlternativeTitle
-from src.backend.utils.tvdb_client import AsyncTVDBClient, TVDBClient
-from src.enums.media_search_mode import MediaSearchMode
-from src.enums.media_type import MediaType
-from src.enums.tmdb_genres import TMDBGenreIDsMovies, TMDBGenreIDsSeries
-from src.exceptions import MediaSearchError, MediaSearchUnavailableError
+from nfoforge.backend.media_search import MediaSearchBackEnd, TmdbAlternativeTitle
+from nfoforge.backend.utils.tvdb_client import AsyncTVDBClient, TVDBClient
+from nfoforge.enums.media_search_mode import MediaSearchMode
+from nfoforge.enums.media_type import MediaType
+from nfoforge.enums.tmdb_genres import TMDBGenreIDsMovies, TMDBGenreIDsSeries
+from nfoforge.exceptions import MediaSearchError, MediaSearchUnavailableError
 
 
 class _Response:
@@ -97,7 +97,7 @@ def test_tmdb_connection_failure_is_not_reported_as_empty_results(
 def test_guessit_list_title_uses_first_title(monkeypatch: pytest.MonkeyPatch) -> None:
     backend = MediaSearchBackEnd()
     monkeypatch.setattr(
-        "src.backend.media_search.guessit",
+        "nfoforge.backend.media_search.guessit",
         lambda *_args, **_kwargs: {"title": ["Primary", "Alternative"], "year": "2024"},
     )
 
@@ -355,7 +355,7 @@ def test_tvdb_sync_and_async_clients_use_timeouts_and_reuse_token(
 ) -> None:
     fake_session = _FakeTVDBSession()
     monkeypatch.setattr(
-        "src.backend.utils.http_client.niquests.Session",
+        "nfoforge.backend.utils.http_client.niquests.Session",
         lambda **_kwargs: fake_session,
     )
     client = TVDBClient("api-key", timeout=7)

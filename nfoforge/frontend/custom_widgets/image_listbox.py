@@ -1,0 +1,27 @@
+from pathlib import Path
+
+from PySide6.QtCore import QSize, Qt
+from PySide6.QtGui import QIcon
+from PySide6.QtWidgets import QFrame, QListWidget, QListWidgetItem, QWidget
+
+from nfoforge.frontend.utils.fonts import monospace_font
+
+
+class ThumbnailListWidget(QListWidget):
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setViewMode(QListWidget.ViewMode.IconMode)
+        self.setIconSize(QSize(250, 250))
+        self.setResizeMode(QListWidget.ResizeMode.Adjust)
+        self.setDragEnabled(False)
+        self.setSelectionMode(QListWidget.SelectionMode.NoSelection)
+        self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.setFrameShape(QFrame.Shape.Box)
+        self.setFrameShadow(QFrame.Shadow.Sunken)
+
+    def add_thumbnail(self, image_path: Path) -> None:
+        item = QListWidgetItem(QIcon(str(image_path)), "")
+        self.addItem(item)
+
+    def enable_mono_text(self) -> None:
+        self.setFont(monospace_font())

@@ -4,8 +4,8 @@ from PySide6.QtCore import QSize, Qt
 from PySide6.QtWidgets import QToolButton
 import pytest
 
-import src.frontend.utils.qtawesome_theme_swapper as theme_swapper_module
-from src.frontend.utils.qtawesome_theme_swapper import QTAwesomeThemeSwapper
+import nfoforge.frontend.utils.qtawesome_theme_swapper as theme_swapper_module
+from nfoforge.frontend.utils.qtawesome_theme_swapper import QTAwesomeThemeSwapper
 
 
 @pytest.fixture

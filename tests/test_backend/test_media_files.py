@@ -2,8 +2,8 @@ from pathlib import Path
 
 import pytest
 
-from src.backend.utils import media_files
-from src.backend.utils.media_files import (
+from nfoforge.backend.utils import media_files
+from nfoforge.backend.utils.media_files import (
     filter_media_files,
     find_sidecars,
     find_sidecars_for,

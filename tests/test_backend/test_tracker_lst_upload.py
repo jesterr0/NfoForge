@@ -1,8 +1,8 @@
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from src.backend.trackers.lst import LSTUploader
-from src.enums.media_type import MediaType
+from nfoforge.backend.trackers.lst import LSTUploader
+from nfoforge.enums.media_type import MediaType
 
 
 def _uploader(tmp_path: Path) -> LSTUploader:
@@ -21,7 +21,7 @@ def _uploader(tmp_path: Path) -> LSTUploader:
     )
 
 
-@patch("src.backend.trackers.unit3d_base.MinimalMediaInfo")
+@patch("nfoforge.backend.trackers.unit3d_base.MinimalMediaInfo")
 def test_lst_payload_keeps_exact_freeleech_percentage(
     minimal_media_info: MagicMock, tmp_path: Path
 ) -> None:

@@ -6,9 +6,9 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QDialog
 import pytest
 
-from src.backend.utils.template_token_migration import TemplateTokenReport
-import src.frontend.windows.template_migration_dialog as template_migration_dialog
-from src.frontend.windows.template_migration_dialog import TemplateMigrationDialog
+from nfoforge.backend.utils.template_token_migration import TemplateTokenReport
+import nfoforge.frontend.windows.template_migration_dialog as template_migration_dialog
+from nfoforge.frontend.windows.template_migration_dialog import TemplateMigrationDialog
 
 
 @pytest.fixture

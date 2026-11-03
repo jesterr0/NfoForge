@@ -11,13 +11,17 @@ from typing import Any, cast
 
 import pytest
 
-from src.backend.jobs import context_from_dict, load_job, read_job_asset
-from src.backend.process import ProcessBackEnd
-from src.context.processing_context import ProcessingContext
-from src.enums.image_host import ImageHost, ImageSource
-from src.enums.tracker_selection import TrackerSelection
-from src.exceptions import ImageHostError, ImageUploadError
-from src.packages.custom_types import ImageHostRef, ImageUploadData, ImageUploadFromTo
+from nfoforge.backend.jobs import context_from_dict, load_job, read_job_asset
+from nfoforge.backend.process import ProcessBackEnd
+from nfoforge.context.processing_context import ProcessingContext
+from nfoforge.enums.image_host import ImageHost, ImageSource
+from nfoforge.enums.tracker_selection import TrackerSelection
+from nfoforge.exceptions import ImageHostError, ImageUploadError
+from nfoforge.packages.custom_types import (
+    ImageHostRef,
+    ImageUploadData,
+    ImageUploadFromTo,
+)
 from tests.conftest import SourceLessBundle
 
 
@@ -167,7 +171,7 @@ def test_by_host_urls_survive_narrowing_a_job_to_no_trackers() -> None:
     before this the archive a completed run left behind could not serve a
     single image to a tracker added later.
     """
-    from src.backend.jobs.codec import filter_context_document
+    from nfoforge.backend.jobs.codec import filter_context_document
 
     document = {
         "shared_data": {
@@ -188,7 +192,7 @@ def test_by_host_urls_survive_narrowing_a_job_to_no_trackers() -> None:
 
 
 def test_by_host_urls_round_trip_through_the_codec(tmp_path: Path) -> None:
-    from src.backend.jobs.codec import context_from_dict, context_to_dict
+    from nfoforge.backend.jobs.codec import context_from_dict, context_to_dict
 
     source = ProcessingContext()
     source.media_input.input_path = tmp_path / "media.mkv"
@@ -575,7 +579,7 @@ def test_tracker_image_hosts_survive_a_round_trip_with_uploads(
     tmp_path: Path,
 ) -> None:
     """Recorded uploads must be narrowed alongside the trackers they belong to."""
-    from src.backend.jobs.codec import filter_context_document
+    from nfoforge.backend.jobs.codec import filter_context_document
 
     document = {
         "shared_data": {
@@ -595,7 +599,7 @@ def test_tracker_image_hosts_survive_a_round_trip_with_uploads(
 
 
 def test_uploaded_images_round_trip_through_the_codec(tmp_path: Path) -> None:
-    from src.backend.jobs.codec import context_from_dict, context_to_dict
+    from nfoforge.backend.jobs.codec import context_from_dict, context_to_dict
 
     source = ProcessingContext()
     source.media_input.input_path = tmp_path / "media.mkv"

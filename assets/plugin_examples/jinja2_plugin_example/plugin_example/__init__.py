@@ -1,4 +1,4 @@
-from src.plugins.api import PluginDefinition
+from nfoforge.plugins.api import PluginDefinition
 
 from .example import ci_replace_filter, ci_replace_function
 

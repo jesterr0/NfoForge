@@ -6,9 +6,9 @@ from deluge_web_client import TorrentOptions
 from deluge_web_client.schema import Response
 import pytest
 
-from src.backend.torrent_clients.deluge import DelugeClient
-from src.exceptions import TrackerClientError
-from src.payloads.clients import DelugeConfig
+from nfoforge.backend.torrent_clients.deluge import DelugeClient
+from nfoforge.exceptions import TrackerClientError
+from nfoforge.payloads.clients import DelugeConfig
 
 
 def deluge_config(**kwargs: Any) -> DelugeConfig:
@@ -25,7 +25,7 @@ def test_deluge_client_requires_host_and_password(config: DelugeConfig) -> None:
         DelugeClient(config)
 
 
-@patch("src.backend.torrent_clients.deluge.DelugeWebClient")
+@patch("nfoforge.backend.torrent_clients.deluge.DelugeWebClient")
 def test_deluge_client_login_uses_configured_timeout(
     client_class: MagicMock,
 ) -> None:
@@ -36,7 +36,7 @@ def test_deluge_client_login_uses_configured_timeout(
     client_class.return_value.login.assert_called_once_with(timeout=42)
 
 
-@patch("src.backend.torrent_clients.deluge.DelugeWebClient")
+@patch("nfoforge.backend.torrent_clients.deluge.DelugeWebClient")
 def test_deluge_client_login_reports_response_failure(
     client_class: MagicMock,
 ) -> None:
@@ -49,14 +49,14 @@ def test_deluge_client_login_reports_response_failure(
         client.login()
 
 
-@patch("src.backend.torrent_clients.deluge.DelugeWebClient")
+@patch("nfoforge.backend.torrent_clients.deluge.DelugeWebClient")
 def test_deluge_client_test_reports_success(client_class: MagicMock) -> None:
     client_class.return_value.login.return_value = Response(result=True)
 
     assert DelugeClient(deluge_config()).test()[0] is True
 
 
-@patch("src.backend.torrent_clients.deluge.DelugeWebClient")
+@patch("nfoforge.backend.torrent_clients.deluge.DelugeWebClient")
 def test_deluge_client_uploads_with_v2_torrent_options(
     client_class: MagicMock, tmp_path: Path
 ) -> None:
@@ -93,7 +93,7 @@ def test_deluge_client_omits_blank_label_and_save_directory() -> None:
     assert client._get_label() is None
 
 
-@patch("src.backend.torrent_clients.deluge.DelugeWebClient")
+@patch("nfoforge.backend.torrent_clients.deluge.DelugeWebClient")
 def test_deluge_client_reports_unsuccessful_upload(client_class: MagicMock) -> None:
     client_class.return_value.upload_torrent.return_value = Response(
         result=None, error="permission denied"
@@ -106,7 +106,7 @@ def test_deluge_client_reports_unsuccessful_upload(client_class: MagicMock) -> N
     )
 
 
-@patch("src.backend.torrent_clients.deluge.DelugeWebClient")
+@patch("nfoforge.backend.torrent_clients.deluge.DelugeWebClient")
 def test_deluge_client_wraps_upload_errors(client_class: MagicMock) -> None:
     client_class.return_value.upload_torrent.side_effect = RuntimeError("offline")
     client = DelugeClient(deluge_config())
@@ -115,7 +115,7 @@ def test_deluge_client_wraps_upload_errors(client_class: MagicMock) -> None:
         client.inject_torrent(Path("release.torrent"))
 
 
-@patch("src.backend.torrent_clients.deluge.DelugeWebClient")
+@patch("nfoforge.backend.torrent_clients.deluge.DelugeWebClient")
 def test_deluge_client_logout_only_closes_local_session(
     client_class: MagicMock,
 ) -> None:

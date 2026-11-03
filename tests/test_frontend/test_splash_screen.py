@@ -4,9 +4,9 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtTest import QTest
 
-from src.frontend.windows import splash_screen
-from src.frontend.windows.splash_screen import SplashScreen, SplashScreenLoader
-from src.plugins.manager import PluginManager
+from nfoforge.frontend.windows import splash_screen
+from nfoforge.frontend.windows.splash_screen import SplashScreen, SplashScreenLoader
+from nfoforge.plugins.manager import PluginManager
 
 
 def test_splash_selector_preselects_profile_and_enter_continues() -> None:

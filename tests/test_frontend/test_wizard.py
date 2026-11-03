@@ -4,9 +4,9 @@ from typing import Any
 from PySide6.QtWidgets import QDialog, QPushButton, QWizard, QWizardPage
 import pytest
 
-from src.enums.wizard import WizardPages
-import src.frontend.wizards.wizard as wizard_module
-from src.frontend.wizards.wizard import MainWindowWizard
+from nfoforge.enums.wizard import WizardPages
+import nfoforge.frontend.wizards.wizard as wizard_module
+from nfoforge.frontend.wizards.wizard import MainWindowWizard
 
 
 class _SpyPage(QWizardPage):

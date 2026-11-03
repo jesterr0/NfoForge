@@ -13,17 +13,21 @@ from typing import Any, cast
 
 import pytest
 
-from src.backend.process import ProcessBackEnd
-from src.backend.upload_retry import (
+from nfoforge.backend.process import ProcessBackEnd
+from nfoforge.backend.upload_retry import (
     ImageRetryAction,
     ImageRetryDecision,
     ImageUploadFailure,
 )
-from src.context.processing_context import ProcessingContext
-from src.enums.image_host import ImageHost, ImageSource
-from src.enums.tracker_selection import TrackerSelection
-from src.exceptions import ImageUploadError, ProcessCancelled
-from src.packages.custom_types import ImageHostRef, ImageUploadData, ImageUploadFromTo
+from nfoforge.context.processing_context import ProcessingContext
+from nfoforge.enums.image_host import ImageHost, ImageSource
+from nfoforge.enums.tracker_selection import TrackerSelection
+from nfoforge.exceptions import ImageUploadError, ProcessCancelled
+from nfoforge.packages.custom_types import (
+    ImageHostRef,
+    ImageUploadData,
+    ImageUploadFromTo,
+)
 
 PIXHOST = ImageHostRef(ImageHost.PIXHOST)
 LENSDUMP = ImageHostRef(ImageHost.LENSDUMP)

@@ -1,0 +1,212 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+from nfoforge.enums.trackers.beyondhd import BHDLiveRelease, BHDPromo
+from nfoforge.enums.url_type import URLType
+from nfoforge.utils.announce_url import ensure_torrentleech_announce_url
+
+
+@dataclass(slots=True)
+class TrackerInfo:
+    # tracker settings
+    upload_enabled: bool = True
+    announce_url: str | None = None
+    enabled: bool = False
+    source: str | None = None
+    comments: str | None = None
+    nfo_template: str | None = None
+
+    # screenshot settings
+    url_type: URLType = URLType.BBCODE
+    column_s: int = 1
+    column_space: int = 1
+    row_space: int = 1
+
+
+@dataclass(slots=True)
+class TorrentLeechInfo(TrackerInfo):
+    username: str | None = None
+    password: str | None = None
+    torrent_passkey: str | None = None
+    alt_2_fa_token: str | None = None
+
+    # override url type
+    url_type: URLType = URLType.HTML
+
+    def __post_init__(self) -> None:
+        self.announce_url = ensure_torrentleech_announce_url(self.announce_url)
+
+
+@dataclass(slots=True)
+class BeyondHDInfo(TrackerInfo):
+    anonymous: bool = False
+    api_key: str | None = None
+    rss_key: str | None = None
+    promo: BHDPromo = BHDPromo.NO_PROMO
+    live_release: BHDLiveRelease = BHDLiveRelease.LIVE
+    internal: bool = False
+    image_width: int = 350
+    add_localization_to_custom_edition: bool = False
+    stream_optimized: bool = False
+
+
+@dataclass(slots=True)
+class PassThePopcornInfo(TrackerInfo):
+    api_user: str | None = None
+    api_key: str | None = None
+    username: str | None = None
+    password: str | None = None
+    totp: str | None = None
+
+
+@dataclass(slots=True)
+class ReelFlixInfo(TrackerInfo):
+    api_key: str | None = None
+    anonymous: bool = False
+    internal: bool = False
+    personal_release: bool = False
+    stream_optimized: bool = False
+    opt_in_to_mod_queue: bool = False
+    image_width: int = 350
+
+    # below is only available to staff and internal users
+    featured: bool = False
+    free: bool = False
+    double_up: bool = False
+    sticky: bool = False
+
+
+@dataclass(slots=True)
+class AitherInfo(TrackerInfo):
+    api_key: str | None = None
+    anonymous: bool = False
+    internal: bool = False
+    personal_release: bool = False
+    stream_optimized: bool = False
+    opt_in_to_mod_queue: bool = False
+    image_width: int = 350
+
+    # below is only available to staff and internal users
+    featured: bool = False
+    free: bool = False
+    double_up: bool = False
+    sticky: bool = False
+
+
+@dataclass(slots=True)
+class HunoInfo(TrackerInfo):
+    api_key: str | None = None
+    anonymous: bool = False
+    internal: bool = False
+    stream_optimized: bool = False
+    image_width: int = 350
+
+
+@dataclass(slots=True)
+class LSTInfo(TrackerInfo):
+    api_key: str | None = None
+    anonymous: bool = False
+    internal: bool = False
+    personal_release: bool = False
+    mod_queue_opt_in: bool = False
+    draft_queue_opt_in: bool = False
+    image_width: int = 500
+
+    # below is only available to staff and internal users
+    featured: bool = False
+    free: int = 0
+    double_up: bool = False
+    sticky: bool = False
+
+
+@dataclass(slots=True)
+class DarkPeersInfo(TrackerInfo):
+    api_key: str | None = None
+    anonymous: bool = False
+    internal: bool = False
+    personal_release: bool = False
+    image_width: int = 500
+
+
+@dataclass(slots=True)
+class ShareIslandInfo(TrackerInfo):
+    api_key: str | None = None
+    anonymous: bool = False
+    internal: bool = False
+    personal_release: bool = False
+    opt_in_to_mod_queue: bool = False
+    image_width: int = 500
+
+
+@dataclass(slots=True)
+class UploadCXInfo(TrackerInfo):
+    api_key: str | None = None
+    anonymous: bool = False
+    internal: bool = False
+    personal_release: bool = False
+    image_width: int = 500
+
+
+@dataclass(slots=True)
+class OnlyEncodesInfo(TrackerInfo):
+    api_key: str | None = None
+    anonymous: bool = False
+    internal: bool = False
+    personal_release: bool = False
+    image_width: int = 500
+
+
+@dataclass(slots=True)
+class HDBInfo(TrackerInfo):
+    username: str | None = None
+    passkey: str | None = None
+    session_cookie: str | None = None
+    internal: bool = False
+    image_width: int = 350
+
+
+@dataclass(slots=True)
+class BlutopiaInfo(TrackerInfo):
+    api_key: str | None = None
+    anonymous: bool = False
+    internal: bool = False
+    personal_release: bool = False
+    opt_in_to_mod_queue: bool = False
+    image_width: int = 500
+
+
+@dataclass(slots=True)
+class SeedPoolInfo(TrackerInfo):
+    api_key: str | None = None
+    anonymous: bool = False
+    internal: bool = False
+    personal_release: bool = False
+    image_width: int = 500
+
+
+@dataclass(slots=True)
+class UTPInfo(TrackerInfo):
+    api_key: str | None = None
+    anonymous: bool = False
+    internal: bool = False
+    personal_release: bool = False
+    image_width: int = 500
+
+
+@dataclass(slots=True)
+class YuSceneInfo(TrackerInfo):
+    api_key: str | None = None
+    anonymous: bool = False
+    internal: bool = False
+    personal_release: bool = False
+    image_width: int = 500
+
+
+@dataclass(slots=True)
+class FearNoPeerInfo(TrackerInfo):
+    api_key: str | None = None
+    anonymous: bool = False
+    internal: bool = False
+    personal_release: bool = False
+    image_width: int = 500

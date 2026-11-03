@@ -16,9 +16,9 @@ import tomllib
 
 import pytest
 
-from src.config.layout_apply import import_legacy, render_summary
-from src.config.layout_migration import FindingKind, LegacyInstall
-from src.config.paths import AppPaths
+from nfoforge.config.layout_apply import import_legacy, render_summary
+from nfoforge.config.layout_migration import FindingKind, LegacyInstall
+from nfoforge.config.paths import AppPaths
 
 
 def _install(tmp_path: Path) -> LegacyInstall:

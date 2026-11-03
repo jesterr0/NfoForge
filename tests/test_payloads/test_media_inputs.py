@@ -4,9 +4,9 @@ from typing import cast
 from pymediainfo import MediaInfo
 import pytest
 
-from src.enums.media_type import MediaType
-from src.packages.custom_types import ComparisonPair
-from src.payloads.media_inputs import MediaInputPayload
+from nfoforge.enums.media_type import MediaType
+from nfoforge.packages.custom_types import ComparisonPair
+from nfoforge.payloads.media_inputs import MediaInputPayload
 
 SOURCE = Path("C:/enc/Movie.2016.remux.mkv")
 OLD = Path("C:/enc/Movie.2016.BluRay.1080p-old.mkv")

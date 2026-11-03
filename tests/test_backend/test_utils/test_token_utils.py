@@ -1,4 +1,4 @@
-from src.backend.utils.token_utils import get_prompt_tokens
+from nfoforge.backend.utils.token_utils import get_prompt_tokens
 
 
 class TestGetPromptTokens:

@@ -9,7 +9,7 @@ table empties and every Aither/LST web title quietly loses its service.
 
 import pytest
 
-from src.backend.utils.streaming_services import (
+from nfoforge.backend.utils.streaming_services import (
     STREAMING_SERVICE_ABBREVIATIONS,
     STREAMING_SERVICE_CHOICES,
     _first_literal,
@@ -126,7 +126,7 @@ def test_the_wizard_and_the_token_gate_on_the_same_sources() -> None:
     up as a failure rather than as a combo the user can fill in and a title
     that silently drops it.
     """
-    from src.enums.rename import QualitySelection
+    from nfoforge.enums.rename import QualitySelection
 
     web_sources = {QualitySelection.WEB_DL, QualitySelection.WEB_RIP}
 

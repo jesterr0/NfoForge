@@ -13,7 +13,7 @@ import tomllib
 
 import pytest
 
-from src.config.layout_apply import (
+from nfoforge.config.layout_apply import (
     Diversion,
     MigrationError,
     apply_plan,
@@ -22,7 +22,7 @@ from src.config.layout_apply import (
     render_summary,
     startup_migration,
 )
-from src.config.layout_migration import (
+from nfoforge.config.layout_migration import (
     ActionKind,
     CopyPolicy,
     LegacyInstall,
@@ -30,13 +30,13 @@ from src.config.layout_migration import (
     PlannedAction,
     plan_migration,
 )
-from src.config.layout_version import (
+from nfoforge.config.layout_version import (
     CURRENT_LAYOUT_VERSION,
     LayoutRecordError,
     read_layout_version,
     write_layout_version,
 )
-from src.config.paths import AppPaths
+from nfoforge.config.paths import AppPaths
 from tests.repo_paths import REPO_ROOT
 
 FORBIDDEN_CALLS = frozenset({"unlink", "rmtree", "rmdir", "remove", "move"})
@@ -75,9 +75,9 @@ def test_the_migration_contains_no_way_to_delete_anything() -> None:
     partial copy behind for the user to remove. Leaving litter is a better
     failure than clearing a directory that turned out to hold something else.
     """
-    offending = _calls_made_in(REPO_ROOT / "src" / "config" / "layout_apply.py") & (
-        FORBIDDEN_CALLS
-    )
+    offending = _calls_made_in(
+        REPO_ROOT / "nfoforge" / "config" / "layout_apply.py"
+    ) & (FORBIDDEN_CALLS)
 
     assert not offending, (
         f"layout_apply.py calls {sorted(offending)}, giving the migration a way "
@@ -288,7 +288,7 @@ def test_an_incomplete_copy_is_refused_rather_than_counted(
         dst.mkdir(parents=True)
         (dst / "one.txt").write_bytes((Path(src) / "one.txt").read_bytes())
 
-    monkeypatch.setattr("src.config.layout_apply._copy_tree", losing_copy)
+    monkeypatch.setattr("nfoforge.config.layout_apply._copy_tree", losing_copy)
 
     with pytest.raises(MigrationError):
         apply_plan(

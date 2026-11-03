@@ -12,7 +12,7 @@ Every existing profile must render byte-identical output afterwards.
 
 from typing import Any
 
-from src.config.migrations import migrate_v8_to_v9
+from nfoforge.config.migrations import migrate_v8_to_v9
 
 
 def _doc(**movie: Any) -> dict[str, Any]:

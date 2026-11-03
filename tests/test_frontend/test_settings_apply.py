@@ -5,15 +5,18 @@ from typing import cast
 
 import pytest
 
-from src.config.config import ConfigManager
-from src.config.paths import ConfigPaths
-from src.enums.screen_shot_mode import ScreenShotMode
-from src.enums.torrent_client import QBittorrentSavePathMode, TorrentClientSelection
-from src.exceptions import ConfigError
-from src.frontend.custom_widgets.client_listbox import QBittorrentClientEdit
-from src.frontend.global_signals import GSigs
-import src.frontend.stacked_windows.settings.settings as settings_module
-from src.frontend.stacked_windows.settings.settings import Settings
+from nfoforge.config.config import ConfigManager
+from nfoforge.config.paths import ConfigPaths
+from nfoforge.enums.screen_shot_mode import ScreenShotMode
+from nfoforge.enums.torrent_client import (
+    QBittorrentSavePathMode,
+    TorrentClientSelection,
+)
+from nfoforge.exceptions import ConfigError
+from nfoforge.frontend.custom_widgets.client_listbox import QBittorrentClientEdit
+from nfoforge.frontend.global_signals import GSigs
+import nfoforge.frontend.stacked_windows.settings.settings as settings_module
+from nfoforge.frontend.stacked_windows.settings.settings import Settings
 from tests.repo_paths import build_app_paths
 
 
@@ -25,7 +28,7 @@ def _make_settings(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> tuple[Settings, ConfigManager]:
     monkeypatch.setattr(
-        "src.config.config.FindDependencies.update_dependencies",
+        "nfoforge.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
     )
     manager = ConfigManager("test", _paths(tmp_path))
