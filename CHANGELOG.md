@@ -17,6 +17,10 @@
 - **`start_ui.py` is gone; the desktop app starts with `uv run nfoforge-gui`** (or `python -m nfoforge.frontend`). The launcher now lives inside the package, so a source checkout synced with `uv sync` has both commands: `nfoforge` for the command line and `nfoforge-gui` for the desktop app. The released builds are unchanged.
 - **Qt is now an optional install, the `gui` extra.** The command line does not need it, so it no longer pulls it in. From a source checkout, install with `uv sync --extra gui` to use the desktop app (the `dev` and `build` extras include it). Started without it, `nfoforge-gui` says so and exits. A plugin that imports Qt as it loads -- usually one that adds a wizard page -- cannot load in the command line, and is reported as not loaded there.
 
+### Changed
+
+- Updated numerous dependencies.
+
 ## [1.2.3] - 2026-10-15
 
 ### Added
