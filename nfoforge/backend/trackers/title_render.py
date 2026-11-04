@@ -5,7 +5,7 @@ has none), then normalise from the entry. This module is the normalisation
 half.
 
 Normalisation always applies, whether or not the entry composes, so the
-seven trackers with no layout of their own still get their separator, colon
+eight trackers with no layout of their own still get their separator, colon
 and vocabulary imposed on the user's house style.
 """
 

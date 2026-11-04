@@ -152,7 +152,7 @@ def test_a_composing_tracker_ignores_the_users_global_template() -> None:
 
 
 def test_a_tracker_without_a_composition_renders_the_users_template() -> None:
-    # Seven trackers have no layout of their own and render the user's
+    # Eight trackers have no layout of their own and render the user's
     # house style, which is exactly what they do today.
     assert _title(_renders_the_users_template()) == "Movie Name (global)"
 
