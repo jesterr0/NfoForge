@@ -1,5 +1,13 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+
+- **ReelFliX release titles now come from your global title template**, as Blutopia's and TorrentLeech's do. ReelFliX's rule 4 states the title elements "do not need to be in a specific order, but every required element must be present and clearly readable", so no layout of its own is imposed any more: your movie title template supplies the elements, and it is that template's job to include the required ones -- name, year, resolution, source, audio codec, audio channels, video format, and the group tag, which their rules prefer blank over a `NOGROUP` placeholder and which the shipped default's optional tag form already gives. The spellings ReelFliX publishes are still imposed on whatever the template renders: `DD+` rather than `DDP`, `HDR10+`, `Hybrid`, `Dual-Audio`, no `Subbed`, `Director's Cut`, `Extended`, and `PQ10`, with colons kept. Two consequences for every user:
+  - Remuxes no longer swap the video codec ahead of the audio. That ordering was borrowed from LST and Aither, whose rules do publish it; ReelFliX's own example runs `DTS-HD MA 5.1 x264`, audio first, and its rules allow either order. Every ReelFliX title now renders your template's order.
+  - A title that renders empty falls back to the release name with a logged warning, as it does on the other trackers that render your template, instead of refusing the upload outright.
+
 ## [1.3.2] - 2026-11-04
 
 ### Fixed
