@@ -285,7 +285,13 @@ class PluginsSettings(BaseSettings):
             )
             is QMessageBox.StandardButton.Yes
         ):
-            restart_application(self.main_window)
+            if not restart_application(self.main_window):
+                QMessageBox.information(
+                    self,
+                    "Restart Required",
+                    "NfoForge could not restart itself. Close it and start it "
+                    "again to load the plugin.",
+                )
 
     def _create_combo(self) -> CustomComboBox:
         return CustomComboBox(
