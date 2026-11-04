@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.3.1] - 2026-11-04
+
+### Fixed
+
+- Bump version number.
+
 ## [1.3.0] - 2026-11-03
 
 ### Added
