@@ -19,6 +19,7 @@
   - DVD titles no longer drop the resolution, and DVD remuxes no longer drop the video codec. Both now render whenever your template includes them.
   - Remuxes no longer swap the video codec ahead of the audio. That ordering was borrowed from LST and Aither, whose rules do publish it; ReelFliX's own example runs `DTS-HD MA 5.1 x264`, audio first, and its rules allow either order. Every ReelFliX title now renders your template's order.
   - A title that renders empty falls back to the release name with a logged warning, as it does on the other trackers that render your template, instead of refusing the upload outright.
+- Updated guessit, autoqpf, platformdirs, semver, deluge-web-client, niquests, and regex.
 
 ## [1.3.2] - 2026-11-04
 
