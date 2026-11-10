@@ -1,5 +1,15 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- The "Ultimate" edition is now treated as a cut, so it is included in tracker titles that use `{cut}` (LST, Aither, ReelFliX, BeyondHD). Previously it appeared in filenames but was dropped from those titles.
+
+### Changed
+
+- The "Ultimate" edition now normalizes to "Ultimate Cut" (matching "Ultimate", "Ultimate Edition" and "Ultimate Cut"). Filenames and titles that previously read "Ultimate" now read "Ultimate Cut".
+
 ## [1.3.2] - 2026-11-04
 
 ### Fixed
