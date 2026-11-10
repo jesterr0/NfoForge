@@ -373,7 +373,7 @@ def test_components_compose_in_the_entrys_order() -> None:
 
 
 def test_a_conditional_order_swaps_on_remux() -> None:
-    """LST, Aither and ReelFliX put video before audio on a remux.
+    """LST and Aither put video before audio on a remux.
 
     The shipped config said this by writing the same token twice at two
     positions, one guarded by only_if(remux) and the other by unless(remux).
@@ -419,8 +419,8 @@ def test_a_conditional_block_keeps_its_position_in_the_order() -> None:
 
 
 def test_an_omit_rule_drops_a_component_conditionally() -> None:
-    # LST and ReelFliX omit the video codec on a DVD remux while keeping it
-    # for a DVDRip encode.
+    # LST omits the video codec on a DVD remux while keeping it for a
+    # DVDRip encode.
     composition = Composition(
         components=("{source}", "{video_codec}", "{audio_codec}"),
         omit=(
@@ -448,7 +448,7 @@ def test_the_tag_default_fills_an_untagged_release() -> None:
 
 
 def test_no_tag_default_omits_the_tag_entirely() -> None:
-    # Aither and ReelFliX prefer a blank tag to a NOGROUP placeholder.
+    # Aither prefers a blank tag to a NOGROUP placeholder.
     composition = Composition(components=("{title_exact}",), tag_default=None)
 
     assert compose_token_string(composition, _release()) == (
@@ -737,7 +737,6 @@ def _composed(tracker: TrackerSelection, **release: object) -> str:
 COMPOSING = [
     TrackerSelection.LST,
     TrackerSelection.AITHER,
-    TrackerSelection.REELFLIX,
     TrackerSelection.BEYOND_HD,
     TrackerSelection.DARK_PEERS,
     TrackerSelection.SHARE_ISLAND,
@@ -754,16 +753,16 @@ def test_exactly_the_expected_trackers_compose() -> None:
 
 @pytest.mark.parametrize(
     "tracker",
-    [TrackerSelection.LST, TrackerSelection.AITHER, TrackerSelection.REELFLIX],
+    [TrackerSelection.LST, TrackerSelection.AITHER],
 )
 def test_video_leads_on_a_remux_and_trails_on_an_encode(
     tracker: TrackerSelection,
 ) -> None:
-    """The order swap all three publish, and the ReelFliX defect.
+    """The order swap both publish.
 
-    ReelFliX's shipped template was a near copy of BeyondHD's, which does
-    not swap, so every ReelFliX remux emitted audio before video where its
-    own rules require video first.
+    ReelFliX was on this list until its rule 4 was read in full -- "The
+    elements do not need to be in a specific order" -- so the swap was
+    never its rule, and its entry composes no layout at all now.
     """
     remux = _composed(tracker, is_remux=True, resolution=2160)
     encode = _composed(tracker, resolution=1080)
@@ -792,14 +791,11 @@ def test_the_year_is_omitted_for_a_series(tracker: TrackerSelection) -> None:
     assert "{release_year}" not in series
 
 
-@pytest.mark.parametrize("tracker", [TrackerSelection.LST, TrackerSelection.REELFLIX])
-def test_dvd_omits_the_resolution_and_a_dvd_remux_omits_the_codec(
-    tracker: TrackerSelection,
-) -> None:
+def test_dvd_omits_the_resolution_and_a_dvd_remux_omits_the_codec() -> None:
     # LST's own example: "Transformers 2007 DVDRip DD 5.1 x264-NOGROUP" --
     # no resolution, but a DVDRip encode keeps its codec.
-    dvd_rip = _composed(tracker, is_dvd=True)
-    dvd_remux = _composed(tracker, is_dvd=True, is_remux=True)
+    dvd_rip = _composed(TrackerSelection.LST, is_dvd=True)
+    dvd_remux = _composed(TrackerSelection.LST, is_dvd=True, is_remux=True)
 
     assert "{resolution}" not in dvd_rip
     assert "{video_codec}" in dvd_rip
@@ -808,7 +804,7 @@ def test_dvd_omits_the_resolution_and_a_dvd_remux_omits_the_codec(
 
 @pytest.mark.parametrize(
     "tracker",
-    [TrackerSelection.LST, TrackerSelection.AITHER, TrackerSelection.REELFLIX],
+    [TrackerSelection.LST, TrackerSelection.AITHER],
 )
 def test_the_dub_component_sits_immediately_before_the_audio_codec(
     tracker: TrackerSelection,
@@ -826,7 +822,7 @@ def test_beyondhd_keeps_its_audio_codec_undivided() -> None:
     """BeyondHD wants "DDP Atmos 5.1", which {audio_codec} emits natively.
 
     The audio_codec_no_atmos plus separate {atmos} split produces
-    "DDP 5.1 Atmos", which is the LST, Aither and ReelFliX spelling.
+    "DDP 5.1 Atmos", which is the LST and Aither spelling.
     """
     composed = _composed(TrackerSelection.BEYOND_HD)
 

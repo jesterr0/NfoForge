@@ -4,11 +4,17 @@
 
 ### Fixed
 
-- The "Ultimate" edition is now treated as a cut, so it is included in tracker titles that use `{cut}` (LST, Aither, ReelFliX, BeyondHD). Previously it appeared in filenames but was dropped from those titles.
+- The "Ultimate" edition is now treated as a cut, so it is included in tracker titles that use `{cut}` (LST, Aither, BeyondHD). Previously it appeared in filenames but was dropped from those titles.
 
 ### Changed
 
 - The "Ultimate" edition now normalizes to "Ultimate Cut" (matching "Ultimate", "Ultimate Edition" and "Ultimate Cut"). Filenames and titles that previously read "Ultimate" now read "Ultimate Cut".
+- **ReelFliX release titles now come from your global title template**, as Blutopia's and TorrentLeech's do. ReelFliX's rule 4 states the title elements "do not need to be in a specific order, but every required element must be present and clearly readable", so no layout of its own is imposed any more: your movie title template supplies the elements, and it is that template's job to include the required ones -- name, year, resolution, source, audio codec, audio channels, video format, and the group tag, which their rules prefer blank over a `NOGROUP` placeholder and which the shipped default's optional tag form already gives. The spellings ReelFliX publishes are still imposed on whatever the template renders: `DD+` rather than `DDP`, `HDR10+`, `Hybrid`, `Dual-Audio`, no `Subbed`, `Director's Cut`, `Extended`, and `PQ10`. Consequences for every user:
+  - Elements your template doesn't include no longer appear. The shipped default has no tokens for remux, dynamic range (HDR/DV), cut, frame size, hybrid, streaming service, or dual-audio/dub, so ReelFliX titles rendered from it now leave all of these out. Add the tokens to your movie title template to keep them.
+  - Punctuation in the film's name now depends on your template. The shipped default's `{title_clean}` follows your `title_clean_rules`, which by default turn `Amelie's Cafe: Fire & Ice` into `Amelies Cafe Fire and Ice`. `{title_exact}` keeps colons and apostrophes, but periods are still removed, so `Dr. Strange` becomes `Dr Strange`.
+  - DVD titles no longer drop the resolution, and DVD remuxes no longer drop the video codec. Both now render whenever your template includes them.
+  - Remuxes no longer swap the video codec ahead of the audio. That ordering was borrowed from LST and Aither, whose rules do publish it; ReelFliX's own example runs `DTS-HD MA 5.1 x264`, audio first, and its rules allow either order. Every ReelFliX title now renders your template's order.
+  - A title that renders empty falls back to the release name with a logged warning, as it does on the other trackers that render your template, instead of refusing the upload outright.
 
 ## [1.3.2] - 2026-11-04
 

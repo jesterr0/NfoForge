@@ -18,9 +18,13 @@ The rules being pinned, quoted as saved:
                     Acodec Channels Object - Tag
 - LST encode/web .. ... Resolution ... SOURCE TYPE Dub Acodec Channels Object
                     Hi10P HDR Vcodec - Tag
-- ReelFliX ........ the same remux/encode split as Aither and LST, video
-                    ahead of audio on a remux; blank tag preferred over a
-                    NOGROUP placeholder
+- ReelFliX ........ rule 4: "The elements do not need to be in a specific
+                    order, but every required element must be present and
+                    clearly readable", with a blank tag preferred over a
+                    NOGROUP placeholder. Composes no layout: the user's
+                    global template supplies the elements, and the
+                    published spellings reach it through normalisation --
+                    see `test_reelflix_imposes_its_spellings_on_the_user_template`
 - BeyondHD ........ remux/encode/web-dl with no tag must end "-NOGROUP";
                     an optical source leads its resolution ("BluRay 1080p"),
                     while web keeps "2160p AMZN WEB-DL"; frame size, cut and
@@ -35,10 +39,11 @@ Each needs a new token rather than an edit to an entry:
   "BluRay"/"DVD". Full-disc uploads are not supported yet, so this stays out.
 - Spoken-language components: FRENCH/JAPANESE and ZXX. Dual-Audio and Dubbed
   are *not* gaps -- `{audio_language_dual}` and `{localization}` cover them,
-  and the Dub component composes the pair on Aither, LST and ReelFliX.
+  and the Dub component composes the pair on Aither and LST.
 - LST-only: Hi10P, 3D and RERip. "PQ10" is no longer a gap either: the
-  dynamic range resolves to an identity and each entry spells it, so LST and
-  ReelFliX say "PQ10" where Aither says nothing at all.
+  dynamic range resolves to an identity and LST's entry spells it, where
+  Aither says nothing at all. ReelFliX composes no layout, so its "PQ10"
+  is a vocabulary row on the user's global template.
 - `{cut}` still renders "Directors Cut" and "Extended Cut" on BeyondHD, whose
   cut rules have not been gathered. It is no longer a gap on the four whose
   have: the normalization table is shared with filename generation, where an
@@ -400,10 +405,12 @@ def test_lst_formats_eac3_atmos_as_codec_channels_atmos(
     assert "DD+ Atmos 5.1" not in normalised
 
 
-ALL_FOUR = (
+# The checked trackers whose entries still compose. ReelFliX is checked
+# too, but its rule 4 allows any order, so it renders the user's global
+# template and has no composition to assert through `_render`.
+COMPOSING_CHECKED = (
     TrackerSelection.AITHER,
     TrackerSelection.LST,
-    TrackerSelection.REELFLIX,
     TrackerSelection.BEYOND_HD,
 )
 
@@ -415,12 +422,11 @@ TRANSCRIBED_FOUR = (
 )
 
 
-# The three whose remux order ends on `{atmos}`, so an empty one falls
+# The two whose remux order ends on `{atmos}`, so an empty one falls
 # against the tag. BeyondHD and the four transcribed put the codec last.
 REMUX_AUDIO_LAST = (
     TrackerSelection.AITHER,
     TrackerSelection.LST,
-    TrackerSelection.REELFLIX,
 )
 
 
@@ -428,7 +434,7 @@ REMUX_AUDIO_LAST = (
 def test_a_non_atmos_remux_leaves_no_gap_before_the_tag(
     tracker: TrackerSelection, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The last component of these three's remux order is `{atmos}`.
+    """The last component of these two's remux order is `{atmos}`.
 
     On anything but an Atmos track it renders empty, and the join left the
     space that would have preceded it sitting against the tag's own hyphen:
@@ -448,7 +454,7 @@ def test_a_non_atmos_remux_leaves_no_gap_before_the_tag(
     assert rendered.endswith("7.1-SomeGroup")
 
 
-@pytest.mark.parametrize("tracker", ALL_FOUR + TRANSCRIBED_FOUR)
+@pytest.mark.parametrize("tracker", COMPOSING_CHECKED + TRANSCRIBED_FOUR)
 def test_no_entry_ships_a_gap_before_its_tag(
     tracker: TrackerSelection, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -620,16 +626,17 @@ def test_beyondhd_states_frame_size_cut_and_localization_before_the_source(
 
 
 @pytest.mark.parametrize("tracker", REMUX_AUDIO_LAST)
-def test_the_other_three_order_the_cut_first_and_state_no_subbed(
+def test_the_other_two_order_the_cut_first_and_state_no_subbed(
     tracker: TrackerSelection,
 ) -> None:
     """The control, so the BeyondHD test above is about BeyondHD.
 
-    Aither, LST and ReelFliX write the cut ahead of the frame size, and
-    their vocabulary maps "Subbed" to nothing -- so a subbed release is
-    named as one on BeyondHD alone.
+    Aither and LST write the cut ahead of the frame size, and their
+    vocabulary maps "Subbed" to nothing -- so a subbed release is named as
+    one on BeyondHD alone. ReelFliX suppresses "Subbed" the same way, on
+    the user's global template rather than a composition.
 
-    The apostrophe is these three imposing their published spelling, which
+    The apostrophe is these two imposing their published spelling, which
     BeyondHD does not; `test_the_published_cut_spellings_reach_the_title`
     is where that is the subject rather than an incidental.
     """
@@ -657,15 +664,12 @@ def test_lst_drops_a_theatrical_cut_from_the_title() -> None:
     assert "  " not in rendered
 
 
-@pytest.mark.parametrize(
-    "tracker", (TrackerSelection.AITHER, TrackerSelection.REELFLIX)
-)
-def test_aither_and_reelflix_keep_a_theatrical_cut(
-    tracker: TrackerSelection,
-) -> None:
+def test_aither_keeps_a_theatrical_cut() -> None:
     # The control, so the test above is about LST rather than about {cut}.
-    # Both allow the cut, and it keeps its place ahead of the resolution.
-    rendered = _render(tracker, THEATRICAL_NAME, "UHD BluRay")
+    # Aither allows the cut, and it keeps its place ahead of the resolution;
+    # so does ReelFliX, asserted on its vocabulary below, where allowing is
+    # carrying no row to suppress it.
+    rendered = _render(TrackerSelection.AITHER, THEATRICAL_NAME, "UHD BluRay")
 
     assert "Movie Name 2026 Theatrical Cut 2160p" in rendered
 
@@ -723,6 +727,56 @@ def test_blutopia_imposes_the_same_spellings_on_the_user_template(
     )
 
 
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("Movie Name 2026 DDP 5.1 x264-GRP", "Movie Name 2026 DD+ 5.1 x264-GRP"),
+        ("Movie Name 2026 HYBRID 2160p-GRP", "Movie Name 2026 Hybrid 2160p-GRP"),
+        ("Movie Name 2026 Dual Audio 5.1-GRP", "Movie Name 2026 Dual-Audio 5.1-GRP"),
+        ("Movie Name 2026 Subbed 2160p-GRP", "Movie Name 2026 2160p-GRP"),
+        ("Movie Name 2026 HDR10Plus x265-GRP", "Movie Name 2026 HDR10+ x265-GRP"),
+        ("Movie Name 2026 Directors Cut 2160p", "Movie Name 2026 Director's Cut 2160p"),
+        ("Movie Name 2026 Extended Cut 2160p", "Movie Name 2026 Extended 2160p"),
+        ("Movie Name 2026 2160p PQ x265-GRP", "Movie Name 2026 2160p PQ10 x265-GRP"),
+        (
+            "Movie Name 2026 Theatrical Cut 2160p",
+            "Movie Name 2026 Theatrical Cut 2160p",
+        ),
+    ],
+    ids=[
+        "ddp",
+        "hybrid",
+        "dual-audio",
+        "subbed",
+        "hdr10plus",
+        "directors",
+        "extended",
+        "pq",
+        "theatrical",
+    ],
+)
+def test_reelflix_imposes_its_spellings_on_the_user_template(
+    raw: str, expected: str
+) -> None:
+    """ReelFliX's rule 4: "The elements do not need to be in a specific
+    order, but every required element must be present and clearly
+    readable."
+
+    So it composes no layout, and the user's global template supplies the
+    elements in whatever order it carries them. What the rules fix is the
+    spelling of each element, and those rows reach the template through
+    normalisation exactly as Blutopia's do above. The PQ row is keyed on
+    the token's own spelling of the identity, which is "PQ". The last row
+    pins the other half of LST's theatrical rule, which ReelFliX does not
+    share: allowing a cut is carrying no row to suppress it.
+    """
+    normalisation = TITLE_RULES[TrackerSelection.REELFLIX].normalisation
+
+    assert (
+        normalise_title(raw, normalisation, global_colon=ColonReplace.KEEP) == expected
+    )
+
+
 def test_beyondhd_keeps_the_table_spelling() -> None:
     # The control for both tests above. BeyondHD's cut rules have not been
     # gathered, and title_rules.py holds an ungathered tracker to what it
@@ -732,9 +786,9 @@ def test_beyondhd_keeps_the_table_spelling() -> None:
     assert "Directors Cut" in rendered
 
 
-@pytest.mark.parametrize("tracker", ALL_FOUR)
+@pytest.mark.parametrize("tracker", COMPOSING_CHECKED)
 def test_web_releases_are_spelled_web_dl(tracker: TrackerSelection) -> None:
-    """All four trackers require "WEB-DL".
+    """Each of these trackers requires "WEB-DL".
 
     QualitySelection.WEB_DL was "WEBDL", and that value goes straight into the
     title -- both when the source is detected and when the wizard's Quality
@@ -747,7 +801,7 @@ def test_web_releases_are_spelled_web_dl(tracker: TrackerSelection) -> None:
     assert "WEBDL" not in rendered
 
 
-@pytest.mark.parametrize("tracker", ALL_FOUR)
+@pytest.mark.parametrize("tracker", COMPOSING_CHECKED)
 def test_a_legacy_webdl_override_is_canonicalized(tracker: TrackerSelection) -> None:
     """A job saved before the rename replays "WEBDL" from its stored
     dynamic_data, and must still render the current spelling."""
@@ -757,7 +811,7 @@ def test_a_legacy_webdl_override_is_canonicalized(tracker: TrackerSelection) -> 
     assert "WEBDL" not in rendered
 
 
-@pytest.mark.parametrize("tracker", ALL_FOUR)
+@pytest.mark.parametrize("tracker", COMPOSING_CHECKED)
 def test_repack_survives_into_the_tracker_title(tracker: TrackerSelection) -> None:
     """Aither and LST both require REPACK in the title.
 
@@ -768,7 +822,7 @@ def test_repack_survives_into_the_tracker_title(tracker: TrackerSelection) -> No
     assert "REPACK" in _render(tracker, REMUX_NAME, "UHD BluRay")
 
 
-@pytest.mark.parametrize("tracker", ALL_FOUR)
+@pytest.mark.parametrize("tracker", COMPOSING_CHECKED)
 def test_a_remux_keeps_the_container_codec_name(tracker: TrackerSelection) -> None:
     """A remux is HEVC/AVC; only an encode is x265/x264. Remux detection used
     to read the override alone, so a remux with no override was named as an
@@ -792,21 +846,17 @@ def test_beyondhd_and_lst_tag_an_untagged_release_nogroup(
         assert wrong not in rendered
 
 
-@pytest.mark.parametrize(
-    "tracker",
-    (TrackerSelection.AITHER, TrackerSelection.REELFLIX),
-)
-def test_aither_and_reelflix_leave_an_untagged_release_bare(
-    tracker: TrackerSelection,
-) -> None:
-    """ReelFliX prefers a blank tag to a placeholder, and Aither asks
-    for none either. The separator has to go with it.
+def test_aither_leaves_an_untagged_release_bare() -> None:
+    """Aither asks for no placeholder: no group, no tag, no separator.
 
-    LST was on this list and does not belong: its own published example is
-    "Transformers 2007 DVDRip DD 5.1 x264-NOGROUP". It is asserted with
-    BeyondHD below.
+    LST does not belong beside it: its own published example is
+    "Transformers 2007 DVDRip DD 5.1 x264-NOGROUP", and it is asserted
+    with BeyondHD below. ReelFliX publishes the same preference ("we
+    would prefer to leave the group tag blank"), but with no composition
+    the tag is the user's template's to carry, and the shipped default
+    writes it in the optional form.
     """
-    rendered = _render(tracker, ENCODE_NAME, "BluRay", release_group="")
+    rendered = _render(TrackerSelection.AITHER, ENCODE_NAME, "BluRay", release_group="")
 
     assert not rendered.endswith("-")
     assert "NOGROUP" not in rendered
@@ -1041,7 +1091,7 @@ def test_aither_renders_a_film_and_an_episode_title_identically(
         )
 
 
-@pytest.mark.parametrize("tracker", ALL_FOUR)
+@pytest.mark.parametrize("tracker", COMPOSING_CHECKED)
 def test_a_web_release_carries_its_streaming_service(tracker: TrackerSelection) -> None:
     """Aither's WEB-DL template is "Resolution Service WEB-DL ...", and LST
     lists the service as the *source* for WEB-DLs and WEBRips -- so on both,
@@ -1051,7 +1101,7 @@ def test_a_web_release_carries_its_streaming_service(tracker: TrackerSelection) 
     assert " AMZN WEB-DL " in rendered
 
 
-@pytest.mark.parametrize("tracker", ALL_FOUR)
+@pytest.mark.parametrize("tracker", COMPOSING_CHECKED)
 def test_a_non_web_release_carries_no_streaming_service(
     tracker: TrackerSelection,
 ) -> None:
@@ -1060,7 +1110,7 @@ def test_a_non_web_release_carries_no_streaming_service(
     source change into a BluRay title."""
     rendered = _render(tracker, WEB_NAME, "BluRay")
 
-    # Two spellings BeyondHD does not share with the other three: an
+    # Two spellings BeyondHD does not share with the other two: an
     # optical source leads its resolution, and Atmos goes with the codec
     # rather than after the channels.
     beyond_hd = tracker is TrackerSelection.BEYOND_HD
@@ -1071,7 +1121,7 @@ def test_a_non_web_release_carries_no_streaming_service(
     assert rendered == (f"Movie Name 2026 {quality} {audio} DV HDR x265-SomeGroup")
 
 
-@pytest.mark.parametrize("tracker", ALL_FOUR)
+@pytest.mark.parametrize("tracker", COMPOSING_CHECKED)
 def test_an_explicit_service_choice_is_honoured(tracker: TrackerSelection) -> None:
     """The rename page's Service combo has to win over detection -- that is
     the whole point of offering it."""
