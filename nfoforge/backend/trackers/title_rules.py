@@ -13,7 +13,7 @@ two trackers are only identical until one of them publishes a change.
 `test_no_two_entries_share_an_object` pins it.
 
 An entry has two sections. Normalisation always applies. Composition is
-optional -- nine entries have none. Seven of those render the user's global
+optional -- ten entries have none. Eight of those render the user's global
 title template; the remaining two render no title at all, having no release
 name field to put one in.
 
@@ -113,7 +113,7 @@ class ReleaseProperties:
     ask anything is a condition nobody can test exhaustively. Each field
     earns its place from a checked tracker -- `is_remux` and `is_disc` from
     the remux order swap and BeyondHD's dynamic range baseline, `is_dvd`
-    from BeyondHD's DVD order and the LST and ReelFliX omit rules,
+    from BeyondHD's DVD order and the LST omit rules,
     `is_optical_source` from BeyondHD's source-before-resolution rule,
     `resolution` and `hdr_identity` from every dynamic range rule, and
     `season`/`episodes` from the designator.
@@ -147,9 +147,9 @@ class ReleaseProperties:
 class ConditionalOrder:
     """A run of components whose order or membership depends on the release.
 
-    LST, Aither and ReelFliX put the video components before the audio ones
-    on a remux and after them otherwise. BeyondHD swaps on DVD instead, so
-    the condition is a predicate over the release rather than a remux flag.
+    LST and Aither put the video components before the audio ones on a
+    remux and after them otherwise. BeyondHD swaps on DVD instead, so the
+    condition is a predicate over the release rather than a remux flag.
     """
 
     when: Callable[[ReleaseProperties], bool]
@@ -190,8 +190,8 @@ class DynamicRangeRule:
 class OmitRule:
     """Components dropped when the release matches.
 
-    LST and ReelFliX omit the resolution on a DVD source, and the video
-    codec on a DVD remux while keeping it for a DVDRip encode.
+    LST omits the resolution on a DVD source, and the video codec on a DVD
+    remux while keeping it for a DVDRip encode.
     """
 
     when: Callable[[ReleaseProperties], bool]
@@ -216,8 +216,8 @@ class Composition:
     membership in this tuple.
 
     `tag_default` of ``None`` omits the release group entirely where a
-    release has none, which is what Aither and ReelFliX prefer. LST and
-    BeyondHD want the `NOGROUP` placeholder instead.
+    release has none, which is what Aither prefers. LST and BeyondHD want
+    the `NOGROUP` placeholder instead.
     """
 
     components: tuple[Component, ...] = ()
@@ -309,6 +309,42 @@ TITLE_RULES: Mapping[TrackerSelection, TrackerTitleEntry] = MappingProxyType(
                 },
             ),
         ),
+        # ReelFliX, rule 4, quoted: "The elements do not need to be in a
+        # specific order, but every required element must be present and
+        # clearly readable." It composes no layout of its own for that
+        # reason: the user's global template supplies the elements in
+        # whatever order it carries them, and carries the responsibility
+        # for including the required ones -- name, year, resolution,
+        # source, audio codec, audio channels, video format, and a group
+        # tag the rules prefer blank over a NOGROUP placeholder, which the
+        # optional tag form gives. The spellings below still reach that
+        # template, as Blutopia's do above. Its published example runs
+        # "DTS-HD MA 5.1 x264" -- audio ahead of video -- which the remux
+        # reorder this entry once carried, borrowed from LST and Aither,
+        # never matched.
+        TrackerSelection.REELFLIX: TrackerTitleEntry(
+            normalisation=Normalisation(
+                colon=ColonReplace.KEEP,
+                vocabulary={
+                    "DDP": "DD+",
+                    "HDR10Plus": "HDR10+",
+                    "HYBRID": "Hybrid",
+                    "Dual Audio": "Dual-Audio",
+                    "Subbed": None,
+                    # Published spellings, which outrank NfoForge's own. The
+                    # normalized names stay as they are: other trackers key on
+                    # them and filenames use them, where an apostrophe is
+                    # unwanted. A vocabulary row reaches the title alone.
+                    "Directors Cut": "Director's Cut",
+                    "Extended Cut": "Extended",
+                    # The dynamic range spelling, a row rather than a
+                    # composition rule so it still reaches the user's global
+                    # template. A row matches after rendering, and the token
+                    # spells this identity "PQ".
+                    "PQ": "PQ10",
+                },
+            ),
+        ),
         TrackerSelection.UTOPIA: TrackerTitleEntry(
             normalisation=Normalisation(),
         ),
@@ -371,8 +407,8 @@ TITLE_RULES: Mapping[TrackerSelection, TrackerTitleEntry] = MappingProxyType(
                     "Directors Cut": "Director's Cut",
                     "Extended Cut": "Extended",
                     # LST forbids a theatrical cut in the name, where Aither
-                    # and ReelFliX allow it -- so this row is LST's alone and
-                    # is not an omission in the two entries below it.
+                    # and ReelFliX allow it -- so this row is LST's alone,
+                    # not an omission in either of theirs.
                     #
                     # LST forbids the bare "Theatrical" too, and one row
                     # covers both: {cut} cannot emit it. EDITION_INFO matches
@@ -485,66 +521,6 @@ TITLE_RULES: Mapping[TrackerSelection, TrackerTitleEntry] = MappingProxyType(
                 omit=(OmitRule(when=_is_series, components=("{release_year}",)),),
             ),
         ),
-        # ReelFliX. Its published rules match LST and Aither rather than
-        # BeyondHD's, which is easy to get backwards given how alike the
-        # four read: video goes ahead of audio on a remux.
-        TrackerSelection.REELFLIX: TrackerTitleEntry(
-            normalisation=Normalisation(
-                colon=ColonReplace.KEEP,
-                vocabulary={
-                    "DDP": "DD+",
-                    "HDR10Plus": "HDR10+",
-                    "HYBRID": "Hybrid",
-                    "Dual Audio": "Dual-Audio",
-                    "Subbed": None,
-                    # Published spellings, which outrank NfoForge's own. The
-                    # normalized names stay as they are: other trackers key on
-                    # them and filenames use them, where an apostrophe is
-                    # unwanted. A vocabulary row reaches the title alone.
-                    "Directors Cut": "Director's Cut",
-                    "Extended Cut": "Extended",
-                },
-            ),
-            composition=Composition(
-                components=(
-                    "{title_exact}",
-                    "{release_year}",
-                    Designator.SIMPLE,
-                    "{cut}",
-                    "{frame_size}",
-                    "{hybrid}",
-                    "{re_release}",
-                    "{resolution}",
-                    "{streaming_service}",
-                    "{source}",
-                    "{remux}",
-                    ConditionalOrder(
-                        when=_is_disc_or_remux,
-                        then=(
-                            DynamicRangeRule(spellings={"PQ": "PQ10"}),
-                            "{video_codec}",
-                            *_DUB,
-                            "{audio_codec_no_atmos}",
-                            "{audio_channel_s}",
-                            "{atmos}",
-                        ),
-                        otherwise=(
-                            *_DUB,
-                            "{audio_codec_no_atmos}",
-                            "{audio_channel_s}",
-                            "{atmos}",
-                            DynamicRangeRule(spellings={"PQ": "PQ10"}),
-                            "{video_codec}",
-                        ),
-                    ),
-                ),
-                omit=(
-                    OmitRule(when=_is_series, components=("{release_year}",)),
-                    OmitRule(when=_is_dvd, components=("{resolution}",)),
-                    OmitRule(when=_is_dvd_remux, components=("{video_codec}",)),
-                ),
-            ),
-        ),
         # BeyondHD. Six rules that set it apart from the other three:
         #
         # - audio is {audio_codec} plus channels, giving "DDP Atmos 5.1" as
@@ -615,7 +591,7 @@ TITLE_RULES: Mapping[TrackerSelection, TrackerTitleEntry] = MappingProxyType(
         # No published rules have been gathered for the four below, so their
         # layout is assumed rather than checked: {edition} rather than {cut},
         # undivided {audio_codec}, dash colon handling and the over-1080 SDR
-        # form. Hold an entry here more loosely than the four above, and
+        # form. Hold an entry here more loosely than the three above, and
         # replace it outright if that tracker's rules are ever gathered.
         #
         # Two things are not assumed.
@@ -623,8 +599,8 @@ TITLE_RULES: Mapping[TrackerSelection, TrackerTitleEntry] = MappingProxyType(
         # An entry has no media-type split, so one composition serves films
         # and series alike, the designator supplying the season and episode
         # and an episode title sitting beside it. Aither names the episode
-        # from its published examples; only LST, ReelFliX and BeyondHD are
-        # known to leave it out.
+        # from its published examples; only LST and BeyondHD are known to
+        # leave it out.
         #
         # The title is {title_exact} rather than {title_clean}. Clean answers
         # to the user's `title_clean_rules`, which ship aggressive: they

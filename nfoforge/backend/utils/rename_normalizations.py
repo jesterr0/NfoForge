@@ -57,8 +57,8 @@ EDITION_INFO: Sequence[RenameNormalization] = (
     ),
     RenameNormalization("Uncensored", (r"uncensored",)),
     RenameNormalization(
-        "Ultimate",
-        (r"ultimate(?:[\s\.\-_]*edition)?",),
+        "Ultimate Cut",
+        (r"ultimate(?:[\s\.\-_]*(?:edition|cut))?",),
     ),
     RenameNormalization("Unrated", (r"unrated",)),
     RenameNormalization("Uncut", (r"uncut",)),
@@ -88,6 +88,7 @@ CUT_EDITION_NAMES: frozenset[str] = frozenset(
         "Extended Cut",
         "Special Edition",
         "Theatrical Cut",
+        "Ultimate Cut",
         "Uncut",
         "Unrated",
     }

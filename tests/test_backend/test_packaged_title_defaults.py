@@ -7,7 +7,7 @@ hardcoded entries reverse, and there are no per-tracker defaults left to
 police.
 
 What survives is the fallback: the global movie and series title templates
-that decision 5 keeps editable, and which the seven trackers with no
+that decision 5 keeps editable, and which the eight trackers with no
 composition of their own still render.
 """
 
@@ -55,7 +55,7 @@ def _render(token_string: str, release_group: str) -> str:
 def test_the_global_movie_template_is_shipped(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # Seven trackers render this, so an empty one would leave them with no
+    # Eight trackers render this, so an empty one would leave them with no
     # title at all and fall through to the release-name fallback.
     manager = _config_manager(tmp_path, monkeypatch)
 
@@ -81,9 +81,10 @@ def test_every_shipped_default_writes_the_resolution_before_the_source(
     The two movie tokens used to write "{source} {resolution}" while all
     five series tokens wrote the reverse, which read as an oversight rather
     than a decision -- a film and a season are not different in any way this
-    ordering could be answering. Resolution first is the order Aither, LST
-    and ReelFliX all require in a title; BeyondHD is the exception, and its
-    entry flips the pair itself rather than relying on the template.
+    ordering could be answering. Resolution first is the order Aither and
+    LST require in a title and ReelFliX's rule 4 allows; BeyondHD is the
+    exception, and its entry flips the pair itself rather than relying on
+    the template.
 
     This says nothing about what a user's own tokens must do. Renaming is
     theirs, and only the shipped starting point is pinned here.

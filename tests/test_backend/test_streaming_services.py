@@ -133,3 +133,19 @@ def test_the_wizard_and_the_token_gate_on_the_same_sources() -> None:
     assert web_sources == {
         quality for quality in QualitySelection if "WEB" in quality.name
     }
+
+
+def test_movies_anywhere_is_offered_but_not_detected():
+    from nfoforge.backend.utils.streaming_services import (
+        STREAMING_SERVICE_CHOICES,
+        abbreviate_streaming_service,
+        detect_streaming_service,
+    )
+
+    assert "MA" in STREAMING_SERVICE_CHOICES
+    assert abbreviate_streaming_service("Movies Anywhere") == "MA"
+    # DTS-HD MA must never read as the service.
+    assert (
+        detect_streaming_service("Movie.2021.1080p.BluRay.DTS-HD.MA.5.1.x264-GRP.mkv")
+        == ""
+    )

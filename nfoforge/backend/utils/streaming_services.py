@@ -91,8 +91,16 @@ def _load() -> dict[str, str]:
     return mapping
 
 
+# Services guessit does not know. Offered in the Service combo and rendered by
+# the token, but never auto-detected: "MA" collides with DTS-HD MA, so a
+# release name can't safely be read for it. A name guessit does list wins.
+_EXTRA_SERVICES: dict[str, str] = {"Movies Anywhere": "MA"}
+
 # guessit's full service name -> the abbreviation a release title uses.
-STREAMING_SERVICE_ABBREVIATIONS: dict[str, str] = _load()
+STREAMING_SERVICE_ABBREVIATIONS: dict[str, str] = {
+    **_EXTRA_SERVICES,
+    **_load(),
+}
 
 # Every abbreviation, for the rename pages' Service combo box. Sorted
 # case-insensitively so "iP" and "iTunes" file with the letters rather than
