@@ -1,0 +1,1435 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+      
+      
+        <link rel="prev" href="../getting-started/series-support.html">
+      
+      
+        <link rel="next" href="../token-replacer/introduction.html">
+      
+      
+      <link rel="icon" href="../../images/hammer_merged.ico">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.16">
+    
+    
+      
+        <title>Command Line - NfoForge Documentation</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.7e37652d.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.06af60db.min.css">
+      
+      
+
+
+    
+    
+      
+        <script src="https://unpkg.com/iframe-worker/shim"></script>
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Montserrat:300,300i,400,400i,700,700i%7CFira+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Montserrat";--md-code-font:"Fira Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#command-line" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../index.html" title="NfoForge Documentation" class="md-header__button md-logo" aria-label="NfoForge Documentation" data-md-component="logo">
+      
+  <img src="../../images/hammer_merged.ico" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            NfoForge Documentation
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Command Line
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m14.3 16-.7-2h-3.2l-.7 2H7.8L11 7h2l3.2 9zM20 8.69V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12zm-9.15 3.96h2.3L12 9z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_2" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to system preference"  type="radio" name="__palette" id="__palette_2">
+    
+      <label class="md-header__button md-icon" title="Switch to system preference" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../index.html" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../getting-started/install.html" class="md-tabs__link">
+          
+  
+  
+  Getting Started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../token-replacer/introduction.html" class="md-tabs__link">
+          
+  
+  
+  TokenReplacer
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../plugins/plugin-system.html" class="md-tabs__link">
+          
+  
+  
+  Plugins
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../index.html" title="NfoForge Documentation" class="md-nav__button md-logo" aria-label="NfoForge Documentation" data-md-component="logo">
+      
+  <img src="../../images/hammer_merged.ico" alt="logo">
+
+    </a>
+    NfoForge Documentation
+  </label>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../index.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Home
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    Getting Started
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            Getting Started
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/install.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Install
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/upgrading.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Upgrading
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/initial-setup.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Initial Setup
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/sharing-configs.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Sharing Configurations
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/using-the-wizard.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Using The Wizard
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/how-torrents-are-built.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    How Torrents Are Built
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/series-support.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Series Support
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    Command Line
+    
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="command-line.html" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    Command Line
+    
+  </span>
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#first-time-setup" class="md-nav__link">
+    <span class="md-ellipsis">
+      First-Time Setup
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#profiles" class="md-nav__link">
+    <span class="md-ellipsis">
+      Profiles
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Profiles">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#checking-a-profile" class="md-nav__link">
+    <span class="md-ellipsis">
+      Checking a Profile
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#uploading" class="md-nav__link">
+    <span class="md-ellipsis">
+      Uploading
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#questions" class="md-nav__link">
+    <span class="md-ellipsis">
+      Questions
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#jobs" class="md-nav__link">
+    <span class="md-ellipsis">
+      Jobs
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#presets" class="md-nav__link">
+    <span class="md-ellipsis">
+      Presets
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#searching" class="md-nav__link">
+    <span class="md-ellipsis">
+      Searching
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#exit-codes" class="md-nav__link">
+    <span class="md-ellipsis">
+      Exit codes
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    TokenReplacer
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            TokenReplacer
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../token-replacer/introduction.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Introduction
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../token-replacer/tokens.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Tokens
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../token-replacer/flat.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Flat Strings
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../token-replacer/multi-line.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Multi-Line Strings
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../token-replacer/prompt-tokens.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Prompt Tokens
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../token-replacer/advanced.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Advanced
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Plugins
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            Plugins
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../plugins/plugin-system.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Plugin System
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../plugins/metadata-transformers.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Metadata Transformers
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#first-time-setup" class="md-nav__link">
+    <span class="md-ellipsis">
+      First-Time Setup
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#profiles" class="md-nav__link">
+    <span class="md-ellipsis">
+      Profiles
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Profiles">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#checking-a-profile" class="md-nav__link">
+    <span class="md-ellipsis">
+      Checking a Profile
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#uploading" class="md-nav__link">
+    <span class="md-ellipsis">
+      Uploading
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#questions" class="md-nav__link">
+    <span class="md-ellipsis">
+      Questions
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#jobs" class="md-nav__link">
+    <span class="md-ellipsis">
+      Jobs
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#presets" class="md-nav__link">
+    <span class="md-ellipsis">
+      Presets
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#searching" class="md-nav__link">
+    <span class="md-ellipsis">
+      Searching
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#exit-codes" class="md-nav__link">
+    <span class="md-ellipsis">
+      Exit codes
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="command-line">Command Line</h1>
+<p>NfoForge can run a release from a path to its trackers without the desktop app:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>nfoforge<span class="w"> </span>upload<span class="w"> </span><span class="s2">&quot;/media/The.Movie.2024.1080p.BluRay.x264-GRP.mkv&quot;</span><span class="w"> </span>--trackers<span class="w"> </span>AITHER
+</span></code></pre></div>
+<p>It runs the same steps the wizard does, reading the same config profiles, and asks the same questions. When nobody is there to answer them, it stops instead of guessing.</p>
+<p>!!! note "Running it" A release ships the command line as its own download, <code>nfoforge-cli</code> (<code>nfoforge-cli.exe</code> on Windows), separate from the desktop app and without Qt, so it runs on a server with no display or graphics libraries. From a source checkout, run <code>uv run nfoforge ...</code> (or <code>uv run python -m nfoforge.cli ...</code>); the command line does not need the <code>gui</code> extra. This page writes <code>nfoforge</code> throughout; with a release, type <code>nfoforge-cli</code> instead.</p>
+<p>!!! warning "Plugins that use Qt" A plugin that imports Qt when it loads cannot load in the command line, which has no Qt; the command line reports it as not loaded and carries on without it. A plugin that adds a wizard page avoids this by <a href="../plugins/plugin-system.html#wizard-pages">naming the page as a string</a>, so its other capabilities still work here.</p>
+<h2 id="first-time-setup">First-Time Setup</h2>
+<p>If you have used the desktop app on this machine, there is nothing to do. Otherwise, run:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>nfoforge<span class="w"> </span>setup
+</span></code></pre></div>
+<p>It does what the desktop app does the first time it starts:</p>
+<ol>
+<li>Sets up the data folder, offering to import the settings of a previous NfoForge installation. The previous installation is copied from, never changed.</li>
+<li>Creates a profile, if there is none.</li>
+<li>Upgrades any profile written by an older NfoForge, keeping a copy of the old one in <code>old_configs</code>.</li>
+<li>Offers to update templates that use tokens which have since been renamed, keeping a copy of each.</li>
+</ol>
+<p>Each step does nothing when there is nothing to do, so it is safe to run again, for example after an upgrade. Other commands tell you when it is needed.</p>
+<p>Without a terminal to ask at, say what to import up front:</p>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--import-from PATH</code></td>
+<td>Import from the previous installation in this folder. On a data folder already set up, it imports the way <strong>Settings</strong> does: nothing is overwritten, and anything that clashes is set aside in <code>migration-conflicts</code></td>
+</tr>
+<tr>
+<td><code>--no-import</code></td>
+<td>Start fresh</td>
+</tr>
+<tr>
+<td><code>--update-templates</code></td>
+<td>Update templates without asking</td>
+</tr>
+</tbody>
+</table>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>nfoforge<span class="w"> </span>--data-dir<span class="w"> </span>/config<span class="w"> </span>setup<span class="w"> </span>--no-import
+</span></code></pre></div>
+<h2 id="profiles">Profiles</h2>
+<p>Every command reads a config profile, read-only, so it is safe to run while the desktop app is open. With one profile it is used automatically; with several, name one:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>nfoforge<span class="w"> </span>--config<span class="w"> </span>main<span class="w"> </span>upload<span class="w"> </span>...
+</span></code></pre></div>
+<p>Set up trackers, templates, image hosts and torrent clients in the desktop app, or by editing the profile's <code>.toml</code> file in <code>config/profiles</code> inside the data folder. <code>nfoforge config path</code> prints where that file and the rest of the data folder are.</p>
+<h3 id="checking-a-profile">Checking a Profile</h3>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>nfoforge<span class="w"> </span>--config<span class="w"> </span>main<span class="w"> </span>config<span class="w"> </span>check
+</span></code></pre></div>
+<p>Reports everything that would stop an upload, all at once, without uploading anything:</p>
+<ul>
+<li><strong>Problems</strong> stop a run: no TMDB API key, a tracker with no NFO template or with uploads disabled, a template that no longer exists, an image host switched on without its credentials, a tool set to a file that is not there, a preset naming a tracker or image host that does not exist.</li>
+<li><strong>Warnings</strong> may be deliberate: a tracker credential left empty, or FFmpeg not being set (so no screenshots can be generated).</li>
+</ul>
+<p>It checks the trackers your presets name and every tracker with a credential filled in. Name others with <code>--trackers A,B</code>. It exits with <code>1</code> when there is a problem, so it can gate a script.</p>
+<p>Profiles are read from the same data folder the desktop app uses. To use another one, give <code>--data-dir</code> before the command, or run a portable release; see <a href="../getting-started/install.html#where-your-settings-are-kept">Where Your Settings Are Kept</a>.</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>nfoforge<span class="w"> </span>--data-dir<span class="w"> </span>/config<span class="w"> </span>--config<span class="w"> </span>main<span class="w"> </span>upload<span class="w"> </span>...
+</span></code></pre></div>
+<h2 id="uploading">Uploading</h2>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>nfoforge<span class="w"> </span>upload<span class="w"> </span>PATH<span class="w"> </span>--trackers<span class="w"> </span>AITHER,HUNO<span class="w"> </span><span class="o">[</span>options<span class="o">]</span>
+</span></code></pre></div>
+<p>Trackers are never inferred from the profile: name them with <code>--trackers</code> or a <a href="#presets">preset</a>.</p>
+<p>Before any work starts, the run checks everything it can without reading the release: that the trackers exist, are enabled and have an NFO template, that <code>--image-host</code> and <code>--screenshot-dir</code> are usable, and that the profile has a TMDB API key. An unattended run also checks that every prompt token the templates ask for has a <code>--token</code>. Every problem found is reported at once, and nothing is renamed, generated or uploaded.</p>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--tmdb-id</code>, <code>--imdb-id</code>, <code>--tvdb-id</code></td>
+<td>Identify the release instead of searching for it</td>
+</tr>
+<tr>
+<td><code>--season</code>, <code>--episode</code></td>
+<td>Numbering for a single file whose name has none</td>
+</tr>
+<tr>
+<td><code>--rename</code> / <code>--no-rename</code></td>
+<td>Rename the files (and confirm the rename), or keep their names</td>
+</tr>
+<tr>
+<td><code>--filename-token TEMPLATE</code></td>
+<td>Rename with this template instead of the profile's</td>
+</tr>
+<tr>
+<td><code>--override NAME=VALUE</code></td>
+<td>Force a file/title token's value (repeatable)</td>
+</tr>
+<tr>
+<td><code>--token NAME=VALUE</code></td>
+<td>Answer an NFO template's prompt token (repeatable)</td>
+</tr>
+<tr>
+<td><code>--screenshots N</code> / <code>--screenshot-dir DIR</code> / <code>--no-screenshots</code></td>
+<td>Generate N, use existing images, or none</td>
+</tr>
+<tr>
+<td><code>--image-host NAME</code></td>
+<td>Upload every tracker's screenshots here, e.g. <code>Pixhost</code> (<code>Disabled</code> for none)</td>
+</tr>
+<tr>
+<td><code>--skip-dupe-check</code></td>
+<td>Upload without checking the trackers for duplicates</td>
+</tr>
+<tr>
+<td><code>--no-inject</code></td>
+<td>Do not hand the torrent to any torrent client</td>
+</tr>
+<tr>
+<td><code>--dry-run</code></td>
+<td>Work everything out and report it; rename, generate and upload nothing</td>
+</tr>
+<tr>
+<td><code>--answer ID=VALUE</code></td>
+<td>Answer a question in advance (see <a href="#questions">Questions</a>)</td>
+</tr>
+</tbody>
+</table>
+<p>Without <code>--image-host</code>, each tracker uses the image host it last used in the desktop app. A tracker with none uploads no screenshots, and the run says so.</p>
+<p>Screenshots are generated as the desktop app would, then chosen automatically: evenly spaced frames, up to the profile's maximum, with each source/encode comparison pair kept together.</p>
+<h2 id="questions">Questions</h2>
+<p>Some calls are left to a person: which search result is the release, whether to rename, whether to upload past a possible duplicate, what goes in a template's prompt tokens. What happens at one depends on <code>--mode</code>:</p>
+<table>
+<thead>
+<tr>
+<th>Mode</th>
+<th>At a question</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>interactive</code></td>
+<td>Asks at the terminal. The default when there is one.</td>
+</tr>
+<tr>
+<td><code>safe</code></td>
+<td>Saves the run as a job waiting for input, and stops.</td>
+</tr>
+<tr>
+<td><code>unattended</code></td>
+<td>Stops, naming the option that answers the question in advance.</td>
+</tr>
+</tbody>
+</table>
+<p>With no terminal -- a pipe, cron, <code>--no-input</code> -- an interactive run is treated as unattended.</p>
+<p>A search result is taken without asking when it is the clear best title-and-year match. It is asked about when no result is a confident match, when two results share a title and year (a remake), or when the title was read only from folder names.</p>
+<p>Answer questions in advance with <code>--answer</code>, using the question's id, which every stop reports:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>nfoforge<span class="w"> </span>upload<span class="w"> </span>PATH<span class="w"> </span>--trackers<span class="w"> </span>AITHER<span class="w"> </span>--mode<span class="w"> </span>unattended<span class="w"> </span>--answer<span class="w"> </span><span class="nv">search_result</span><span class="o">=</span><span class="m">603</span>
+</span></code></pre></div>
+<h2 id="jobs">Jobs</h2>
+<p>A safe-mode run that stops is kept as a job, with everything done so far:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>nfoforge<span class="w"> </span><span class="nb">jobs</span><span class="w"> </span>list<span class="w"> </span>--waiting
+</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>nfoforge<span class="w"> </span><span class="nb">jobs</span><span class="w"> </span>show<span class="w"> </span>4fHb2<span class="w">          </span><span class="c1"># what it is waiting on</span>
+</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>nfoforge<span class="w"> </span><span class="nb">jobs</span><span class="w"> </span>answer<span class="w"> </span>4fHb2<span class="w"> </span><span class="m">603</span><span class="w">    </span><span class="c1"># answer it and carry on</span>
+</span></code></pre></div>
+<p>An unattended run that stops at a question is kept too, as a failed job holding the question, so <code>jobs answer</code> works on it the same way.</p>
+<p>A job is named by its id, or any unambiguous start of it. <code>jobs resume JOB --answer ID=VALUE</code> resumes a waiting or failed job with any answers. The profile is checked again first, since it may have changed since the job was saved; if it can no longer do what is left, the job is left as it was, to resume once the profile is fixed. A finished run is archived like a desktop run, so trackers can be added to it later from the Jobs dialog. So is a run that failed after a tracker had the release: it cannot be resumed from the command line, since that could upload the release twice, but the remaining trackers can be added from the Jobs dialog.</p>
+<h2 id="presets">Presets</h2>
+<p>A preset is a named set of options, kept in the config profile. Add it to the profile's <code>.toml</code> file by hand:</p>
+<div class="language-toml highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="k">[presets.bhd-encode]</span>
+</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="n">trackers</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;BHD&quot;</span><span class="p">]</span>
+</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="n">image_host</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;Pixhost&quot;</span>
+</span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="n">screenshot_count</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">6</span>
+</span><span id="__span-9-5"><a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="n">rename</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+</span><span id="__span-9-6"><a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a><span class="n">mode</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;unattended&quot;</span>
+</span><span id="__span-9-7"><a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a><span class="n">token_overrides</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">edition</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s2">&quot;Directors Cut&quot;</span><span class="w"> </span><span class="p">}</span>
+</span></code></pre></div>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>nfoforge<span class="w"> </span>upload<span class="w"> </span>PATH<span class="w"> </span>--preset<span class="w"> </span>bhd-encode
+</span></code></pre></div>
+<p>An option given on the command line wins over the preset, and the preset wins over the profile. Token tables merge. A preset can set <code>trackers</code>, <code>image_host</code>, <code>screenshot_count</code>, <code>no_screenshots</code>, <code>rename</code>, <code>filename_token</code>, <code>mode</code>, <code>skip_dupe_check</code>, <code>no_inject</code>, <code>token_overrides</code> and <code>prompt_tokens</code>. A misspelled key stops the profile from loading, naming it.</p>
+<h2 id="searching">Searching</h2>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>nfoforge<span class="w"> </span>search<span class="w"> </span>PATH<span class="w"> </span><span class="o">[</span>--query<span class="w"> </span><span class="s2">&quot;The Movie 2024&quot;</span><span class="o">]</span>
+</span></code></pre></div>
+<p>Lists TMDB's results for the release, marking the one an upload would take.</p>
+<h2 id="exit-codes">Exit codes</h2>
+<table>
+<thead>
+<tr>
+<th>Code</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0</td>
+<td>Done</td>
+</tr>
+<tr>
+<td>1</td>
+<td>Failed</td>
+</tr>
+<tr>
+<td>2</td>
+<td>The command line was wrong</td>
+</tr>
+<tr>
+<td>3</td>
+<td>Stopped at a question nobody answered; nothing was published</td>
+</tr>
+<tr>
+<td>4</td>
+<td>Saved as a job waiting for input</td>
+</tr>
+<tr>
+<td>5</td>
+<td>Finished, but at least one tracker did not upload</td>
+</tr>
+</tbody>
+</table>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../getting-started/series-support.html" class="md-footer__link md-footer__link--prev" aria-label="Previous: Series Support">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                Series Support
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../token-replacer/introduction.html" class="md-footer__link md-footer__link--next" aria-label="Next: Introduction">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                Introduction
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      <script id="__config" type="application/json">{"base": "../..", "features": ["content.code.copy", "search.highlight", "navigation.tabs", "navigation.footer"], "search": "../../assets/javascripts/workers/search.d50fe291.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.50899def.min.js"></script>
+      
+    
+  </body>
+</html>
