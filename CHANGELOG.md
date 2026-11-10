@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- "MA" (Movies Anywhere) is now an option for `{streaming_service}` and the Rename pages' Service combo. It is not auto-detected from release names, since "MA" collides with DTS-HD MA.
+
 ### Fixed
 
 - The "Ultimate" edition is now treated as a cut, so it is included in tracker titles that use `{cut}` (LST, Aither, BeyondHD). Previously it appeared in filenames but was dropped from those titles.
