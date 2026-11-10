@@ -145,4 +145,7 @@ def test_movies_anywhere_is_offered_but_not_detected():
     assert "MA" in STREAMING_SERVICE_CHOICES
     assert abbreviate_streaming_service("Movies Anywhere") == "MA"
     # DTS-HD MA must never read as the service.
-    assert detect_streaming_service("Movie.2021.1080p.BluRay.DTS-HD.MA.5.1.x264-GRP.mkv") == ""
+    assert (
+        detect_streaming_service("Movie.2021.1080p.BluRay.DTS-HD.MA.5.1.x264-GRP.mkv")
+        == ""
+    )
