@@ -25,6 +25,7 @@ from nfoforge.backend.rename_encode import RenameEncodeBackEnd
 from nfoforge.backend.rename_encode_series import RenameEncodeSeriesBackEnd
 from nfoforge.backend.rename_files import RenameExecutor, RenamePlan
 from nfoforge.backend.template_selector import TemplateSelectorBackEnd
+from nfoforge.backend.trackers.media_support import disc_refusal
 from nfoforge.backend.upload_retry import TrackerRunOutcome
 from nfoforge.backend.utils.episode_matching import rank_episode_orderings
 from nfoforge.backend.utils.file_utilities import generate_unique_date_name
@@ -33,6 +34,20 @@ from nfoforge.backend.utils.title_inference import MediaTitleInferer, TitleWeigh
 from nfoforge.backend.utils.tmdb_reference import TmdbReference, parse_tmdb_reference
 from nfoforge.backend.utils.working_dir import processing_dir
 from nfoforge.context.processing_context import ProcessingContext
+from nfoforge.core.disc import (
+    Disc,
+    DiscError,
+    DiscType,
+    choose_playlist,
+    describe_disc,
+    describe_playlist,
+    detect_disc,
+    disc_warnings,
+    format_duration,
+    is_disc_image,
+    needs_playlist_choice,
+    preferred_playlist,
+)
 from nfoforge.core.metadata.resolve import (
     ReleaseIds,
     apply_search_result,
@@ -46,6 +61,7 @@ from nfoforge.core.rename.choices import quality_problem, rename_override_tokens
 from nfoforge.core.rename.movie import (
     commit_movie_rename,
     detect_movie_choices,
+    disc_rename_plan,
     movie_name_problems,
     movie_rename_map,
     render_movie_name,
@@ -68,6 +84,7 @@ from nfoforge.core.screenshots.plan import (
 from nfoforge.core.series.match import EpisodeMatcher, parsed_file_summary
 from nfoforge.core.trackers.image_hosts import default_image_hosts
 from nfoforge.core.trackers.validate import (
+    disc_unsupported_trackers,
     missing_nfo_templates,
     multi_season_pack_warning,
     resolve_tracker_names,
@@ -184,31 +201,85 @@ def _plain(text: str) -> str:
 # --------------------------------------------------------------------------
 # input
 # --------------------------------------------------------------------------
-def collect_media_files(input_path: Path) -> list[Path]:
+def collect_media_files(
+    input_path: Path, playlist: str | None = None, *, settle_playlist: bool = True
+) -> list[Path]:
     """The release's video files, in a stable order.
 
     The same filter the input page applies: subtitles, NFOs and samples are
     not episodes. The rename step still moves sidecars with their episode.
+
+    A full disc is one release, not its clips: it yields only the primary clip
+    of its `playlist`. `settle_playlist=False` is for callers that only need a
+    file to look at and must not fail on a disc with several main candidates.
     """
-    if input_path.is_file():
+    return collect_input(input_path, playlist, settle_playlist)[0]
+
+
+def read_disc(
+    input_path: Path, playlist: str | None = None, settle_playlist: bool = True
+) -> Disc | None:
+    """The disc at `input_path`, or None if it is not a disc.
+
+    With `settle_playlist` the disc's playlist is chosen too, which fails for
+    a disc with several main candidates and no `playlist` named.
+    """
+    try:
+        disc = detect_disc(input_path)
+        if disc is not None and (settle_playlist or playlist):
+            choose_playlist(disc, playlist)
+    except DiscError as error:
+        raise WorkflowError(str(error)) from error
+    return disc
+
+
+def collect_input(
+    input_path: Path, playlist: str | None = None, settle_playlist: bool = True
+) -> tuple[list[Path], Disc | None]:
+    """`collect_media_files`, plus the disc those files stand for, if any."""
+    image = is_disc_image(input_path)
+    if input_path.is_file() and not image:
         if not filter_media_files([input_path]):
             raise WorkflowError(f"Not a supported media file: {input_path}")
-        return [input_path]
-    if not input_path.is_dir():
+        return [input_path], None
+    if not input_path.is_dir() and not image:
         raise WorkflowError(f"Input does not exist: {input_path}")
+    # before the file walk: a disc's clips are not a pile of loose videos
+    disc = read_disc(input_path, playlist, settle_playlist)
+    if disc is not None:
+        primary = disc.primary_media_file()
+        if primary is None:
+            raise WorkflowError(f"No playable clip found on {disc.label}")
+        return [primary], disc
     files = sorted(filter_media_files(sorted(input_path.rglob("*"))))
     if not files:
         raise WorkflowError(f"No supported video files found in {input_path}")
-    return files
+    return files, None
 
 
 def read_input(run: Run) -> None:
     media_input = run.context.media_input
     input_path = run.request.path.expanduser()
-    files = collect_media_files(input_path)
+    # an ambiguous disc is asked about below rather than refused here
+    files, disc = collect_input(input_path, run.request.playlist, settle_playlist=False)
+    if disc is not None and not disc.selected:
+        files = [_settle_playlist(run, disc)]
 
     media_input.input_path = input_path
     media_input.file_list[:] = files
+    media_input.discs[:] = [disc] if disc else []
+    if disc:
+        # sized here, from the whole folder: a tracker sizing a disc release
+        # must never fall back to `stat()` of a directory. An image is one file.
+        media_input.input_kind = "file" if disc.is_image else "directory"
+        media_input.content_size = disc.size
+        chosen = disc.selected_playlists()[0]
+        run.log(
+            f"{disc.disc_type.value.upper()} disc {disc.label}: "
+            f"using {chosen.playlist_id} ({format_duration(chosen.duration)})"
+        )
+        for warning in disc_warnings(disc):
+            run.log(warning, LogLevel.WARNING)
     media_input.working_dir = processing_dir(
         run.settings.general.working_dir
     ) / generate_unique_date_name(input_path.stem)
@@ -223,6 +294,59 @@ def read_input(run: Run) -> None:
         details = "\n".join(f"  {path}: {reason}" for path, reason in failures.items())
         raise WorkflowError(f"MediaInfo could not read:\n{details}")
     media_input.file_list_mediainfo.update(parsed)
+    if disc:
+        _describe_disc(run, disc)
+
+
+def _settle_playlist(run: Run, disc: Disc) -> Path:
+    """Select the disc's playlist, asking when it has several main candidates.
+
+    Returns the clip that stands in for the disc once the choice is made.
+    """
+    try:
+        if needs_playlist_choice(disc):
+            preferred = preferred_playlist(disc)
+            answer = run.decide(
+                Decision(
+                    DecisionKind.PLAYLIST,
+                    f"{disc.label} has {len(disc.main_playlists())} possible main "
+                    "playlists. Which one is the release?",
+                    options=tuple(p.playlist_id for p in disc.playlists),
+                    default=preferred.playlist_id if preferred else None,
+                    hint="pass --playlist",
+                    context={
+                        p.playlist_id: describe_playlist(p) for p in disc.playlists
+                    },
+                )
+            )
+            disc.select(str(answer))
+        else:
+            choose_playlist(disc)
+    except DiscError as error:
+        raise WorkflowError(str(error)) from error
+    primary = disc.primary_media_file()
+    if primary is None:
+        raise WorkflowError(f"No playable clip found on {disc.label}")
+    return primary
+
+
+def _describe_disc(run: Run, disc: Disc) -> None:
+    """Scan the disc for the report its trackers will be sent."""
+    working_dir = run.context.media_input.require_working_dir()
+    scanning = disc.disc_type is DiscType.BDMV
+    if scanning:
+        run.log(f"Scanning {disc.selected[0]} with BDInfo")
+    try:
+        describe_disc(
+            disc,
+            run.settings.dependencies.bdinfo,
+            working_dir / "bdinfo",
+            lambda percent: run.progress("Scanning disc", percent=percent),
+        )
+    except DiscError as error:
+        raise WorkflowError(str(error)) from error
+    if scanning:
+        run.log("BDInfo report ready")
 
 
 # --------------------------------------------------------------------------
@@ -468,30 +592,35 @@ def match_episodes(run: Run) -> None:
 # rename
 # --------------------------------------------------------------------------
 def _execute_rename(run: Run, plan: RenamePlan) -> None:
-    moves = {str(src): str(trg) for src, trg in plan.file_targets.items()}
+    # a plan with no files is a disc folder: only the folder is renamed
+    targets = plan.file_targets or plan.directory_targets
+    what = "file(s)" if plan.file_targets else "folder(s)"
+    moves = {str(src): str(trg) for src, trg in targets.items()}
     if not run.request.rename and not run.decide(
         Decision(
             DecisionKind.RENAME,
-            f"Rename {len(moves)} file(s)?",
+            f"Rename {len(moves)} {what}?",
             hint="pass --rename to confirm, or --no-rename to skip renaming",
             context={"files": moves},
         )
     ):
-        run.log("Rename declined; files keep their names", LogLevel.WARNING)
+        run.log(f"Rename declined; {what} keep their names", LogLevel.WARNING)
         return
     if run.request.dry_run:
         for src, trg in moves.items():
             run.log(f"Would rename {src} -> {trg}")
         return
 
-    result = RenameExecutor.execute(plan)
     media_input = run.context.media_input
+    # a mounted image cannot be renamed; it is mounted again just below
+    media_input.unmount_disc_images()
+    result = RenameExecutor.execute(plan)
     if result.path_mapping or result.updated_input_path != media_input.input_path:
         media_input.apply_rename_mapping(result.path_mapping, result.updated_input_path)
     if not result.success:
         raise WorkflowError(result.message or "The rename failed")
     media_input.require_existing_media_paths(include_comparison=True)
-    run.log(f"Renamed {len(moves)} file(s)")
+    run.log(f"Renamed {len(moves)} {what}")
 
 
 def rename(run: Run) -> None:
@@ -538,6 +667,12 @@ def rename(run: Run) -> None:
         commit_series_rename(context, choices, tokens)
         return
 
+    if media_input.is_disc() and not settings.disc.rename_root_folder:
+        # the choices still feed the titles and the NFO; the disc is left alone
+        run.log("Full disc: nothing on it is renamed")
+        commit_movie_rename(context, choices, tokens, media_input.release_name())
+        return
+
     backend = RenameEncodeBackEnd(
         context.flat_filters, context.custom_edition_info, context.custom_cut_names
     )
@@ -549,6 +684,14 @@ def rename(run: Run) -> None:
     problems = movie_name_problems(output_name, media_input.file_list[0])
     if problems:
         raise WorkflowError(problems[0])
+    if media_input.is_disc():
+        # only the root folder or the image: renaming anything inside breaks
+        # the disc
+        plan = disc_rename_plan(media_input, output_name)
+        if plan is not None:
+            _execute_rename(run, plan)
+        commit_movie_rename(context, choices, tokens, output_name)
+        return
     rename_map = movie_rename_map(media_input, output_name)
     if rename_map:
         _execute_rename(run, RenamePlan.build(rename_map, media_input.input_path))
@@ -649,6 +792,16 @@ def choose_trackers(run: Run) -> None:
     if unsupported:
         raise WorkflowError(
             "These trackers do not take series: " + ", ".join(map(str, unsupported))
+        )
+    discs = context.media_input.discs
+    disc_type = discs[0].disc_type if discs else None
+    image = bool(discs) and discs[0].is_image
+    no_discs = disc_unsupported_trackers(trackers, disc_type, image=image)
+    if no_discs and disc_type is not None:
+        raise WorkflowError(
+            "\n".join(
+                disc_refusal(tracker, disc_type, image=image) for tracker in no_discs
+            )
         )
     problems = tracker_profile_problems(
         trackers, by_selection, TemplateSelectorBackEnd()

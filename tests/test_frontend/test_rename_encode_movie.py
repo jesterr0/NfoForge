@@ -319,3 +319,86 @@ def test_the_page_prefills_the_same_tokens_core_produces(
         detect_movie_choices(page.context, page.config.settings)
     )
     assert page.backend.override_tokens == expected
+
+
+def _disc_rename_page(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, folder_name: str
+) -> RenameEncode:
+    from nfoforge.core.disc import choose_playlist, detect_disc
+    from tests.disc_helpers import make_bluray
+
+    root = make_bluray(
+        tmp_path / folder_name, {"00800": [("00001", 0, 7200)]}, {"00001": 9}
+    )
+    disc = detect_disc(root)
+    assert disc is not None
+    choose_playlist(disc)
+    primary = disc.primary_media_file()
+    assert primary is not None
+    mediainfo = MediaInfo(
+        """<Mediainfo><File>
+        <track type="General"><Duration>60000</Duration><File_size>1000</File_size></track>
+        <track type="Video"><Format>AVC</Format><Width>1920</Width><Height>1080</Height><Scan_type>Progressive</Scan_type><Frame_rate>23.976</Frame_rate></track>
+        <track type="Audio"><Format>PCM</Format><Channel_s>2</Channel_s><Channel_s>2 channels</Channel_s><Language>en</Language></track>
+        </File></Mediainfo>"""
+    )
+    page = _make_movie_rename_page(tmp_path / "config", monkeypatch, primary)
+    media_input = page.context.media_input
+    media_input.input_path = root
+    media_input.discs.append(disc)
+    media_input.file_list_mediainfo[primary] = mediainfo
+    page.context.media_search.title = "Men at Work"
+    page.context.media_search.year = 1990
+    return page
+
+
+def test_a_disc_offers_only_what_describes_a_disc(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    page = _disc_rename_page(
+        tmp_path, monkeypatch, "Men at Work 1990 1080p GBR Blu-ray AVC LPCM 2.0-Liber8"
+    )
+
+    page.initializePage()
+
+    for hidden in (
+        page.frame_size_combo,
+        page.localization_combo,
+        page.service_combo,
+        page.remux_checkbox,
+        page.hybrid_checkbox,
+    ):
+        assert hidden.isHidden()
+    assert not page.region_combo.isHidden()
+    assert not page.distributor_entry.isHidden()
+    assert page.region_combo.currentText() == "GBR"
+    assert page.output_group_box.title() == "Blu-ray Disc Name"
+    assert page.media_label.text() == (
+        "Men at Work 1990 1080p GBR Blu-ray AVC LPCM 2.0-Liber8"
+    )
+    assert page.output_entry.text() == (
+        "Men.at.Work.1990.1080p.GBR.Blu-ray.AVC.LPCM.2.0-Liber8"
+    )
+
+    page.region_combo.setCurrentText("EUR")
+    assert ".EUR.Blu-ray." in page.output_entry.text()
+    page.region_combo.setCurrentText("")
+    assert page.output_entry.text() == (
+        "Men.at.Work.1990.1080p.Blu-ray.AVC.LPCM.2.0-Liber8"
+    )
+
+
+def test_a_file_after_a_disc_gets_its_controls_back(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    page = _disc_rename_page(tmp_path, monkeypatch, "Movie 1990 GBR")
+    page.initializePage()
+
+    page.context.media_input.discs.clear()
+    page.initializePage()
+
+    assert not page.frame_size_combo.isHidden()
+    assert not page.remux_checkbox.isHidden()
+    assert page.region_combo.isHidden()
+    assert page.output_group_box.title() == "Output"
+    assert "region" not in page.backend.override_tokens

@@ -13,9 +13,12 @@ from pymediainfo import MediaInfo
 from tenacity import Retrying, retry_if_exception, stop_after_attempt
 from tenacity.wait import wait_exponential
 
+from nfoforge.backend.trackers.unit3d_ids import (
+    unit3d_distributor_id,
+    unit3d_region_id,
+)
 from nfoforge.backend.trackers.utils import (
     API_TRACKER_HEADERS,
-    DISC_TITLE_REGEX,
     TRACKER_HEADERS,
     looks_like_torrent,
 )
@@ -24,6 +27,7 @@ from nfoforge.backend.utils.file_utilities import release_stem
 from nfoforge.backend.utils.http_client import new_http_session
 from nfoforge.backend.utils.media_info_utils import MinimalMediaInfo
 from nfoforge.backend.utils.resolution import VideoResolutionAnalyzer
+from nfoforge.core.disc import DiscRelease
 from nfoforge.enums.media_type import MediaType
 from nfoforge.enums.tracker_selection import TrackerSelection
 from nfoforge.enums.trackers.aither import AitherCategory, AitherResolution, AitherType
@@ -131,6 +135,24 @@ type TypeEnums = (
 _SESSION = new_http_session()
 
 
+# The UNIT3D trackers whose region and distributor ids are the shared seeded
+# table in `unit3d_ids`. UTOPIA and YU_SCENE are not confirmed yet; HUNO and
+# ONLY_ENCODES take no full discs.
+UNIT3D_SHARED_ID_TRACKERS = frozenset(
+    {
+        TrackerSelection.AITHER,
+        TrackerSelection.BLUTOPIA,
+        TrackerSelection.DARK_PEERS,
+        TrackerSelection.FEAR_NO_PEER,
+        TrackerSelection.LST,
+        TrackerSelection.REELFLIX,
+        TrackerSelection.SEEDPOOL,
+        TrackerSelection.SHARE_ISLAND,
+        TrackerSelection.UPLOAD_CX,
+    }
+)
+
+
 class Unit3dBaseUploader:
     """API: https://github.com/HDInnovations/UNIT3D/blob/master/book/src/torrent_api.md"""
 
@@ -148,8 +170,6 @@ class Unit3dBaseUploader:
         "type_enum",
         "timeout",
     )
-
-    # TODO: when adding DISC support we'll need to add region_ids and distributor_ids
 
     def __init__(
         self,
@@ -202,6 +222,7 @@ class Unit3dBaseUploader:
         episode_number: int | None = None,
         episode_number_end: int | None = None,
         season_pack: bool = False,
+        disc: DiscRelease | None = None,
     ) -> bool | None:
         params = {"api_token": self.api_key}
         upload_payload = self._build_upload_payload(
@@ -225,6 +246,7 @@ class Unit3dBaseUploader:
             episode_number=episode_number,
             episode_number_end=episode_number_end,
             season_pack=season_pack,
+            disc=disc,
         )
 
         response_context: Any = None
@@ -451,6 +473,7 @@ class Unit3dBaseUploader:
         episode_number: int | None = None,
         episode_number_end: int | None = None,
         season_pack: bool = False,
+        disc: DiscRelease | None = None,
     ) -> dict[str, Any]:
         upload_payload: dict[str, Any] = {
             # The title arrives composed and normalised, and an empty one
@@ -458,12 +481,8 @@ class Unit3dBaseUploader:
             # whether this tracker's rules permit a fallback.
             "name": tracker_title,
             "description": nfo,
-            "mediainfo": MinimalMediaInfo(self.input_path).get_full_mi_str(
-                cleansed=True
-            ),
-            # 'bdinfo': bd_dump,
             "category_id": self._get_category_id(),
-            "type_id": self._get_type_id(),
+            "type_id": self._get_type_id(disc),
             "resolution_id": self._get_resolution_id(),
             "anonymous": int(anonymous),
             "sd": int(self._standard_definition()),
@@ -476,6 +495,8 @@ class Unit3dBaseUploader:
             "tvdb": 0,
             "mal": 0,
         }
+        upload_payload.update(self._technical_fields(disc, nfo))
+        upload_payload.update(self._disc_ids(disc))
         if personal_release is not None:
             upload_payload["personal_release"] = int(personal_release)
         if imdb_id:
@@ -544,7 +565,64 @@ class Unit3dBaseUploader:
             )
         return str(self.cat_enum(category).value)
 
-    def _get_type_id(self) -> str:
+    def _disc_ids(self, disc: DiscRelease | None) -> dict[str, int]:
+        """`region_id` / `distributor_id`, each only when it resolves.
+
+        Sent only where the shared UNIT3D table is known to be the site's;
+        an unknown value is left out rather than guessed.
+        """
+        if disc is None or self.tracker_name not in UNIT3D_SHARED_ID_TRACKERS:
+            return {}
+        ids: dict[str, int] = {}
+        for field, value, lookup in (
+            ("region_id", disc.region, unit3d_region_id),
+            ("distributor_id", disc.distributor, unit3d_distributor_id),
+        ):
+            if not value:
+                continue
+            found = lookup(value)
+            if found is None:
+                LOG.warning(
+                    LOG.LOG_SOURCE.BE,
+                    f"{self.tracker_name}: no {field} for {value!r}, leaving it unset",
+                )
+            else:
+                ids[field] = found
+        return ids
+
+    def _technical_fields(
+        self, disc: DiscRelease | None, nfo: str | None
+    ) -> dict[str, str]:
+        """The `mediainfo` / `bdinfo` fields, and the description they extend.
+
+        A Blu-ray is described by its BDInfo summary alone. A DVD's MediaInfo
+        is its IFO's; the main VOB's goes in the description, as UNIT3D has
+        one field only.
+        """
+        if disc is None:
+            mediainfo = MinimalMediaInfo(self.input_path).get_full_mi_str(cleansed=True)
+            return {"mediainfo": mediainfo or ""}
+        if disc.is_bluray:
+            if not disc.bdinfo_summary:
+                raise TrackerError(
+                    f"{self.tracker_name} needs the disc's BDInfo report, "
+                    "which was not produced"
+                )
+            return {"mediainfo": "", "bdinfo": disc.bdinfo_summary}
+        fields = {"mediainfo": disc.ifo_mediainfo}
+        if disc.vob_mediainfo:
+            fields["description"] = "\n\n".join(
+                part for part in (nfo, f"[code]{disc.vob_mediainfo}[/code]") if part
+            )
+        return fields
+
+    def _get_type_id(self, disc: DiscRelease | None = None) -> str:
+        if disc is not None:
+            disc_value = getattr(self.type_enum, "DISC", None)
+            if disc_value is None:
+                raise TrackerError(f"{self.tracker_name} does not accept full discs")
+            return str(disc_value.value)
+
         title_lowered = release_stem(self.input_path).lower()
         title_lowered_strip_periods = title_lowered.replace(".", "")
 
@@ -553,12 +631,6 @@ class Unit3dBaseUploader:
             remux_value = getattr(self.type_enum, "REMUX", None)
             if remux_value is not None:
                 return str(remux_value.value)
-
-        # disc
-        if DISC_TITLE_REGEX.search(title_lowered):
-            disc_value = getattr(self.type_enum, "DISC", None)
-            if disc_value is not None:
-                return str(disc_value.value)
 
         # web
         if "web" in title_lowered:

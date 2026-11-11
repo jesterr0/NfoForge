@@ -10,7 +10,6 @@ from niquests.typing import MultiPartFilesAltType
 from pymediainfo import MediaInfo
 
 from nfoforge.backend.trackers.utils import (
-    DISC_TITLE_REGEX,
     TRACKER_HEADERS,
     looks_like_torrent,
 )
@@ -18,6 +17,7 @@ from nfoforge.backend.upload_retry import classify_upload_post_error
 from nfoforge.backend.utils.file_utilities import release_stem
 from nfoforge.backend.utils.http_client import new_http_session
 from nfoforge.backend.utils.media_info_utils import MinimalMediaInfo
+from nfoforge.core.disc import DiscRelease
 from nfoforge.enums.media_type import MediaType
 from nfoforge.enums.tracker_selection import TrackerSelection
 from nfoforge.enums.trackers.hdb import HDBCategory, HDBCodec, HDBMedium
@@ -62,16 +62,18 @@ def hdb_codec_id(mediainfo_obj: MediaInfo) -> int:
     return codec.value
 
 
-def hdb_medium_id(input_path: Path) -> int:
+def hdb_medium_id(input_path: Path, disc: DiscRelease | None = None) -> int:
     """HDBits requires this to resolve or refuses the upload/search."""
+    if disc is not None:
+        if not disc.is_bluray:
+            raise TrackerError("HDBits does not accept a full DVD disc")
+        return HDBMedium.BLURAY.value
+
     title_lowered = release_stem(input_path).lower()
     title_lowered_strip_periods = title_lowered.replace(".", "")
 
     if "remux" in title_lowered:
         return HDBMedium.REMUX.value
-
-    if DISC_TITLE_REGEX.search(title_lowered):
-        return HDBMedium.BLURAY.value
 
     if "web" in title_lowered:
         if re.search(r"\bweb[._ -]?dl\b", title_lowered):
@@ -109,6 +111,7 @@ def hdb_uploader(
     episode_number: int | None = None,
     season_pack: bool = False,
     timeout: int = 60,
+    disc: DiscRelease | None = None,
 ) -> bool | None:
     uploader = HDBUploader(
         username=username,
@@ -130,6 +133,7 @@ def hdb_uploader(
         season_number=season_number,
         episode_number=episode_number,
         season_pack=season_pack,
+        disc=disc,
     )
 
 
@@ -208,6 +212,13 @@ class HDBUploader:
             '<a href="/logout.php">Logout</a>' in response.text
         )
 
+    def _techinfo(self, disc: DiscRelease | None) -> str:
+        # a full disc's BDInfo goes in the description (the NFO's
+        # {bdinfo_summary}); HDBits wants the MediaInfo field left empty
+        if disc is not None:
+            return ""
+        return MinimalMediaInfo(self.input_path).get_full_mi_str(cleansed=True) or ""
+
     def upload(
         self,
         tracker_title: str | None,
@@ -219,6 +230,7 @@ class HDBUploader:
         season_number: int | None = None,
         episode_number: int | None = None,
         season_pack: bool = False,
+        disc: DiscRelease | None = None,
     ) -> bool | None:
         if self.media_type is MediaType.MOVIE and not imdb_id:
             raise TrackerError("HDBits requires an IMDb id for movie uploads")
@@ -233,7 +245,7 @@ class HDBUploader:
 
         category_id = hdb_category_id(self.media_type, genre_names)
         codec_id = hdb_codec_id(self.mediainfo_obj)
-        medium_id = hdb_medium_id(self.input_path)
+        medium_id = hdb_medium_id(self.input_path, disc)
 
         upload_payload: dict[str, Any] = {
             "name": tracker_title,
@@ -242,9 +254,7 @@ class HDBUploader:
             "medium": medium_id,
             "origin": int(internal),
             "descr": nfo,
-            "techinfo": MinimalMediaInfo(self.input_path).get_full_mi_str(
-                cleansed=True
-            ),
+            "techinfo": self._techinfo(disc),
         }
         if imdb_id:
             upload_payload["imdb"] = f"https://www.imdb.com/title/{imdb_id}/"
@@ -416,6 +426,7 @@ class HDBSearch:
         imdb_id: str | None = None,
         tvdb_id: str | None = None,
         genre_names: tuple[str, ...] = (),
+        disc: DiscRelease | None = None,
     ) -> list[TrackerSearchResult]:
         payload: dict[str, Any] = {
             "username": self.username,
@@ -434,7 +445,7 @@ class HDBSearch:
             except TrackerError:
                 pass
         try:
-            payload["medium"] = hdb_medium_id(input_path)
+            payload["medium"] = hdb_medium_id(input_path, disc)
         except TrackerError:
             pass
 

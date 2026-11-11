@@ -3,6 +3,7 @@ from pathlib import Path
 from pymediainfo import MediaInfo
 
 from nfoforge.backend.trackers.unit3d_base import Unit3dBaseSearch, Unit3dBaseUploader
+from nfoforge.core.disc import DiscRelease
 from nfoforge.enums.media_type import MediaType
 from nfoforge.enums.tracker_selection import TrackerSelection
 from nfoforge.enums.trackers.reelflix import (
@@ -32,6 +33,7 @@ def rf_uploader(
     mediainfo_obj: MediaInfo,
     media_search_payload: MediaSearchPayload,
     timeout: int = 60,
+    disc: DiscRelease | None = None,
 ) -> bool | None:
     uploader = ReelFlixUploader(
         media_type=media_type,
@@ -57,6 +59,7 @@ def rf_uploader(
         free=free,
         double_up=double_up,
         sticky=sticky,
+        disc=disc,
     )
     return upload
 

@@ -96,6 +96,7 @@ def _tool_findings(dependencies: Any) -> list[Finding]:
             if dependencies.enable_mkbrr
             else None,
         ),
+        "BDInfo": (dependencies.bdinfo, None),
     }
     for name, (path, needed_for) in tools.items():
         if path is None or not str(path):

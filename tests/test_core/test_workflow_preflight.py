@@ -12,6 +12,7 @@ from nfoforge.core.workflow.request import ReleaseRequest
 from nfoforge.core.workflow.stages import Stage
 from nfoforge.enums.automation import AutomationMode
 from nfoforge.enums.tracker_selection import TrackerSelection
+from tests.disc_helpers import make_bluray
 from tests.repo_paths import build_app_paths
 
 AITHER = TrackerSelection.AITHER
@@ -219,3 +220,23 @@ def test_a_resumed_run_still_checks_the_profile(
 
     assert any("TMDB" in problem for problem in problems)
     assert any("Unknown tracker" in problem for problem in problems)
+
+
+def test_an_ambiguous_disc_refuses_only_a_run_with_nobody_to_ask(
+    config: ConfigManager, tmp_path: Path
+) -> None:
+    config.settings.dependencies.bdinfo = tmp_path / "bdinfo-rs.exe"
+    disc = make_bluray(
+        tmp_path / "Movie.2024.BluRay",
+        {"00800": [("00001", 0, 7200)], "00801": [("00002", 0, 7500)]},
+        {"00001": 5000, "00002": 4900},
+    )
+
+    (problem,) = _problems(config, _request(disc))
+    assert "2 possible main playlists" in problem and "00801" in problem
+
+    assert _problems(config, _request(disc, playlist="801")) == []
+    assert _problems(config, _request(disc), answers={"playlist": "00801"}) == []
+    # these can still be asked, or answered on resume
+    for mode in (AutomationMode.SAFE, AutomationMode.INTERACTIVE):
+        assert _problems(config, _request(disc, mode=mode)) == []

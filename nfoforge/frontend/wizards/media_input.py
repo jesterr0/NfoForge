@@ -5,13 +5,17 @@ from typing import Any
 from pymediainfo import MediaInfo
 from PySide6.QtCore import QItemSelectionModel, QSize, Qt, Signal, Slot
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QFileDialog,
     QGroupBox,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
     QLineEdit,
     QMessageBox,
     QProgressBar,
+    QTableWidget,
+    QTableWidgetItem,
     QToolButton,
     QVBoxLayout,
     QWidget,
@@ -22,6 +26,21 @@ from nfoforge.backend.utils.media_files import filter_media_files
 from nfoforge.backend.utils.working_dir import processing_dir
 from nfoforge.config.config import ConfigManager
 from nfoforge.context.processing_context import ProcessingContext
+from nfoforge.core.disc import (
+    MISSING_BDINFO,
+    MOUNTS,
+    Disc,
+    DiscError,
+    DiscType,
+    describe_disc,
+    detect_disc,
+    disc_size_class,
+    disc_warnings,
+    format_duration,
+    is_disc_image,
+    needs_playlist_choice,
+    preferred_playlist,
+)
 from nfoforge.exceptions import MediaFileNotFoundError
 from nfoforge.frontend.custom_widgets.dnd_factory import DNDLineEdit
 from nfoforge.frontend.custom_widgets.file_tree import FileSystemTreeView
@@ -40,6 +59,7 @@ class MediaInput(BaseWizardPage):
     SCRIPT_PLACEHOLDER_TXT = "Optionally select script file..."
 
     progress_signal = Signal(int, int, int)  # progress, completed files, total files
+    disc_progress_signal = Signal(float)  # BDInfo scan progress, 0 to 100
 
     # used in sandbox
     file_loaded = Signal(str)
@@ -62,6 +82,8 @@ class MediaInput(BaseWizardPage):
         self.worker: GeneralWorker | None = None
         self._loading_completed = False
         self._progress_connected = False
+        # the disc the opened folder holds, when it is one
+        self._disc: Disc | None = None
 
         self.media_input_entry: QLineEdit = DNDLineEdit(
             parent=self, readOnly=True, placeholderText=self.MEDIA_PLACEHOLDER_TXT
@@ -168,13 +190,39 @@ class MediaInput(BaseWizardPage):
         self.file_tree = FileSystemTreeView(parent=self)
         self.file_tree.hide()
 
+        # shown in place of the file tree for a full disc: the release is the
+        # whole folder, and the only choice is which playlist describes it
+        self.disc_widget = QGroupBox(self)
+        self.disc_widget.hide()
+        self.disc_note = QLabel(self.disc_widget, wordWrap=True)
+        self.disc_table = QTableWidget(0, 4, self.disc_widget)
+        self.disc_table.setHorizontalHeaderLabels(
+            ("Playlist", "Duration", "Size", "Main")
+        )
+        self.disc_table.setSelectionBehavior(
+            QAbstractItemView.SelectionBehavior.SelectRows
+        )
+        self.disc_table.setSelectionMode(
+            QAbstractItemView.SelectionMode.SingleSelection
+        )
+        self.disc_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.disc_table.verticalHeader().setVisible(False)
+        self.disc_table.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeMode.Stretch
+        )
+        disc_layout = QVBoxLayout(self.disc_widget)
+        disc_layout.addWidget(self.disc_note)
+        disc_layout.addWidget(self.disc_table)
+
         self.progress_bar = QProgressBar(self, minimum=0, maximum=100, textVisible=True)
         self.progress_bar.hide()
+        self.disc_progress_signal.connect(self._handle_disc_progress)
 
         self.main_layout = QVBoxLayout(self)
         self.main_layout.addLayout(button_layout)
         self.main_layout.addWidget(self.comparison_widget)
         self.main_layout.addWidget(self.file_tree, stretch=1)
+        self.main_layout.addWidget(self.disc_widget, stretch=1)
         self.main_layout.addWidget(
             self.progress_bar, alignment=Qt.AlignmentFlag.AlignBottom
         )
@@ -237,11 +285,26 @@ class MediaInput(BaseWizardPage):
 
     def update_payload_data(self) -> None:
         entry_data = Path(self.media_input_entry.text())
-        self.context.media_input.input_path = entry_data
+        media_input = self.context.media_input
+        media_input.input_path = entry_data
+        media_input.discs.clear()
         selected_files: list[Path]
 
+        # a full disc is one release, not the clips the tree happens to list
+        if (entry_data.is_dir() or is_disc_image(entry_data)) and (
+            disc := self._settled_disc()
+        ):
+            primary = disc.primary_media_file()
+            if primary is None:
+                raise MediaFileNotFoundError(f"No playable clip found on {disc.label}")
+            selected_files = [primary]
+            media_input.discs.append(disc)
+            # an image is uploaded as the one file it is
+            media_input.input_kind = "file" if disc.is_image else "directory"
+            media_input.content_size = disc.size
+
         # handle single file
-        if entry_data.is_file():
+        elif entry_data.is_file():
             selected_files = [entry_data]
 
         # handle directory
@@ -275,6 +338,88 @@ class MediaInput(BaseWizardPage):
 
         self._run_worker()
 
+    def _settled_disc(self) -> Disc | None:
+        """The opened disc with the picked playlist selected, or None if not a disc."""
+        disc = self._disc
+        if disc is None:
+            return None
+        row = self.disc_table.currentRow()
+        item = self.disc_table.item(row, 0) if row >= 0 else None
+        try:
+            if item is None:
+                raise DiscError(f"Select a playlist on {disc.label}")
+            disc.select(item.text())
+            if disc.disc_type is DiscType.BDMV and not (
+                self.config.settings.dependencies.bdinfo
+            ):
+                raise DiscError(MISSING_BDINFO)
+        except DiscError as error:
+            QMessageBox.warning(self, "Disc Input", str(error))
+            raise MediaFileNotFoundError(str(error).splitlines()[0]) from error
+        return disc
+
+    def _show_disc(self, disc: Disc) -> None:
+        """Offer the disc's playlists, the likely main feature pre-selected."""
+        kind = "Blu-ray" if disc.disc_type is DiscType.BDMV else "DVD"
+        self.disc_widget.setTitle(
+            f"{kind} {'image' if disc.is_image else 'disc'}: {disc.label} "
+            f"({disc_size_class(disc.disc_type, disc.size)}, "
+            f"{disc.size / 1024**3:.2f} GiB)"
+        )
+        unit = "playlist" if disc.disc_type is DiscType.BDMV else "title set"
+        note = f"The whole disc is uploaded. Pick the {unit} that is the main feature."
+        if needs_playlist_choice(disc):
+            note += (
+                f" This disc has {len(disc.main_playlists())} possible main "
+                f"{unit}s: check that the right one is selected."
+            )
+        for warning in disc_warnings(disc):
+            note += f"\nWarning: {warning}"
+        self.disc_note.setText(note)
+
+        # like-sized title sets on a DVD are episodes: the first stands for them
+        mains = disc.main_playlists()
+        preferred = (
+            mains[0] if mains and disc.disc_type is DiscType.DVD else None
+        ) or preferred_playlist(disc)
+        self.disc_table.clearSelection()
+        self.disc_table.setRowCount(len(disc.playlists))
+        for row, playlist in enumerate(disc.playlists):
+            for column, text in enumerate(
+                (
+                    playlist.playlist_id,
+                    format_duration(playlist.duration),
+                    f"{playlist.size / 1024**3:.2f} GiB",
+                    "Yes" if playlist.is_main else "",
+                )
+            ):
+                self.disc_table.setItem(row, column, QTableWidgetItem(text))
+            if playlist is preferred:
+                self.disc_table.selectRow(row)
+        self.disc_widget.show()
+
+    def _load_input(
+        self, files: list[Path], disc: Disc | None, report_dir: Path
+    ) -> tuple[dict[Path, MediaInfo], dict[Path, str], str | None]:
+        """Worker job: MediaInfo for `files`, then the disc reports.
+
+        Returns the MediaInfo, the files it could not read, and the reason the
+        disc could not be described, if it could not.
+        """
+        parsed, failures = self.backend.get_media_info_files(files=files)
+        if disc is None or failures:
+            return parsed, failures, None
+        try:
+            describe_disc(
+                disc,
+                self.config.settings.dependencies.bdinfo,
+                report_dir,
+                self.disc_progress_signal.emit,
+            )
+        except DiscError as error:
+            return parsed, failures, str(error)
+        return parsed, failures, None
+
     def _run_worker(self) -> None:
         input_path = self.context.media_input.input_path
         file_list = self.context.media_input.file_list
@@ -299,8 +444,13 @@ class MediaInput(BaseWizardPage):
             if comparison_pair.media not in files_to_process:
                 files_to_process.append(comparison_pair.media)
 
+        discs = self.context.media_input.discs
         self.worker = GeneralWorker(
-            func=self.backend.get_media_info_files, files=files_to_process, parent=self
+            func=self._load_input,
+            parent=self,
+            files=files_to_process,
+            disc=discs[0] if discs else None,
+            report_dir=self.context.media_input.require_working_dir() / "bdinfo",
         )
         self.worker.job_failed.connect(self._worker_failed)
         self.worker.job_finished.connect(self._worker_finished)
@@ -315,9 +465,13 @@ class MediaInput(BaseWizardPage):
 
     @Slot(object)
     def _worker_finished(
-        self, result: tuple[dict[Path, MediaInfo], dict[Path, str]]
+        self, result: tuple[dict[Path, MediaInfo], dict[Path, str], str | None]
     ) -> None:
-        files_mi_data, failures = result
+        files_mi_data, failures, disc_error = result
+        if disc_error:
+            self._handle_worker_failure(disc_error, "Disc Error")
+            return
+
         if failures:
             failure_display = "\n".join(
                 f"- {path}: {reason}" for path, reason in sorted(failures.items())
@@ -350,14 +504,16 @@ class MediaInput(BaseWizardPage):
     def _worker_failed(self, msg: str) -> None:
         self._handle_worker_failure(msg)
 
-    def _handle_worker_failure(self, message: str) -> None:
-        """Restore the page after a MediaInfo worker failure."""
+    def _handle_worker_failure(
+        self, message: str, title: str = "MediaInfo Error"
+    ) -> None:
+        """Restore the page after the input worker failed."""
 
         self._loading_completed = False
         self._disconnect_progress_signal()
         GSigs().main_window_set_disabled.emit(False)
         GSigs().main_window_clear_status_tip.emit()
-        QMessageBox.critical(self, "MediaInfo Error", message)
+        QMessageBox.critical(self, title, message)
 
     def _disconnect_progress_signal(self) -> None:
         if not self._progress_connected:
@@ -399,11 +555,36 @@ class MediaInput(BaseWizardPage):
 
         # update entry data
         path = Path(data[0]) if isinstance(data, Sequence) else data
+        if self._disc is not None and self._disc.image is not None:
+            # opened but never used: no release holds it for the reset below
+            MOUNTS.release(self._disc.image)
+        self._disc = None
+        self.disc_widget.hide()
+        # before detection: a reset unmounts the previous release's image,
+        # which may be this same one
         self.context.media_input.reset(path)
-        self.comparison_toggle_btn.setDisabled(False)
-        self.file_tree.build_tree(path)
-        self.file_tree.expandAll()
-        self.file_tree.show()
+        try:
+            disc = detect_disc(path) if path.is_dir() or is_disc_image(path) else None
+        except DiscError as error:
+            # disc-shaped but unusable: never fall back to its loose clips
+            QMessageBox.warning(self, "Disc Input", str(error))
+            self.context.media_input.reset()
+            self.media_input_entry.clear()
+            self.file_tree.hide()
+            self.comparison_toggle_btn.setDisabled(True)
+            return
+
+        if disc is not None:
+            self._disc = disc
+            self.file_tree.hide()
+            # comparison images need a source to match; a disc is the source
+            self.comparison_toggle_btn.setDisabled(True)
+            self._show_disc(disc)
+        else:
+            self.comparison_toggle_btn.setDisabled(False)
+            self.file_tree.build_tree(path)
+            self.file_tree.expandAll()
+            self.file_tree.show()
         file_path = str(path)
         self.media_input_entry.setText(file_path)
         self.file_loaded.emit(file_path)
@@ -423,6 +604,13 @@ class MediaInput(BaseWizardPage):
             self.progress_bar.setFormat(
                 f"Parsed {completed} of {total} file(s) - {int(progress)}%"
             )
+
+    @Slot(float)
+    def _handle_disc_progress(self, percent: float) -> None:
+        if not self.progress_bar.isVisible():
+            self.progress_bar.show()
+        self.progress_bar.setValue(int(percent))
+        self.progress_bar.setFormat(f"Scanning disc with BDInfo - {int(percent)}%")
 
     @Slot(list)
     def _dropped_comparison_source(self, val: list[Path]) -> None:

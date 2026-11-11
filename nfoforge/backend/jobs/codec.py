@@ -46,6 +46,7 @@ from nfoforge.backend.utils.media_info_utils import (
     cache_mediainfo_obj,
 )
 from nfoforge.context.processing_context import ProcessingContext
+from nfoforge.core.disc import disc_from_dict, disc_to_dict
 from nfoforge.enums.image_host import ImageHost, ImageSource
 from nfoforge.enums.media_type import MediaType
 from nfoforge.enums.series import EpisodeFormat
@@ -394,6 +395,8 @@ def _media_input_to_dict(
         "content_size": payload.content_size,
         **mediainfo_section,
         "comparison_pair": _comparison_pair_to_dict(payload.comparison_pair),
+        # with their reports: a resumed job may no longer have the disc to scan
+        "discs": [disc_to_dict(disc) for disc in payload.discs],
         "series_episode_map": series_episode_map,
         "series_episode_format": _enum_name(payload.series_episode_format),
     }
@@ -493,6 +496,14 @@ def _media_input_from_dict(
     payload.comparison_pair = _comparison_pair_from_dict(
         document.get("comparison_pair")
     )
+
+    discs = document.get("discs")
+    if isinstance(discs, list):
+        restored = [disc_from_dict(entry) for entry in discs]
+        if any(disc is None for disc in restored):
+            # half a disc release would be uploaded as loose clips
+            raise JobCodecError("This job's disc details could not be read")
+        payload.discs.extend(disc for disc in restored if disc is not None)
 
     series_episode_map = document.get("series_episode_map")
     if isinstance(series_episode_map, dict):

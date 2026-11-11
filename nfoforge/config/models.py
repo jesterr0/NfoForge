@@ -123,6 +123,8 @@ class DependencySettings:
     frame_forge: Path | None
     mkbrr: Path | None
     enable_mkbrr: bool
+    # bdinfo-rs: scans a Blu-ray's playlist for the report trackers require
+    bdinfo: Path | None = None
 
 
 @dataclass(slots=True)
@@ -216,6 +218,32 @@ class MovieSettings:
     claims: ClaimSwitches
     filename_token: str
     title_token: str
+
+
+# A full disc is named after the medium: "Title Year 1080p GBR Blu-ray AVC
+# LPCM 2.0-Group", "Title Year PAL DVD9 AC3 2.0-Group".
+DEFAULT_BLURAY_NAME_TEMPLATE = (
+    "{title_clean} {release_year} {edition} {re_release} {resolution} {region} "
+    "{source} {video_dynamic_range} {video_codec} {audio_codec} {audio_channel_s}"
+    "{:opt=-:release_group}"
+)
+DEFAULT_DVD_NAME_TEMPLATE = (
+    "{title_clean} {release_year} {edition} {re_release} {region} {dvd_standard} "
+    "{disc_size} {audio_codec} {audio_channel_s}{:opt=-:release_group}"
+)
+
+
+@dataclass(slots=True)
+class DiscSettings:
+    """Full-disc (Blu-ray / DVD folder) releases."""
+
+    # Rename the disc's root folder to the generated release name. Off by
+    # default; nothing inside a disc is ever renamed either way.
+    rename_root_folder: bool = False
+    # A disc is named after the medium, not a file: region, PAL/NTSC, size
+    # class, and an untouched codec
+    bluray_name_token: str = DEFAULT_BLURAY_NAME_TEMPLATE
+    dvd_name_token: str = DEFAULT_DVD_NAME_TEMPLATE
 
 
 @dataclass(slots=True)
@@ -485,3 +513,4 @@ class AppConfig:
     widgets: WidgetSettings
     presets: dict[str, RunPreset] = field(default_factory=dict)
     """Named answers for headless runs; see `nfoforge.config.presets`."""
+    disc: DiscSettings = field(default_factory=DiscSettings)

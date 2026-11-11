@@ -87,6 +87,8 @@ from nfoforge.backend.trackers.health import ensure_tracker_health
 from nfoforge.backend.trackers.media_support import (
     UNIT3D_TRACKERS,
     UNSUPPORTED_SERIES_TRACKERS,
+    disc_refusal,
+    supports_disc,
 )
 from nfoforge.backend.trackers.passthepopcorn import TwoFactorPrompt
 from nfoforge.backend.trackers.title_render import normalise_title, render_tracker_title
@@ -120,6 +122,7 @@ from nfoforge.backend.utils.tvdb_episodes import season_episode_numbers
 from nfoforge.config.config import ConfigManager
 from nfoforge.config.tv_tokens import get_tvr_title_token
 from nfoforge.context.processing_context import ProcessingContext
+from nfoforge.core.disc import DiscRelease, detect_region, disc_release
 from nfoforge.core.signals import ErrorSignal
 from nfoforge.enums.image_host import ImageHost, ImageSource
 from nfoforge.enums.media_type import MediaType
@@ -197,6 +200,30 @@ def _expected_image_count(context: ProcessingContext) -> int | None:
         if source:
             return len(source)
     return None
+
+
+def upload_disc_release(context: ProcessingContext) -> DiscRelease | None:
+    """What trackers are told about the disc, or `None` for loose files.
+
+    Region and distributor are the user's override when one is set -- a
+    blank one included, which means "none" -- else the detected region.
+    """
+    media_input = context.media_input
+    if not media_input.discs:
+        return None
+    disc = media_input.discs[0]
+    primary = media_input.primary_media_file()
+    mediainfo = media_input.get_mediainfo(primary) if primary else None
+    overrides = context.shared_data.dynamic_data.get("override_tokens") or {}
+    region = overrides.get("region")
+    if region is None:
+        region = detect_region(disc, media_input.release_name())
+    return disc_release(
+        disc,
+        mediainfo,
+        region=str(region),
+        distributor=str(overrides.get("distributor") or ""),
+    )
 
 
 class ProcessBackEnd:
@@ -293,8 +320,6 @@ class ProcessBackEnd:
     ) -> dict[
         TrackerSelection, tuple[TrackerSelection, bool, list[TrackerSearchResult] | str]
     ]:
-        # TODO: test this when we add disc & tv support, as this will likely require different
-        # checks to accurately obtain dupes
         tasks = []
         release_info = build_series_release_info(media_input_payload)
         for tracker_sel in processing_queue:
@@ -307,6 +332,10 @@ class ProcessBackEnd:
                 continue
             file_input = media_input_payload.require_first_file()
             search_input = release_info.search_path or file_input
+            if media_input_payload.is_disc():
+                # a disc's clips are named alike on every disc ("00004.m2ts"),
+                # so it is searched for by its folder
+                search_input = media_input_payload.release_name_path() or search_input
             if tracker_sel is TrackerSelection.TORRENT_LEECH:
                 tasks.append(
                     self._dupe_tl(tracker_sel=tracker_sel, file_input=search_input)
@@ -730,6 +759,9 @@ class ProcessBackEnd:
                 imdb_id=media_search_payload.imdb_id,
                 tvdb_id=media_search_payload.tvdb_id,
                 genre_names=media_search_payload.genre_names,
+                disc=disc_release(media_input_payload.discs[0], mediainfo_obj)
+                if media_input_payload.discs
+                else None,
             )
             if hdb_search:
                 return tracker_sel, True, hdb_search
@@ -2709,12 +2741,19 @@ class ProcessBackEnd:
         input_path = first_file
         if media_type is not MediaType.SERIES:
             input_path = context.media_input.require_input_path()
+        disc = upload_disc_release(context)
+        # backstop for a run that skipped tracker selection (a restored job)
+        if disc is not None and not supports_disc(
+            tracker, disc.disc_type, image=disc.image
+        ):
+            raise TrackerError(disc_refusal(tracker, disc.disc_type, image=disc.image))
 
         if tracker is TrackerSelection.TORRENT_LEECH:
             announce_key = self.config.settings.trackers.torrent_leech.torrent_passkey
             if not announce_key:
                 raise TrackerError("Missing announce key for TorrentLeech")
             return tl_upload(
+                disc=disc,
                 announce_key=announce_key,
                 nfo=nfo,
                 tracker_title=tracker_title,
@@ -2744,6 +2783,7 @@ class ProcessBackEnd:
             localization = override_tokens.get("localization")
 
             return bhd_uploader(
+                disc=disc,
                 api_key=bhd_payload.api_key,
                 torrent_file=torrent_file,
                 input_path=input_path,
@@ -2763,7 +2803,6 @@ class ProcessBackEnd:
                 localization=localization,
                 add_localization_to_custom_edition=bhd_payload.add_localization_to_custom_edition,
                 stream_optimized=bhd_payload.stream_optimized,
-                content_size=context.media_input.content_size,
             )
         elif tracker is TrackerSelection.PASS_THE_POPCORN:
             ptp_payload = self.config.settings.trackers.pass_the_popcorn
@@ -2778,6 +2817,7 @@ class ProcessBackEnd:
                     "PassThePopcorn requires API user, API key, username, password, and announce URL"
                 )
             return ptp_uploader(
+                disc=disc,
                 api_user=ptp_payload.api_user,
                 api_key=ptp_payload.api_key,
                 username=ptp_payload.username,
@@ -2791,7 +2831,6 @@ class ProcessBackEnd:
                 cookie_dir=self.config.paths.tracker_cookies,
                 totp=ptp_payload.totp,
                 timeout=self.config.settings.general.timeout,
-                content_size=context.media_input.content_size,
                 prompt_2fa=self.prompt_2fa,
             )
         # Unit3d trackers
@@ -2800,6 +2839,7 @@ class ProcessBackEnd:
             if not rf_payload.api_key:
                 raise TrackerError("Missing API key for ReelFliX")
             return rf_uploader(
+                disc=disc,
                 media_type=media_type,
                 api_key=rf_payload.api_key,
                 torrent_file=torrent_file,
@@ -2824,6 +2864,7 @@ class ProcessBackEnd:
             if not aither_payload.api_key:
                 raise TrackerError("Missing API key for Aither")
             return aither_uploader(
+                disc=disc,
                 media_type=media_type,
                 api_key=aither_payload.api_key,
                 torrent_file=torrent_file,
@@ -2851,6 +2892,7 @@ class ProcessBackEnd:
             if not huno_payload.api_key:
                 raise TrackerError("Missing API key for HUNO")
             return huno_uploader(
+                disc=disc,
                 media_type=media_type,
                 api_key=huno_payload.api_key,
                 torrent_file=torrent_file,
@@ -2871,6 +2913,7 @@ class ProcessBackEnd:
             if not lst_payload.api_key:
                 raise TrackerError("Missing API key for LST")
             return lst_uploader(
+                disc=disc,
                 media_type=media_type,
                 api_key=lst_payload.api_key,
                 torrent_file=torrent_file,
@@ -2898,6 +2941,7 @@ class ProcessBackEnd:
             if not dp_payload.api_key:
                 raise TrackerError("Missing API key for DarkPeers")
             return dp_uploader(
+                disc=disc,
                 media_type=media_type,
                 api_key=dp_payload.api_key,
                 torrent_file=torrent_file,
@@ -2919,6 +2963,7 @@ class ProcessBackEnd:
             if not shri_payload.api_key:
                 raise TrackerError("Missing API key for ShareIsland")
             return shri_uploader(
+                disc=disc,
                 media_type=media_type,
                 api_key=shri_payload.api_key,
                 torrent_file=torrent_file,
@@ -2941,6 +2986,7 @@ class ProcessBackEnd:
             if not ulcx_payload.api_key:
                 raise TrackerError("Missing API key for UploadCX")
             return ulcx_uploader(
+                disc=disc,
                 media_type=media_type,
                 api_key=ulcx_payload.api_key,
                 torrent_file=torrent_file,
@@ -2962,6 +3008,7 @@ class ProcessBackEnd:
             if not oe_payload.api_key:
                 raise TrackerError("Missing API key for OnlyEncodes")
             return oe_uploader(
+                disc=disc,
                 media_type=media_type,
                 api_key=oe_payload.api_key,
                 torrent_file=torrent_file,
@@ -2988,6 +3035,7 @@ class ProcessBackEnd:
                     "session cookie in HDBits tracker settings."
                 )
             return hdb_uploader(
+                disc=disc,
                 username=hdb_payload.username,
                 passkey=hdb_payload.passkey,
                 session_cookie=hdb_payload.session_cookie,
@@ -3011,6 +3059,7 @@ class ProcessBackEnd:
             if not blutopia_payload.api_key:
                 raise TrackerError("Missing API key for Blutopia")
             return blu_uploader(
+                disc=disc,
                 media_type=media_type,
                 api_key=blutopia_payload.api_key,
                 torrent_file=torrent_file,
@@ -3033,6 +3082,7 @@ class ProcessBackEnd:
             if not seedpool_payload.api_key:
                 raise TrackerError("Missing API key for SeedPool")
             return sp_uploader(
+                disc=disc,
                 media_type=media_type,
                 api_key=seedpool_payload.api_key,
                 torrent_file=torrent_file,
@@ -3054,6 +3104,7 @@ class ProcessBackEnd:
             if not utp_payload.api_key:
                 raise TrackerError("Missing API key for UTP")
             return utp_uploader(
+                disc=disc,
                 media_type=media_type,
                 api_key=utp_payload.api_key,
                 torrent_file=torrent_file,
@@ -3075,6 +3126,7 @@ class ProcessBackEnd:
             if not yuscene_payload.api_key:
                 raise TrackerError("Missing API key for Yu-scene")
             return yus_uploader(
+                disc=disc,
                 media_type=media_type,
                 api_key=yuscene_payload.api_key,
                 torrent_file=torrent_file,
@@ -3096,6 +3148,7 @@ class ProcessBackEnd:
             if not fearnopeer_payload.api_key:
                 raise TrackerError("Missing API key for FearNoPeer")
             return fnp_uploader(
+                disc=disc,
                 media_type=media_type,
                 api_key=fearnopeer_payload.api_key,
                 torrent_file=torrent_file,
@@ -3294,7 +3347,7 @@ class ProcessBackEnd:
 
         return ReleaseProperties(
             is_remux=bool(overrides.get("remux")),
-            is_disc=False,
+            is_disc=context.media_input.is_disc(),
             is_dvd="dvd" in source,
             is_optical_source="dvd" in source or "bluray" in source,
             resolution=resolution,

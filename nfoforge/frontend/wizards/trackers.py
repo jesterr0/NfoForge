@@ -3,11 +3,10 @@ from typing import TYPE_CHECKING
 
 from PySide6.QtWidgets import QMessageBox, QVBoxLayout
 
-from nfoforge.backend.trackers.media_support import UNSUPPORTED_SERIES_TRACKERS
+from nfoforge.backend.trackers.media_support import unsupported_trackers
 from nfoforge.config.config import ConfigManager
 from nfoforge.context.processing_context import ProcessingContext
 from nfoforge.core.trackers.validate import multi_season_pack_warning
-from nfoforge.enums.media_type import MediaType
 from nfoforge.enums.tracker_selection import TrackerSelection
 from nfoforge.frontend.custom_widgets.tracker_settings import TrackerSettingsWidget
 from nfoforge.frontend.global_signals import GSigs
@@ -45,14 +44,16 @@ class TrackersPage(BaseWizardPage):
         return self.context.loaded_job_path is not None
 
     def initializePage(self) -> None:
-        unsupported_trackers = (
-            UNSUPPORTED_SERIES_TRACKERS
-            if self.context.media_input.media_type is MediaType.SERIES
-            else None
+        media_input = self.context.media_input
+        disc = media_input.discs[0] if media_input.discs else None
+        unsupported = unsupported_trackers(
+            media_input.media_type,
+            disc.disc_type if disc else None,
+            image=bool(disc and disc.is_image),
         )
         resuming = self._resuming_job()
         self.tracker_selection.load_from_config(
-            unsupported_trackers=unsupported_trackers,
+            unsupported_trackers=unsupported,
             locked_trackers=(
                 self.context.loaded_uploaded_trackers
                 | self.context.loaded_uncertain_trackers

@@ -38,6 +38,7 @@ from nfoforge.exceptions import ConfigSchemaError
 from nfoforge.frontend.custom_widgets.job_queue_dialog import JobQueueDialog
 from nfoforge.frontend.custom_widgets.load_job_dialog import LoadJobDialog
 from nfoforge.frontend.global_signals import GSigs
+from nfoforge.frontend.utils.wizard_back_arrow import hide_stray_back_arrow
 from nfoforge.frontend.wizards.images import ImagesPage
 from nfoforge.frontend.wizards.media_input import MediaInput
 from nfoforge.frontend.wizards.media_search import MediaSearch
@@ -90,6 +91,7 @@ class MainWindowWizard(QWizard):
         self.setObjectName("MainWizard")
         self.setWizardStyle(QWizard.WizardStyle.ModernStyle)
         self.setOption(QWizard.WizardOption.NoCancelButton)
+        hide_stray_back_arrow(self)
 
         self.config = config
         self.main_window = parent

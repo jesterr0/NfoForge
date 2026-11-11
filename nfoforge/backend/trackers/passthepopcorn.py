@@ -15,11 +15,12 @@ import pyotp
 from nfoforge.backend.image_host_uploading.base_image_host import ImageUploadRequest
 from nfoforge.backend.image_host_uploading.img_box import ImageBoxUploader
 from nfoforge.backend.trackers.cookie_storage import load_cookies, save_cookies
-from nfoforge.backend.trackers.utils import DISC_TITLE_REGEX, TRACKER_HEADERS
+from nfoforge.backend.trackers.utils import TRACKER_HEADERS
 from nfoforge.backend.upload_retry import classify_upload_post_error
 from nfoforge.backend.utils.file_utilities import release_stem
 from nfoforge.backend.utils.http_client import new_http_session
 from nfoforge.backend.utils.resolution import VideoResolutionAnalyzer
+from nfoforge.core.disc import DiscRelease, DiscSize
 from nfoforge.enums.media_type import MediaType
 from nfoforge.enums.tracker_selection import TrackerSelection
 from nfoforge.enums.trackers.passthepopcorn import (
@@ -55,8 +56,8 @@ def ptp_uploader(
     cookie_dir: Path,
     totp: str | None = None,
     timeout: int = 60,
-    content_size: int | None = None,
     prompt_2fa: TwoFactorPrompt | None = None,
+    disc: DiscRelease | None = None,
 ) -> bool | None:
     """Upload to PassThePopcorn.
 
@@ -100,8 +101,18 @@ def ptp_uploader(
         input_path=input_path,
         nfo=nfo,
         group_id=group_id,
-        content_size=content_size,
+        disc=disc,
     )
+
+
+_PTP_DISC_CODECS = {
+    DiscSize.BD25: PTPCodec.BD25,
+    DiscSize.BD50: PTPCodec.BD50,
+    DiscSize.BD66: PTPCodec.BD66,
+    DiscSize.BD100: PTPCodec.BD100,
+    DiscSize.DVD5: PTPCodec.DVD5,
+    DiscSize.DVD9: PTPCodec.DVD9,
+}
 
 
 class PTPUploader:
@@ -294,7 +305,7 @@ class PTPUploader:
         input_path: Path,
         nfo: str,
         group_id: str | None = None,
-        content_size: int | None = None,
+        disc: DiscRelease | None = None,
     ) -> bool | None:
         if not media_search_payload.tmdb_data:
             raise TrackerError("Missing TMDB data")
@@ -304,12 +315,12 @@ class PTPUploader:
             "remaster_title": self._remaster_title(input_path),
             "type": self._get_type(media_search_payload),
             "codec": "Other",  # sending the codec as Other to fill with other_codec
-            "other_codec": self._get_codec(input_path, content_size),
+            "other_codec": self._get_codec(input_path, disc),
             "resolution": self._resolution(),
             "container": "Other",  # sending container as Other to fill with other_container
-            "other_container": self._get_container(input_path),
+            "other_container": self._get_container(input_path, disc),
             "source": "Other",  # sending the source as Other to fill with other_source
-            "other_source": self._source(input_path),
+            "other_source": self._source(input_path, disc),
             "release_desc": nfo,
             "nfo_text": "",  # appears to do nothing at all
             "subtitles[]": self._subtitles(),
@@ -588,35 +599,13 @@ class PTPUploader:
         ptp_type = PTPType.SHORT_FILM if 0 < duration < 45 else PTPType.FEATURE_FILM
         return str(ptp_type.value)
 
-    def _get_codec(self, input_path: Path, content_size: int | None = None) -> str:
-        title_lowered = release_stem(input_path).lower()
-        title_lowered_strip_periods = title_lowered.replace(".", "")
-
-        # disc
-        if DISC_TITLE_REGEX.search(title_lowered):
-            input_file_size = (
-                content_size if content_size is not None else input_path.stat().st_size
-            )
-            if input_file_size <= 26_843_545_600:
-                return str(PTPCodec.BD25.value)
-            elif input_file_size <= 53_687_091_200:
-                if "1080i" in title_lowered or "1080p" in title_lowered:
-                    return str(PTPCodec.BD50.value)
-                elif "2160p" in title_lowered:
-                    return str(PTPCodec.BD50.value)
-            elif input_file_size <= 70_866_960_384:
-                return str(PTPCodec.BD66.value)
-            elif input_file_size <= 107_374_182_400:
-                return str(PTPCodec.BD100.value)
-
-        # dvd5/dvd9
-        elif "dvd5" in title_lowered_strip_periods:
-            return str(PTPCodec.DVD5.value)
-        elif "dvd9" in title_lowered_strip_periods:
-            return str(PTPCodec.DVD9.value)
+    def _get_codec(self, input_path: Path, disc: DiscRelease | None = None) -> str:
+        # a full disc's "codec" on PTP is its size class
+        if disc is not None:
+            return str(_PTP_DISC_CODECS[disc.size_class].value)
 
         # encodes
-        elif self.mediainfo_obj.video_tracks[0].format == "AVC":
+        if self.mediainfo_obj.video_tracks[0].format == "AVC":
             return str(PTPCodec.H264.value)
         elif self.mediainfo_obj.video_tracks[0].format == "HEVC":
             return str(PTPCodec.H265.value)
@@ -632,7 +621,12 @@ class PTPUploader:
             resolution = PTPResolution.OTHER.value
         return str(resolution)
 
-    def _get_container(self, input_path: Path) -> str:
+    def _get_container(self, input_path: Path, disc: DiscRelease | None = None) -> str:
+        if disc is not None:
+            if disc.image:
+                return str(PTPContainer.ISO.value)
+            container = PTPContainer.M2TS if disc.is_bluray else PTPContainer.VOB_IFO
+            return str(container.value)
         extension = input_path.suffix
         if extension == ".mkv":
             return str(PTPContainer.MKV.value)
@@ -642,7 +636,10 @@ class PTPUploader:
             return str(PTPContainer.MPG.value)
         return str(PTPContainer.AUTO_DETECT.value)
 
-    def _source(self, input_path: Path) -> str:
+    def _source(self, input_path: Path, disc: DiscRelease | None = None) -> str:
+        if disc is not None:
+            source = PTPSource.BLU_RAY if disc.is_bluray else PTPSource.DVD
+            return str(source.value)
         title_lowered = release_stem(input_path).lower()
         title_lowered = re.sub(r"\W", ".", title_lowered)
         title_lowered = re.sub(r"\.{2,}", ".", title_lowered)

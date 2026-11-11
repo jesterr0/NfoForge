@@ -24,6 +24,8 @@ ffprobe = ""
 frame_forge = ""
 mkbrr = ""
 enable_mkbrr = true
+# bdinfo-rs, for the BDInfo report a full Blu-ray upload needs
+bdinfo = ""
 
 [api_keys]
 tmdb_api_key = ""
@@ -412,6 +414,15 @@ mvr_parse_claim_hybrid = true
 mvr_parse_claim_release_group = true
 mvr_token = "{title_clean} {release_year} {re_release} {resolution} {source} {audio_codec} {audio_channel_s} {video_codec}{:opt=-:release_group}"
 mvr_title_token = "{title_clean} {release_year} {re_release} {resolution} {source} {audio_codec} {audio_channel_s} {video_codec}{:opt=-:release_group}"
+
+[disc_management]
+# Rename a full disc's root folder to the generated release name. Nothing
+# inside a disc is ever renamed.
+rename_root_folder = false
+# How a full disc is named (its folder, when renamed, and the name titles start
+# from). Nothing inside a disc is ever renamed.
+bluray_name_token = "{title_clean} {release_year} {edition} {re_release} {resolution} {region} {source} {video_dynamic_range} {video_codec} {audio_codec} {audio_channel_s}{:opt=-:release_group}"
+dvd_name_token = "{title_clean} {release_year} {edition} {re_release} {region} {dvd_standard} {disc_size} {audio_codec} {audio_channel_s}{:opt=-:release_group}"
 
 [series_management]
 tvr_enabled = true

@@ -141,7 +141,7 @@ class TerminalPrompter:
         self._say("")
         self._say(decision.prompt)
         kind = decision.kind
-        if kind is DecisionKind.SEARCH_RESULT:
+        if kind in (DecisionKind.SEARCH_RESULT, DecisionKind.PLAYLIST):
             return self._choose(decision)
         if kind in _YES_NO:
             for key in ("matches", "files"):

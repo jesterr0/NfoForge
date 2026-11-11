@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from nfoforge.backend.trackers.passthepopcorn import PTPUploader
+from nfoforge.core.disc import DiscRelease, DiscSize, DiscType
 from nfoforge.enums.media_type import MediaType
 from nfoforge.exceptions import TrackerError
 from nfoforge.packages.custom_types import ImageUploadData
@@ -21,13 +22,21 @@ def _uploader(cookie_dir: Path, mediainfo_obj: MagicMock | None = None) -> PTPUp
     )
 
 
-def test_ptp_disc_size_can_come_from_an_archive(tmp_path: Path) -> None:
+def test_ptp_disc_fields_come_from_the_disc_not_the_folder(tmp_path: Path) -> None:
+    # nothing on disk: a restored job's disc carries its size class
     input_path = tmp_path / "Movie.2026.1080p.BluRay.AVC.COMPLETE-GRP"
-
-    codec = _uploader(tmp_path)._get_codec(input_path, 25_000_000_000)
+    disc = DiscRelease(DiscType.BDMV, DiscSize.BD50, uhd=False)
+    uploader = _uploader(tmp_path)
 
     assert not input_path.exists()
-    assert codec == "BD25"
+    assert uploader._get_codec(input_path, disc) == "BD50"
+    assert uploader._get_container(input_path, disc) == "m2ts"
+    assert uploader._source(input_path, disc) == "Blu-ray"
+
+    dvd = DiscRelease(DiscType.DVD, DiscSize.DVD9, uhd=False)
+    assert uploader._get_codec(input_path, dvd) == "DVD9"
+    assert uploader._get_container(input_path, dvd) == "VOB IFO"
+    assert uploader._source(input_path, dvd) == "DVD"
 
 
 @patch("nfoforge.backend.trackers.passthepopcorn.ImageBoxUploader")

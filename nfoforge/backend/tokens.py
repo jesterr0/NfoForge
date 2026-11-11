@@ -206,7 +206,18 @@ class Tokens:
     RE_RELEASE = FileToken("{re_release}", "Repack/Proper")
     RESOLUTION = FileToken("{resolution}", "Resolution (1080p)")
     REMUX = FileToken("{remux}", "REMUX")
-    SOURCE = FileToken("{source}", "Source media (BluRay/DVD)")
+    SOURCE = FileToken(
+        "{source}", "Source media (BluRay/DVD; Blu-ray/UHD Blu-ray for a full disc)"
+    )
+    # full disc FileTokens
+    REGION = FileToken("{region}", "Disc region (USA/GBR/EUR), full discs only")
+    DISTRIBUTOR = FileToken(
+        "{distributor}", "Disc distributor (Criterion), full discs only"
+    )
+    DISC_SIZE = FileToken(
+        "{disc_size}", "Disc size class (BD25/BD50/BD66/BD100/DVD5/DVD9)"
+    )
+    DVD_STANDARD = FileToken("{dvd_standard}", "DVD video standard (PAL/NTSC)")
     STREAMING_SERVICE = FileToken(
         "{streaming_service}",
         "Streaming service abbreviation, web sources only (NF/AMZN/ATVP)",
@@ -251,6 +262,19 @@ class Tokens:
         "{source_file_no_ext}", "Source filename without extension"
     )
     MEDIA_INFO = NfoToken("{media_info}", "Mediainfo output with filepath cleansed")
+    # full disc NfoTokens
+    BDINFO_SUMMARY = NfoToken(
+        "{bdinfo_summary}", "BDInfo quick summary of the selected playlist (Blu-ray)"
+    )
+    BDINFO_FULL = NfoToken(
+        "{bdinfo_full}", "Full BDInfo report of the selected playlist (Blu-ray)"
+    )
+    DVD_IFO_MEDIAINFO = NfoToken(
+        "{dvd_ifo_mediainfo}", "MediaInfo of the main title set's IFO (DVD)"
+    )
+    DVD_VOB_MEDIAINFO = NfoToken(
+        "{dvd_vob_mediainfo}", "MediaInfo of the main title set's first VOB (DVD)"
+    )
     MEDIA_INFO_SHORT = NfoToken(
         "{media_info_short}", "Shortened Mediainfo output with filepath cleansed"
     )

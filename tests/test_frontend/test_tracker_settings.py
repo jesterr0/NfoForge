@@ -5,9 +5,14 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QWidget
 import pytest
 
-from nfoforge.backend.trackers.media_support import UNSUPPORTED_SERIES_TRACKERS
+from nfoforge.backend.trackers.media_support import (
+    UNSUPPORTED_SERIES_TRACKERS,
+    unsupported_trackers,
+)
 from nfoforge.config.config import ConfigManager
 from nfoforge.config.paths import ConfigPaths
+from nfoforge.core.disc.model import DiscType
+from nfoforge.enums.media_type import MediaType
 from nfoforge.enums.tracker_selection import TrackerSelection
 from nfoforge.frontend.custom_widgets.tracker_management import (
     BHDTrackerEdit,
@@ -147,7 +152,7 @@ def test_wizard_tracker_selector_keeps_series_filtering(
     original_enabled = {tracker: info.enabled for tracker, info in tracker_map.items()}
     selector = TrackerSettingsWidget(manager)
     selector.load_from_config(
-        unsupported_trackers=UNSUPPORTED_SERIES_TRACKERS,
+        unsupported_trackers=unsupported_trackers(MediaType.SERIES),
     )
 
     for index in range(selector.tracker_list.count()):
@@ -261,7 +266,9 @@ def test_unsupported_trackers_never_write_back_to_the_profile(
     tracker_map[unsupported].enabled = True
     selector = TrackerSettingsWidget(manager)
 
-    selector.load_from_config(unsupported_trackers=UNSUPPORTED_SERIES_TRACKERS)
+    selector.load_from_config(
+        unsupported_trackers=unsupported_trackers(MediaType.SERIES)
+    )
 
     assert _item_for(selector, unsupported).checkState() == Qt.CheckState.Unchecked
     assert unsupported not in (selector.get_selected_trackers() or [])
@@ -352,3 +359,21 @@ def test_torrentleech_announce_url_gets_missing_path_on_save(
     expected = "https://tracker.invalid/passkey/announce"
     assert manager.settings.trackers.torrent_leech.announce_url == expected
     assert editor.announce_url.text() == expected
+
+
+def test_a_tracker_that_takes_no_dvd_says_so(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, manager = _make_tracker_settings(tmp_path, monkeypatch)
+    selector = TrackerSettingsWidget(manager)
+
+    selector.load_from_config(
+        unsupported_trackers=unsupported_trackers(MediaType.MOVIE, DiscType.DVD)
+    )
+
+    item = _item_for(selector, TrackerSelection.HDB)
+    assert not item.flags() & Qt.ItemFlag.ItemIsEnabled
+    assert item.toolTip() == "HDBits does not accept a full DVD disc."
+    assert _item_for(selector, TrackerSelection.BEYOND_HD).flags() & (
+        Qt.ItemFlag.ItemIsEnabled
+    )

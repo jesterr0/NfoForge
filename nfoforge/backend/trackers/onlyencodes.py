@@ -5,6 +5,7 @@ from pymediainfo import MediaInfo
 
 from nfoforge.backend.trackers.unit3d_base import Unit3dBaseSearch, Unit3dBaseUploader
 from nfoforge.backend.utils.file_utilities import release_stem
+from nfoforge.core.disc import DiscRelease
 from nfoforge.enums.media_type import MediaType
 from nfoforge.enums.tracker_selection import TrackerSelection
 from nfoforge.enums.trackers.onlyencodes import (
@@ -32,6 +33,7 @@ def oe_uploader(
     season_number: int | None = None,
     episode_number: int | None = None,
     season_pack: bool = False,
+    disc: DiscRelease | None = None,
 ) -> bool | None:
     uploader = OnlyEncodesUploader(
         media_type=media_type,
@@ -54,6 +56,7 @@ def oe_uploader(
         season_number=season_number,
         episode_number=episode_number,
         season_pack=season_pack,
+        disc=disc,
     )
     return upload
 
@@ -87,7 +90,9 @@ class OnlyEncodesUploader(Unit3dBaseUploader):
         )
 
     @override
-    def _get_type_id(self) -> str:
+    def _get_type_id(self, disc: DiscRelease | None = None) -> str:
+        if disc is not None:
+            raise TrackerError("OnlyEncodes does not accept full discs")
         # try to get type from base class and match with known types
         try:
             type_id = super()._get_type_id()

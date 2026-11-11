@@ -67,6 +67,12 @@ class DependencySettings(BaseSettings):
             "mkbrr Path",
             "Not required, but if detected/enabled torrent generation will be done with this",
         )
+        self.bdinfo_widgets = self._create_dependency_widgets(
+            "bdinfo-rs",
+            extension,
+            "BDInfo Path (bdinfo-rs)",
+            "Required to upload full Blu-ray discs: scans the disc for its BDInfo report",
+        )
         self.enable_mkbrr = QCheckBox("Enable mkbrr", self)
         self.enable_mkbrr.setToolTip(
             "If mkbrr is detected torrent generation will be "
@@ -81,6 +87,7 @@ class DependencySettings(BaseSettings):
                 *self.mkbrr_widgets, extra_widget=self.enable_mkbrr
             )
         )
+        self.add_layout(self._build_dependency_layout(*self.bdinfo_widgets))
         self.add_layout(self.reset_layout, add_stretch=True)
 
         self._load_saved_settings()
@@ -157,6 +164,9 @@ class DependencySettings(BaseSettings):
         self.mkbrr_widgets[2].setText(str(mkbrr_path) if mkbrr_path else "")
         self.enable_mkbrr.setChecked(self.config.settings.dependencies.enable_mkbrr)
 
+        bdinfo_path = self.config.settings.dependencies.bdinfo
+        self.bdinfo_widgets[2].setText(str(bdinfo_path) if bdinfo_path else "")
+
     @staticmethod
     def _pending_path(entry: QLineEdit) -> Path | None:
         value = entry.text().strip()
@@ -184,6 +194,9 @@ class DependencySettings(BaseSettings):
             self.mkbrr_widgets[2]
         )
         self.config.settings.dependencies.enable_mkbrr = self.enable_mkbrr.isChecked()
+        self.config.settings.dependencies.bdinfo = self._pending_path(
+            self.bdinfo_widgets[2]
+        )
         self.updated_settings_applied.emit()
 
     def apply_defaults(self) -> None:
@@ -191,6 +204,7 @@ class DependencySettings(BaseSettings):
         self.ffprobe_widgets[2].clear()
         self.frame_forge_widgets[2].clear()
         self.mkbrr_widgets[2].clear()
+        self.bdinfo_widgets[2].clear()
         self.enable_mkbrr.setChecked(self.config.defaults.dependencies.enable_mkbrr)
 
     @staticmethod

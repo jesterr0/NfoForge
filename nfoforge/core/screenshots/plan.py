@@ -22,6 +22,7 @@ from nfoforge.backend.images import ImagesBackEnd
 from nfoforge.backend.utils.images import compare_resolutions, determine_sub_size
 from nfoforge.backend.utils.script_parser import ScriptParser
 from nfoforge.context.processing_context import ProcessingContext
+from nfoforge.core.disc import Disc, DiscType, disc_frame_targets
 from nfoforge.core.signals import ProgressSignal
 from nfoforge.enums.cropping import Cropping
 from nfoforge.enums.image_plugin import ImagePlugin
@@ -79,6 +80,8 @@ class ScreenshotPlan:
     frame_forge_path: Path | None
     index_cache_root: Path | None
     protected_media_root: Path
+    disc: Disc | None = None
+    """A full disc: shots are spread over its feature, not one clip."""
 
     @property
     def is_comparison(self) -> bool:
@@ -200,6 +203,7 @@ def plan_screenshots(
         index_cache_root=settings.general.working_dir,
         # the upload tree must stay free of FrameForge's private encode index
         protected_media_root=input_path if input_path.is_dir() else input_path.parent,
+        disc=media_input.discs[0] if media_input.discs else None,
     )
 
 
@@ -208,6 +212,9 @@ def generate_screenshots(
 ) -> int:
     """Run the generation `plan` describes. Returns the backend's exit code."""
     crop_values = plan.script_values.crop_values if plan.script_values else None
+    if plan.disc is not None:
+        # a disc has no source to compare against: always basic generation
+        return _generate_disc_screenshots(plan, plan.disc, backend, progress)
     if plan.mode is ScreenShotMode.BASIC_SS_GEN:
         return backend.basic_image_generation(
             plan.media_file,
@@ -269,6 +276,35 @@ def generate_screenshots(
         progress,
         index_cache_root=plan.index_cache_root,
         protected_media_root=plan.protected_media_root,
+    )
+
+
+def _generate_disc_screenshots(
+    plan: ScreenshotPlan, disc: Disc, backend: ImagesBackEnd, progress: ProgressSignal
+) -> int:
+    mediainfo = plan.media_mediainfo
+    video = mediainfo.video_tracks[0]
+    duration_ms = mediainfo.general_tracks[0].duration
+    # a DVD whose IFO gave no runtime: the first VOB's, scaled by size
+    feature_seconds = None
+    if duration_ms and plan.media_file.is_file():
+        selected = disc.selected_playlists() or disc.main_playlists()
+        clip_size = plan.media_file.stat().st_size
+        if selected and clip_size:
+            feature_seconds = float(duration_ms) / 1000 * selected[0].size / clip_size
+    targets = disc_frame_targets(
+        disc, plan.total_images, plan.trim, feature_seconds=feature_seconds
+    )
+    if not targets:
+        raise RuntimeError(f"No screenshots can be planned for {disc.label}")
+    return backend.disc_image_generation(
+        [(target.path, target.seconds) for target in targets],
+        plan.output_directory,
+        mediainfo,
+        plan.ffmpeg_path,
+        progress,
+        keyframe_only=video.format == "VC-1" or bool(video.other_hdr_format),
+        square_pixels=disc.disc_type is DiscType.DVD,
     )
 
 

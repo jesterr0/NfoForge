@@ -1,13 +1,30 @@
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from pymediainfo import MediaInfo
 
+from nfoforge.core.disc.model import Disc, DiscError
+from nfoforge.core.disc.mount import MOUNTS, MountRegistry
 from nfoforge.enums.media_type import MediaType
 from nfoforge.enums.series import EpisodeFormat
 from nfoforge.packages.custom_types import ComparisonPair
 from nfoforge.payloads.media_analysis_cache import MediaAnalysisCache
+
+
+def _moved_tree(old_root: Path, new_root: Path) -> Callable[[Path], Path]:
+    """A remap that moves paths under `old_root` to the same place under `new_root`."""
+
+    def remap(path: Path) -> Path:
+        if path == old_root:
+            return new_root
+        try:
+            return new_root / path.relative_to(old_root)
+        except ValueError:
+            return path
+
+    return remap
 
 
 @dataclass(slots=True)
@@ -26,6 +43,12 @@ class MediaInputPayload:
     input_kind: str | None = None
     content_size: int | None = None
     comparison_pair: ComparisonPair | None = None
+
+    # A full-disc release (Blu-ray / DVD folder). When set, `file_list` holds
+    # only the disc's primary media file -- the one clip MediaInfo and
+    # screenshots work on -- and the release is named after `input_path`, never
+    # after that clip. A list, because a release can be a set of discs.
+    discs: list[Disc] = field(default_factory=list)
 
     # series stuff
     series_episode_map: dict[Path, dict[str, Any]] | None = None
@@ -82,6 +105,65 @@ class MediaInputPayload:
             raise RuntimeError("No input file available")
         return first
 
+    def is_disc(self) -> bool:
+        """Whether the release is a full disc rather than loose media files."""
+        return bool(self.discs)
+
+    def primary_media_file(self) -> Path | None:
+        """The file that stands for the release where one file is needed.
+
+        For a disc this is the selected playlist's main clip, not whichever
+        clip happens to sort first.
+        """
+        if self.discs:
+            return self.discs[0].primary_media_file()
+        return self.get_first_file()
+
+    def release_name_path(self) -> Path | None:
+        """The path the release's name is read from.
+
+        A disc's clips are called `00001.m2ts` or `VTS_01_1.VOB`; everything
+        the name can say about the release is on the disc's folder.
+        """
+        if self.discs:
+            return self.input_path
+        return self.get_first_file() or self.input_path
+
+    def release_name(self) -> str:
+        """`release_name_path` as text, without a file's extension.
+
+        A disc folder's name is kept whole: "Movie.2020.BluRay" has no
+        extension. A disc image's `.iso` is one.
+        """
+        path = self.release_name_path()
+        if not path:
+            return ""
+        if self.discs and not self.discs[0].is_image:
+            return path.name
+        return path.stem
+
+    def mount_disc_images(self, mounts: MountRegistry | None = None) -> None:
+        """Mount each disc image, again if need be, and follow it if it moved.
+
+        A saved job, or an image unmounted for its rename, can come back
+        under another drive letter or mount point.
+        """
+        registry = mounts or MOUNTS
+        for disc in self.discs:
+            if disc.image is None:
+                continue
+            old_root = disc.root
+            new_root = registry.mount(disc.image)
+            if new_root != old_root:
+                self._remap_paths(_moved_tree(old_root, new_root))
+
+    def unmount_disc_images(self, mounts: MountRegistry | None = None) -> None:
+        """Release every disc image this release mounted (before renaming one)."""
+        registry = mounts or MOUNTS
+        for disc in self.discs:
+            if disc.image is not None:
+                registry.release(disc.image)
+
     def get_mediainfo(self, fp: Path) -> MediaInfo | None:
         return self.file_list_mediainfo.get(fp)
 
@@ -96,6 +178,11 @@ class MediaInputPayload:
         input_path = self.require_input_path()
         if not input_path.exists():
             raise FileNotFoundError(f"Media input no longer exists: {input_path}")
+        # a disc image's clips only exist while it is mounted
+        try:
+            self.mount_disc_images()
+        except DiscError as error:
+            raise FileNotFoundError(str(error)) from error
 
         missing_files = [path for path in self.file_list if not path.is_file()]
         if missing_files:
@@ -189,28 +276,27 @@ class MediaInputPayload:
                 or not updated_input_path.is_dir()
             ):
                 return path
+            return _moved_tree(old_input_path, updated_input_path)(path)
 
-            if path == old_input_path:
-                return updated_input_path
+        self._remap_paths(remap_path)
 
-            try:
-                relative_path = path.relative_to(old_input_path)
-            except ValueError:
-                return path
-            return updated_input_path / relative_path
+        if updated_input_path:
+            self.input_path = updated_input_path
 
+    def _remap_paths(self, remap: Callable[[Path], Path]) -> None:
+        """Pass every path this payload holds, but `input_path`, through `remap`."""
         for i, old_path in enumerate(self.file_list):
-            self.file_list[i] = remap_path(old_path)
+            self.file_list[i] = remap(old_path)
 
         if self.file_list_mediainfo:
             self.file_list_mediainfo = {
-                remap_path(old_path): mi_obj
+                remap(old_path): mi_obj
                 for old_path, mi_obj in self.file_list_mediainfo.items()
             }
 
         if self.series_episode_map:
             self.series_episode_map = {
-                remap_path(old_path): ep_data
+                remap(old_path): ep_data
                 for old_path, ep_data in self.series_episode_map.items()
             }
 
@@ -218,20 +304,22 @@ class MediaInputPayload:
         # sits outside the rename set but still moves when its folder is renamed
         if self.comparison_pair:
             self.comparison_pair = self.comparison_pair._replace(
-                source=remap_path(self.comparison_pair.source),
-                media=remap_path(self.comparison_pair.media),
+                source=remap(self.comparison_pair.source),
+                media=remap(self.comparison_pair.media),
                 script=(
-                    remap_path(self.comparison_pair.script)
+                    remap(self.comparison_pair.script)
                     if self.comparison_pair.script
                     else None
                 ),
             )
 
-        if updated_input_path:
-            self.input_path = updated_input_path
+        # a disc's root folder can be renamed; its playlists and clips move too
+        for disc in self.discs:
+            disc.relocate(remap)
 
     def reset(self, input_path: Path | None = None) -> None:
         """Reset all fields to initial state."""
+        self.unmount_disc_images()
         self.analysis_cache.clear()
         self.input_path = input_path
         self.media_type = None
@@ -241,5 +329,6 @@ class MediaInputPayload:
         self.input_kind = None
         self.content_size = None
         self.comparison_pair = None
+        self.discs.clear()
         self.series_episode_map = None
         self.series_episode_format = EpisodeFormat.STANDARD
