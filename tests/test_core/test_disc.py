@@ -119,6 +119,20 @@ def test_lowercase_rip_is_detected(tmp_path: Path) -> None:
     assert disc.primary_media_file() == root / "bdmv" / "stream" / "00001.m2ts"
 
 
+def test_uppercase_extensions_are_read(tmp_path: Path) -> None:
+    root = make_bluray(tmp_path / "disc", {"00800": FEATURE}, {"00001": 10})
+    stream = root / "BDMV" / "STREAM"
+    (stream / "00001.m2ts").rename(stream / "00001.M2TS")
+    playlist = root / "BDMV" / "PLAYLIST"
+    (playlist / "00800.mpls").rename(playlist / "00800.MPLS")
+
+    disc = detect_disc(root)
+
+    assert disc is not None
+    assert [p.playlist_id for p in disc.playlists] == ["00800"]
+    assert disc.primary_media_file() == stream / "00001.M2TS"
+
+
 def test_primary_media_file_is_largest_clip_of_selected_playlist(
     tmp_path: Path,
 ) -> None:

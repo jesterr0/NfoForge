@@ -39,7 +39,11 @@ def make_bluray(
     certificate: bool = True,
     upper: bool = True,
 ) -> Path:
-    """A `BDMV` tree under `root`. `upper=False` mimics a lowercase rip."""
+    """A `BDMV` tree under `root`. `upper=False` mimics a lowercase rip.
+
+    As on a real disc, the folders are upper case and the file extensions
+    lower case (`BDMV/STREAM/00001.m2ts`). Paths compare by case on Linux.
+    """
 
     def case(name: str) -> str:
         return name.upper() if upper else name.lower()
@@ -52,9 +56,9 @@ def make_bluray(
     if certificate:
         (root / case("CERTIFICATE")).mkdir()
     for clip, size in clip_sizes.items():
-        (stream_dir / f"{clip}.{case('m2ts')}").write_bytes(b"\0" * size)
+        (stream_dir / f"{clip}.m2ts").write_bytes(b"\0" * size)
     for name, items in playlists.items():
-        (playlist_dir / f"{name}.{case('mpls')}").write_bytes(mpls_bytes(items))
+        (playlist_dir / f"{name}.mpls").write_bytes(mpls_bytes(items))
     return root
 
 
