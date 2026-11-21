@@ -30,7 +30,7 @@
 
 ### Changed
 
-- Updated guessit.
+- Updated several dependencies.
 - **Breaking:** a file is no longer uploaded as a full disc because its name looks like one ("BluRay.AVC" in an `.mkv` name). Only a real Blu-ray or DVD folder is a full disc.
 
 ## [1.3.3] - 2026-11-09
