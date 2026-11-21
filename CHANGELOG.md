@@ -4,11 +4,11 @@
 
 ### Added
 
-- Disc support (work in progress, not yet uploadable): Blu-ray and DVD folders are now recognised as a single disc release, and the main feature is picked automatically.
+- **Full-disc uploads** are available for Blu-ray (including UHD) and DVD on supported trackers. NfoForge recognises each disc folder as a single release and suggests the main feature.
 - Blu-ray discs are scanned with [bdinfo-rs](https://github.com/agentjp/bdinfo-rs) for their BDInfo report. Set its path under Settings -> Dependencies.
 - `nfoforge upload --playlist ID` picks the playlist when a disc has more than one main candidate. An interactive run now asks instead of stopping.
 - The Input page shows a disc's playlists (or a DVD's title sets) with the main feature pre-selected, and scans a Blu-ray with BDInfo before moving on.
-- New "Rename Disc Folder" option in the movie settings (off by default). When on, a disc's folder is renamed to the generated name; files inside a disc are never renamed.
+- The new **Rename Disc Folder** option in the movie settings applies the generated name to the disc folder or `.iso` image. The option is off by default and preserves filenames inside the disc.
 - Saved jobs keep a disc's details and reports.
 - Discs are named as discs: "Movie 1990 1080p GBR Blu-ray AVC LPCM 2.0-Group" and "Movie 2001 PAL DVD9 DD 2.0-Group", with untouched codec names (AVC, not x264). Both templates are editable in the movie settings.
 - The Rename page shows Region and Distributor for a disc, and hides options that never apply to one (Frame Size, Localization, Service, REMUX, HYBRID). The region is filled in when the folder name or disc label states it.
@@ -16,12 +16,12 @@
 - `nfoforge upload --region CODE --distributor NAME` for discs.
 - Screenshots of a disc are spread across the whole feature, not just its first file. DVD screenshots are shown at their proper width.
 - Trackers receive a disc as a full disc: the right type and size (BD25 to UHD 100, DVD5/DVD9), the BDInfo summary for a Blu-ray, and the IFO MediaInfo for a DVD.
-- Full discs go to BeyondHD, LST, PTP, ReelFliX and TorrentLeech (Blu-ray and DVD), and to HDBits and Blutopia (Blu-ray only). Other trackers are greyed out with the reason; most are only waiting for their disc rules to be checked.
+- BeyondHD, LST, PassThePopcorn, ReelFliX and TorrentLeech support Blu-ray and DVD folder uploads. HDBits and Blutopia support Blu-ray folders. The tracker picker explains why unavailable options are greyed out.
 - Dupe checks for a disc search by its folder name.
 - A disc's Region and Distributor are sent to Blutopia, LST and ReelFliX. A distributor is found by name ("Arrow Video" is Arrow); one that is not listed is left out.
 - The Distributor box on the Rename page suggests the names trackers know as you type.
 - A Blu-ray with no CERTIFICATE folder is flagged on the Input page and in the CLI log, since some trackers refuse it.
-- Disc images (`.iso`) can be opened like a disc folder. NfoForge mounts the image read-only to read it and unmounts it when done; the image itself is what gets uploaded. Only PTP takes an image for now.
+- PassThePopcorn is the only tracker enabled for `.iso` uploads. NfoForge mounts the image read-only to read the disc, unmounts it when done, and uploads the image as a single file.
 
 ### Fixed
 
@@ -31,7 +31,7 @@
 ### Changed
 
 - Updated several dependencies.
-- **Breaking:** a file is no longer uploaded as a full disc because its name looks like one ("BluRay.AVC" in an `.mkv` name). Only a real Blu-ray or DVD folder is a full disc.
+- **Breaking.** Full-disc uploads require a recognised Blu-ray or DVD folder or `.iso` image. Standalone media files with disc-like names, such as `.mkv` files containing `BluRay.AVC` in the filename, follow the regular upload path.
 
 ## [1.3.3] - 2026-11-09
 
