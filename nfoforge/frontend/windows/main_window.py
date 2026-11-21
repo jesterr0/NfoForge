@@ -223,7 +223,7 @@ class MainWindow(QMainWindow):
         # would otherwise inflate a number the user reads as "reclaimable"
         size = cleanable_size(
             self.config.settings.general.working_dir,
-            self.config.paths.data_root(),
+            self.config.paths.state_root,
         )
         if size <= 0:
             return

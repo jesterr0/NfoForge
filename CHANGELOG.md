@@ -26,6 +26,7 @@
 ### Fixed
 
 - A stray grey back arrow no longer shows in the top-left corner of the wizard.
+- Working directory clean up was not working.
 
 ### Changed
 

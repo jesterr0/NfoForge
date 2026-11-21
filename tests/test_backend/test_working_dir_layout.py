@@ -109,31 +109,39 @@ def test_cleanup_removes_the_contents_of_processing(
     assert jobs_dir(tmp_path) not in removable
 
 
-def test_cleanup_leaves_everything_outside_processing_alone(
+def test_cleanup_leaves_user_files_and_unrecognised_legacy_folders_alone(
     tmp_path: Path, data_root: Path
 ) -> None:
-    """Siblings of the processing folder are no longer swept.
-
-    This reverses earlier behaviour deliberately. Cleanup used to be expressed
-    as "everything except jobs", which caught the run folders older versions
-    wrote at the working directory root without needing a migration step. It
-    also meant that pointing the working directory at a folder holding anything
-    else handed that content to the Clean Up button, and once the layout puts
-    configuration and tooling under the same root it would hand those over too.
-
-    The run folders that exclusion used to catch are relocated into
-    `processing/` by the one-time layout migration instead, and any that are
-    left behind are reported rather than deleted.
-    """
-    legacy_run = tmp_path / "Old.Release_01.01.2026_12.00.00"
-    legacy_run.mkdir(parents=True)
-    unrelated = tmp_path / "notes.txt"
-    unrelated.write_text("x", encoding="utf-8")
+    empty = tmp_path / "Empty_01.01.2026_12.00.00"
+    empty.mkdir()
+    mixed = tmp_path / "Old.Release_01.01.2026_12.00.00"
+    images = mixed / "images" / "img_comparison"
+    images.mkdir(parents=True)
+    (images / "01_output.png").write_bytes(b"image")
+    (mixed / "notes.txt").write_text("keep", encoding="utf-8")
+    (tmp_path / "notes.txt").write_text("keep", encoding="utf-8")
     jobs_dir(tmp_path, ensure_exists=True)
 
     removable = cleanable_items(tmp_path, data_root)
 
     assert removable == []
+
+
+@pytest.mark.parametrize("directory_name", ["processing", "frameforge_indexes"])
+def test_cleanup_skips_a_managed_directory_linking_to_saved_jobs(
+    tmp_path: Path, data_root: Path, directory_name: str
+) -> None:
+    jobs = jobs_dir(tmp_path, ensure_exists=True)
+    (jobs / "job.json").write_bytes(b"saved job")
+    link = tmp_path / directory_name
+    if os.name == "nt":
+        winapi = pytest.importorskip("_winapi")
+        winapi.CreateJunction(str(jobs), str(link))
+    else:
+        link.symlink_to(jobs, target_is_directory=True)
+
+    assert cleanable_items(tmp_path, data_root) == []
+    assert cleanable_size(tmp_path, data_root) == 0
 
 
 def test_cleanup_refuses_when_it_would_reach_the_data_directory(
@@ -232,7 +240,7 @@ def test_cleanable_size_survives_a_file_disappearing(
 def test_cleanable_size_survives_a_directory_disappearing_mid_walk(
     tmp_path: Path, data_root: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A whole subdirectory can vanish while rglob() is still descending into it.
+    """A whole subdirectory can vanish while walk() is descending into it.
 
     That surfaces as an exception from the `for` statement driving the walk,
     not from a stat() call inside the loop body, so it needs its own guard
@@ -246,25 +254,38 @@ def test_cleanable_size_survives_a_directory_disappearing_mid_walk(
     gone.mkdir()
     (gone / "trace.log").write_bytes(b"x" * 30)
 
-    real_rglob = Path.rglob
+    real_walk = Path.walk
 
-    def vanishing(self: Path, pattern: str) -> object:
+    def vanishing(self: Path) -> object:
         if self.name != "gone":
-            return real_rglob(self, pattern)
+            return real_walk(self)
 
         def disappearing_walk() -> object:
             # Yield the folder once, then fail as the walk attempts to descend.
-            # Python 3.13's pathlib now suppresses scandir() failures internally,
-            # so the iterator boundary is the stable point to model this race.
-            yield self
+            yield self, [], []
             raise FileNotFoundError("directory vanished mid-scan")
 
         return disappearing_walk()
 
-    monkeypatch.setattr(Path, "rglob", vanishing)
+    monkeypatch.setattr(Path, "walk", vanishing)
 
     # "gone" disappears out from under the walk; only "keep" can still be measured
     assert cleanable_size(tmp_path, data_root) == 50
+
+
+@pytest.mark.skipif(os.name != "nt", reason="only Windows has junctions")
+def test_cleanable_size_excludes_files_behind_a_nested_junction(
+    tmp_path: Path, data_root: Path
+) -> None:
+    winapi = pytest.importorskip("_winapi")
+    jobs = jobs_dir(tmp_path, ensure_exists=True)
+    (jobs / "job.json").write_bytes(b"saved job")
+    run = processing_dir(tmp_path, ensure_exists=True) / "run"
+    run.mkdir()
+    (run / "shot.png").write_bytes(b"shot")
+    winapi.CreateJunction(str(jobs), str(run / "link"))
+
+    assert cleanable_size(tmp_path, data_root) == 4
 
 
 def test_cleanable_size_is_zero_for_a_missing_directory(
