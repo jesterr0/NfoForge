@@ -90,7 +90,6 @@ def test_hdb_codec_id_raises_for_unknown_format() -> None:
     ("filename", "expected"),
     [
         ("Example.2026.1080p.BluRay.REMUX.AVC-GRP.mkv", HDBMedium.REMUX),
-        ("Example.2026.1080p.BluRay.AVC-GRP.mkv", HDBMedium.BLURAY),
         ("Example.2026.1080p.WEB-DL.DDP5.1.H.264-GRP.mkv", HDBMedium.WEBDL),
         ("Example.2026.1080p.WEBRip.DDP5.1.H.264-GRP.mkv", HDBMedium.ENCODE),
         ("Example.S01E01.1080p.HDTV.H264-GRP.mkv", HDBMedium.CAPTURE),

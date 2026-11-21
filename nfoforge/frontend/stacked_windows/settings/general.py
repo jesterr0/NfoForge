@@ -24,7 +24,7 @@ from nfoforge.backend.utils.file_utilities import (
     file_bytes_to_str,
     open_explorer,
 )
-from nfoforge.backend.utils.working_dir import cleanable_items, cleanable_size
+from nfoforge.backend.utils.working_dir import cleanable_items, cleanup_items_size
 from nfoforge.config.config import ConfigManager
 from nfoforge.enums.logging_settings import LogLevel
 from nfoforge.enums.media_search_mode import MediaSearchMode
@@ -649,30 +649,49 @@ class GeneralSettings(BaseSettings):
     @Slot()
     def _handle_working_dir_clean_up_click(self) -> None:
         working_dir = self.config.settings.general.working_dir
-        data_root = self.config.paths.data_root()
+        data_root = self.config.paths.state_root
         removable = cleanable_items(working_dir, data_root)
-        total_size = cleanable_size(working_dir, data_root)
+        if not removable:
+            QMessageBox.information(
+                self, "Clean Up", "Nothing to clean up in this working directory."
+            )
+            return
+
+        total_size = cleanup_items_size(removable)
 
         msg = (
-            "Would you like to clean up the working directory now?\n\n"
+            "Delete generated files and cached FrameForge indexes from the "
+            "working directory?\n\n"
             f"Size: {file_bytes_to_str(total_size)}\n\n"
-            "WARNING: This removes all generated data (screenshots, torrents, "
-            "and NFOs).\n\nSaved jobs are kept."
+            "Saved jobs are kept."
         )
 
-        if (
-            QMessageBox.question(
-                self,
-                "Clean Up",
-                msg,
-            )
-            is QMessageBox.StandardButton.Yes
-        ):
-            for item in removable:
-                if item.is_dir():
+        answer = QMessageBox.question(self, "Clean Up", msg)
+        if answer is not QMessageBox.StandardButton.Yes:
+            return
+
+        # The confirmation dialog can stay open while the filesystem changes.
+        still_removable = set(cleanable_items(working_dir, data_root))
+        failures = []
+        for item in removable:
+            if item not in still_removable:
+                continue
+            try:
+                if item.is_dir(follow_symlinks=False):
                     shutil.rmtree(item)
                 else:
-                    item.unlink()
+                    item.unlink(missing_ok=True)
+            except FileNotFoundError:
+                continue
+            except OSError as error:
+                failures.append(str(error))
+
+        if failures:
+            QMessageBox.warning(
+                self,
+                "Clean Up Incomplete",
+                "Some generated data could not be deleted.\n\n" + "\n".join(failures),
+            )
 
     @Slot()
     def _save_settings(self) -> None:

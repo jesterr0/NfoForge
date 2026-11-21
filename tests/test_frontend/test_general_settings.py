@@ -147,6 +147,66 @@ def test_the_data_folder_row_offers_export_and_import(
     assert widget.import_config_btn.isEnabled()
 
 
+@pytest.mark.parametrize(
+    "artifact_path",
+    [
+        "Old.Release_01.01.2026_12.00.00/images/img_comparison/01_output.png",
+        "frameforge_indexes/encode-0123456789ab.lwi",
+        "processing/Current.Release/images/01_output.png",
+    ],
+)
+def test_working_directory_cleanup_counts_and_deletes_generated_data(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, artifact_path: str
+) -> None:
+    widget, manager = _make_general_settings(tmp_path, monkeypatch)
+    working_dir = tmp_path / "custom work"
+    manager.settings.general.working_dir = working_dir
+    artifact = working_dir / artifact_path
+    artifact.parent.mkdir(parents=True)
+    artifact.write_bytes(b"x" * 1024)
+    saved_job = working_dir / "jobs" / "job.json"
+    saved_job.parent.mkdir()
+    saved_job.write_text("{}", encoding="utf-8")
+    unrelated = working_dir / "notes.txt"
+    unrelated.write_text("keep", encoding="utf-8")
+    messages = []
+
+    def confirm(
+        parent: QWidget, title: str, message: str
+    ) -> QMessageBox.StandardButton:
+        messages.append(message)
+        return QMessageBox.StandardButton.Yes
+
+    monkeypatch.setattr(QMessageBox, "question", confirm)
+    widget.working_dir_clean_up.click()
+
+    assert len(messages) == 1
+    assert "1.00 KB" in messages[0]
+    assert not artifact.exists()
+    assert saved_job.is_file()
+    assert unrelated.is_file()
+
+
+def test_working_directory_cleanup_reports_when_there_is_nothing_to_remove(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    widget, manager = _make_general_settings(tmp_path, monkeypatch)
+    manager.settings.general.working_dir = tmp_path / "empty work"
+    messages = []
+    monkeypatch.setattr(
+        QMessageBox,
+        "information",
+        lambda parent, title, message: messages.append(message),
+    )
+    monkeypatch.setattr(
+        QMessageBox, "question", lambda *args: messages.append("confirmation")
+    )
+
+    widget.working_dir_clean_up.click()
+
+    assert messages == ["Nothing to clean up in this working directory."]
+
+
 def test_a_successful_import_reloads_the_profile_list(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

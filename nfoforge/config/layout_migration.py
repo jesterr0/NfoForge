@@ -18,7 +18,6 @@ from dataclasses import dataclass
 from enum import Enum
 import os
 from pathlib import Path
-import re
 import tomllib
 
 from nfoforge.backend.utils.file_utilities import file_bytes_to_str, get_dir_size
@@ -27,6 +26,7 @@ from nfoforge.backend.utils.working_dir import (
     JOBS_DIR_NAME,
     PROCESSING_DIR_NAME,
     WORKSPACE_DIR_NAME,
+    has_run_folder_stamp,
     normalise_path,
 )
 from nfoforge.config.paths import AppPaths
@@ -38,14 +38,6 @@ PLUGINS_DIR_NAME = "plugins"
 TOOLS_DIR_NAME = "tools"
 LEGACY_TOOLS_DIR_NAME = "apps"
 """The same directory, before and after. A rename, so both names are needed."""
-
-_RUN_FOLDER_STAMP = re.compile(r"_\d{2}\.\d{2}\.\d{4}_\d{2}\.\d{2}\.\d{2}$")
-"""The date and time `generate_unique_date_name` appends to a run folder name.
-
-Matching on shape, and only at the end of the name, is what keeps the plan off
-anything it did not create. A user's own directory sitting at the root of the
-data directory is reported for them to look at, never moved.
-"""
 
 
 class ActionKind(Enum):
@@ -428,7 +420,7 @@ def plan_migration(
         )
 
     for entry in _children(state_root):
-        if entry.is_dir() and _RUN_FOLDER_STAMP.search(entry.name):
+        if entry.is_dir() and has_run_folder_stamp(entry.name):
             actions.append(
                 PlannedAction(
                     kind=ActionKind.MOVE,
@@ -478,7 +470,7 @@ def plan_migration(
             )
             continue
         for entry in _children(working_dir):
-            if entry.is_dir() and _RUN_FOLDER_STAMP.search(entry.name):
+            if entry.is_dir() and has_run_folder_stamp(entry.name):
                 findings.append(
                     Finding(
                         kind=FindingKind.RUN_FOLDER_IN_WORKING_DIR,

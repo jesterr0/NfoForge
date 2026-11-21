@@ -65,6 +65,9 @@ class RenameChoices:
     """Blank is a decision: this release carries no group."""
     repack_reason: str = ""
     proper_reason: str = ""
+    # full disc only: where the disc was released, and by whom
+    region: str = ""
+    distributor: str = ""
 
 
 def _offered(field: str, value: str) -> str:
@@ -135,6 +138,8 @@ def rename_override_tokens(choices: RenameChoices) -> dict[str, str]:
         "source": str(choices.quality) if choices.quality else "",
         "remux": "REMUX" if choices.remux else "",
         "hybrid": "HYBRID" if choices.hybrid else "",
+        "region": choices.region.strip(),
+        "distributor": choices.distributor.strip(),
     }
     result = {name: value for name, value in tokens.items() if value}
     result["release_group"] = choices.release_group.strip()

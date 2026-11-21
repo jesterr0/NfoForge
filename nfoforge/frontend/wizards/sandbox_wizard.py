@@ -17,6 +17,7 @@ from nfoforge.enums.media_type import MediaType
 from nfoforge.frontend.custom_widgets.series_episode_mapper import SeriesEpisodeMapper
 from nfoforge.frontend.global_signals import GSigs
 from nfoforge.frontend.utils import set_top_parent_geometry
+from nfoforge.frontend.utils.wizard_back_arrow import hide_stray_back_arrow
 from nfoforge.frontend.wizards.media_input import MediaInput
 from nfoforge.frontend.wizards.media_search import MediaSearch
 from nfoforge.frontend.wizards.series_match import _incomplete_mapping_message
@@ -170,6 +171,7 @@ class SandboxWizard(QWizard):
         self.setWindowTitle("Sandbox Input")
         self.setWizardStyle(QWizard.WizardStyle.ModernStyle)
         self.setOption(QWizard.WizardOption.NoCancelButton)
+        hide_stray_back_arrow(self)
 
         self.config = config
         self.context = context

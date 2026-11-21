@@ -18,6 +18,7 @@ from collections.abc import Callable, Iterable, Mapping
 from typing import TYPE_CHECKING, Any
 
 from nfoforge.backend.template_selector import TemplateSelectorBackEnd
+from nfoforge.core.disc import MISSING_BDINFO, DiscType
 from nfoforge.core.trackers.image_hosts import available_image_hosts, find_image_host
 from nfoforge.core.trackers.validate import (
     missing_nfo_templates,
@@ -29,7 +30,7 @@ from nfoforge.core.workflow.request import ReleaseRequest
 from nfoforge.core.workflow.stages import Stage
 from nfoforge.core.workflow.steps import (
     WorkflowError,
-    collect_media_files,
+    collect_input,
     screenshot_dir_images,
 )
 from nfoforge.enums.automation import AutomationMode
@@ -65,10 +66,25 @@ def preflight_problems(
     shooting_ahead = stages.index(from_stage) <= stages.index(Stage.SCREENSHOTS)
 
     if from_stage is Stage.INPUT:
+        # A disc with several main candidates is a question, not a problem:
+        # only a run with nobody to ask is refused over it here, where the
+        # candidates can still be listed.
+        playlist = request.playlist or answers.get(str(DecisionKind.PLAYLIST))
         try:
-            collect_media_files(request.path.expanduser())
+            _, disc = collect_input(
+                request.path.expanduser(),
+                str(playlist) if playlist else None,
+                request.mode is AutomationMode.UNATTENDED,
+            )
         except WorkflowError as error:
             problems.append(str(error))
+        else:
+            if (
+                disc is not None
+                and disc.disc_type is DiscType.BDMV
+                and not settings.dependencies.bdinfo
+            ):
+                problems.append(MISSING_BDINFO)
 
     if not settings.api_keys.tmdb_api_key:
         problems.append("No TMDB API key is set in this config profile")

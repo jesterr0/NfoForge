@@ -8,13 +8,13 @@ from niquests.typing import MultiPartFilesAltType
 
 from nfoforge.backend.trackers.utils import (
     API_TRACKER_HEADERS,
-    DISC_TITLE_REGEX,
     TRACKER_HEADERS,
 )
 from nfoforge.backend.upload_retry import classify_upload_post_error
 from nfoforge.backend.utils.file_utilities import release_stem
 from nfoforge.backend.utils.http_client import new_http_session
 from nfoforge.backend.utils.media_info_utils import MinimalMediaInfo
+from nfoforge.core.disc import DiscRelease, DiscSize
 from nfoforge.enums.media_type import MediaType
 from nfoforge.enums.tracker_selection import TrackerSelection
 from nfoforge.enums.trackers.beyondhd import (
@@ -109,7 +109,7 @@ def bhd_uploader(
     localization: str | None = None,
     add_localization_to_custom_edition: bool = False,
     stream_optimized: bool = False,
-    content_size: int | None = None,
+    disc: DiscRelease | None = None,
 ) -> str | None:
     uploader = BHDUploader(
         api_key=api_key,
@@ -117,7 +117,7 @@ def bhd_uploader(
         input_path=input_path,
         media_type=media_type,
         timeout=timeout,
-        content_size=content_size,
+        disc=disc,
     )
     return uploader.upload(
         tracker_title=tracker_title,
@@ -137,6 +137,29 @@ def bhd_uploader(
     )
 
 
+_BHD_DISC_TYPES = {
+    (DiscSize.DVD5, False): BHDType.DVD_5,
+    (DiscSize.DVD9, False): BHDType.DVD_9,
+    (DiscSize.BD25, False): BHDType.BD_25,
+    (DiscSize.BD50, False): BHDType.BD_50,
+    (DiscSize.BD50, True): BHDType.UHD_50,
+    (DiscSize.BD66, True): BHDType.UHD_66,
+    (DiscSize.BD100, True): BHDType.UHD_100,
+}
+
+
+def bhd_disc_type(disc: DiscRelease) -> BHDType:
+    """BeyondHD's type for a full disc; it takes no other disc sizes."""
+    bhd_type = _BHD_DISC_TYPES.get((disc.size_class, disc.uhd))
+    if bhd_type is None:
+        kind = "UHD " if disc.uhd else ""
+        raise TrackerError(
+            f"BeyondHD does not accept a {kind}{disc.size_class} disc "
+            "(it takes UHD 100/66/50, BD 50/25 and DVD 9/5)"
+        )
+    return bhd_type
+
+
 class BHDUploader:
     """BeyondHD Uploader utilizing their API"""
 
@@ -148,7 +171,7 @@ class BHDUploader:
         "is_pack",
         "is_special",
         "timeout",
-        "content_size",
+        "disc",
     )
 
     def __init__(
@@ -160,7 +183,7 @@ class BHDUploader:
         is_pack: bool = False,
         is_special: bool = False,
         timeout: int = 60,
-        content_size: int | None = None,
+        disc: DiscRelease | None = None,
     ) -> None:
         self._upload_url = (
             f"{TrackerSelection.BEYOND_HD.get_root_url()}api/upload/{api_key}"
@@ -171,7 +194,7 @@ class BHDUploader:
         self.is_pack = is_pack
         self.is_special = is_special
         self.timeout = timeout
-        self.content_size = content_size
+        self.disc = disc
 
     def upload(
         self,
@@ -366,6 +389,9 @@ class BHDUploader:
         return None
 
     def _type(self) -> str:
+        if self.disc is not None:
+            return bhd_disc_type(self.disc).value
+
         title_lowered = release_stem(self.input_path).lower()
         title_lowered_strip_periods = title_lowered.replace(".", "")
 
@@ -377,31 +403,6 @@ class BHDUploader:
                 return BHDType.BD_REMUX.value
             elif "2160p" in title_lowered or "uhd" in title_lowered:
                 return BHDType.UHD_REMUX.value
-
-        # disc
-        elif DISC_TITLE_REGEX.search(title_lowered):
-            input_file_size = (
-                self.content_size
-                if self.content_size is not None
-                else self.input_path.stat().st_size
-            )
-            if input_file_size <= 26_843_545_600:
-                return BHDType.BD_25.value
-            elif input_file_size <= 53_687_091_200:
-                if "1080i" in title_lowered or "1080p" in title_lowered:
-                    return BHDType.BD_50.value
-                elif "2160p" in title_lowered:
-                    return BHDType.UHD_50.value
-            elif input_file_size <= 70_866_960_384:
-                return BHDType.UHD_66.value
-            elif input_file_size <= 107_374_182_400:
-                return BHDType.UHD_100.value
-
-        # dvd5/dvd9
-        elif "dvd5" in title_lowered_strip_periods:
-            return BHDType.DVD_5.value
-        elif "dvd9" in title_lowered_strip_periods:
-            return BHDType.DVD_9.value
 
         # encodes
         elif any(
@@ -431,6 +432,10 @@ class BHDUploader:
         return BHDType.OTHER.value
 
     def _source(self) -> str:
+        if self.disc is not None:
+            return (
+                BHDSource.BLURAY.value if self.disc.is_bluray else BHDSource.DVD.value
+            )
         title_lowered = release_stem(self.input_path).lower()
         title_lowered = re.sub(r"\W", ".", title_lowered)
         title_lowered = re.sub(r"\.{2,}", ".", title_lowered)
@@ -458,6 +463,17 @@ class BHDUploader:
             }
 
     def _cleaned_media_info(self) -> str:
+        # BeyondHD takes a disc's BDInfo summary (or a DVD's IFO MediaInfo)
+        # in the same field as a file's MediaInfo
+        if self.disc is not None:
+            text = (
+                self.disc.bdinfo_summary
+                if self.disc.is_bluray
+                else self.disc.ifo_mediainfo
+            )
+            if not text:
+                raise TrackerError("BeyondHD needs the disc's BDInfo or IFO report")
+            return text
         return MinimalMediaInfo(self.input_path).get_full_mi_str(cleansed=True)
 
 

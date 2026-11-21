@@ -206,6 +206,7 @@ def test_torrentleech_upload_receives_derived_anime_signal(
     context.media_input.require_mediainfo.return_value = MagicMock()
     context.media_input.require_media_type.return_value = MediaType.SERIES
     context.media_input.series_episode_format = EpisodeFormat.STANDARD
+    context.media_input.discs = []
     context.media_search = MediaSearchPayload(anilist_id="123")
     release_info = MagicMock(is_pack=False)
 

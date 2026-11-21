@@ -6,6 +6,7 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDialog,
+    QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -126,6 +127,33 @@ class MoviesManagementSettings(BaseSettings):
         fn_colon_layout.addWidget(self.fn_colon_replace)
         fn_colon_layout.addStretch()
         self.controls_layout.addLayout(fn_colon_layout)
+
+        # full discs: only the root folder can be renamed, and only on request
+        self.rename_disc_folder_check_box = QCheckBox("Rename Disc Folder", self)
+        self.rename_disc_folder_check_box.setToolTip(
+            "Rename a full disc's (Blu-ray / DVD) root folder, or its .iso "
+            "image, to the generated name. Files inside a disc are never renamed."
+        )
+        self.controls_layout.addWidget(self.rename_disc_folder_check_box)
+
+        # a disc is named as the medium, with its own templates
+        self.bluray_name_token_input = QLineEdit(self)
+        self.bluray_name_token_input.setToolTip(
+            "How a full Blu-ray is named, e.g. "
+            "Movie 2020 1080p GBR Blu-ray AVC DTS-HD MA 5.1-Group"
+        )
+        self.dvd_name_token_input = QLineEdit(self)
+        self.dvd_name_token_input.setToolTip(
+            "How a full DVD is named, e.g. Movie 2020 PAL DVD9 AC3 5.1-Group"
+        )
+        disc_tokens_layout = QGridLayout()
+        disc_tokens_layout.setContentsMargins(0, 0, 0, 0)
+        disc_tokens_layout.addWidget(QLabel("Blu-ray Disc Name Tokens", self), 0, 0)
+        disc_tokens_layout.addWidget(self.bluray_name_token_input, 0, 1)
+        disc_tokens_layout.addWidget(QLabel("DVD Disc Name Tokens", self), 1, 0)
+        disc_tokens_layout.addWidget(self.dvd_name_token_input, 1, 1)
+        disc_tokens_layout.setColumnStretch(1, 1)
+        self.controls_layout.addLayout(disc_tokens_layout)
 
         # format file name
         format_file_name_lbl = QLabel("Token", self)
@@ -323,6 +351,15 @@ class MoviesManagementSettings(BaseSettings):
         self._live_video_dynamic_range = None
 
         self.rename_check_box.setChecked(self.config.settings.movie.enabled)
+        self.rename_disc_folder_check_box.setChecked(
+            self.config.settings.disc.rename_root_folder
+        )
+        self._update_qline_cursor_0(
+            self.bluray_name_token_input, self.config.settings.disc.bluray_name_token
+        )
+        self._update_qline_cursor_0(
+            self.dvd_name_token_input, self.config.settings.disc.dvd_name_token
+        )
         self._load_filename_colon_combo(
             self.fn_colon_replace,
             self.config.settings.movie.filename_colon_replace,
@@ -353,6 +390,18 @@ class MoviesManagementSettings(BaseSettings):
     @Slot()
     def _save_settings(self) -> None:
         self.config.settings.movie.enabled = self.rename_check_box.isChecked()
+        self.config.settings.disc.rename_root_folder = (
+            self.rename_disc_folder_check_box.isChecked()
+        )
+        # a blank template would name nothing: keep the default instead
+        self.config.settings.disc.bluray_name_token = (
+            self.bluray_name_token_input.text().strip()
+            or self.config.defaults.disc.bluray_name_token
+        )
+        self.config.settings.disc.dvd_name_token = (
+            self.dvd_name_token_input.text().strip()
+            or self.config.defaults.disc.dvd_name_token
+        )
         self.config.settings.movie.filename_colon_replace = ColonReplace(
             self.fn_colon_replace.currentData()
         )
@@ -368,6 +417,15 @@ class MoviesManagementSettings(BaseSettings):
 
     def apply_defaults(self) -> None:
         self.rename_check_box.setChecked(self.config.defaults.movie.enabled)
+        self.rename_disc_folder_check_box.setChecked(
+            self.config.defaults.disc.rename_root_folder
+        )
+        self._update_qline_cursor_0(
+            self.bluray_name_token_input, self.config.defaults.disc.bluray_name_token
+        )
+        self._update_qline_cursor_0(
+            self.dvd_name_token_input, self.config.defaults.disc.dvd_name_token
+        )
         self._select_colon(
             self.fn_colon_replace, self.config.defaults.movie.filename_colon_replace
         )

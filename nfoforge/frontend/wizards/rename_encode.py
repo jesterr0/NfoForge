@@ -8,6 +8,7 @@ from PySide6.QtGui import QCursor
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
+    QCompleter,
     QDialog,
     QFrame,
     QGridLayout,
@@ -29,6 +30,7 @@ from PySide6.QtWidgets import (
 from nfoforge.backend.rename_encode import RenameEncodeBackEnd
 from nfoforge.backend.rename_files import RenamePlan, RenameResult
 from nfoforge.backend.tokens import FileToken, Tokens, TokenSelection, TokenType
+from nfoforge.backend.trackers.unit3d_ids import UNIT3D_DISTRIBUTORS
 from nfoforge.backend.utils.filename_claims import (
     FilenameClaims,
     detect_filename_claims,
@@ -44,10 +46,13 @@ from nfoforge.backend.utils.streaming_services import (
 )
 from nfoforge.config.config import ConfigManager
 from nfoforge.context.processing_context import ProcessingContext
+from nfoforge.core.disc import DISC_REGIONS, DiscType
 from nfoforge.core.rename.choices import RenameChoices, quality_problem
 from nfoforge.core.rename.movie import (
     commit_movie_rename,
+    default_name_token,
     detect_movie_choices,
+    disc_rename_plan,
     movie_name_problems,
     movie_rename_map,
     render_movie_name,
@@ -148,12 +153,12 @@ class RenameEncode(BaseWizardPage):
             raise AttributeError("Could not detect edition_combo.lineEdit()")
         edition_combo_line_edit.editingFinished.connect(self._update_edition_combo)
 
-        frame_size_lbl = QLabel("Frame Size", self)
+        self.frame_size_lbl = frame_size_lbl = QLabel("Frame Size", self)
         self.frame_size_combo = CustomComboBox(disable_mouse_wheel=True, parent=self)
         self._update_combo_box(self.frame_size_combo, FRAME_SIZE_INFO)
         self.frame_size_combo.currentIndexChanged.connect(self._update_frame_size_combo)
 
-        localization_lbl = QLabel("Localization", self)
+        self.localization_lbl = localization_lbl = QLabel("Localization", self)
         self.localization_combo = CustomComboBox(disable_mouse_wheel=True, parent=self)
         self._update_combo_box(self.localization_combo, LOCALIZATION_INFO)
         self.localization_combo.currentIndexChanged.connect(
@@ -214,7 +219,7 @@ class RenameEncode(BaseWizardPage):
         self.quality_combo.addItems([str(q) for q in QualitySelection])
         self.quality_combo.currentIndexChanged.connect(self._update_quality_combo)
 
-        service_combo_lbl = QLabel("Service", self)
+        self.service_combo_lbl = service_combo_lbl = QLabel("Service", self)
         self.service_combo = CustomComboBox(
             completer=True,
             completer_strict=True,
@@ -242,6 +247,51 @@ class RenameEncode(BaseWizardPage):
         checkboxes_layout.addWidget(self.remux_checkbox)
         checkboxes_layout.addWidget(self.hybrid_checkbox)
 
+        # full disc only: shown in place of Frame Size and Localization, which
+        # an untouched disc never has
+        self.region_lbl = QLabel("Region", self)
+        self.region_lbl.setToolTip(
+            "Where the disc was released (USA, GBR, EUR...). Pre-filled when the "
+            "folder name or disc label states it."
+        )
+        self.region_combo = CustomComboBox(
+            completer=True,
+            completer_strict=False,
+            disable_mouse_wheel=True,
+            parent=self,
+        )
+        self.region_combo.setToolTip(self.region_lbl.toolTip())
+        self.region_combo.addItem("")
+        self.region_combo.addItems(DISC_REGIONS)
+        self.region_combo.currentTextChanged.connect(self._update_region)
+
+        self.distributor_lbl = QLabel("Distributor", self)
+        self.distributor_lbl.setToolTip(
+            "Who released the disc (Criterion, Arrow...). Optional."
+        )
+        self.distributor_entry = QLineEdit(self)
+        self.distributor_entry.setToolTip(self.distributor_lbl.toolTip())
+        self.distributor_entry.setPlaceholderText("Optional")
+        self.distributor_entry.textEdited.connect(self._update_distributor)
+        # the names UNIT3D trackers know: a typed name off this list gets no id
+        distributor_completer = QCompleter(
+            sorted({name for _id, name in UNIT3D_DISTRIBUTORS}, key=str.casefold),
+            self.distributor_entry,
+        )
+        distributor_completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+        distributor_completer.setFilterMode(Qt.MatchFlag.MatchContains)
+        distributor_completer.activated.connect(self._update_distributor)
+        self.distributor_entry.setCompleter(distributor_completer)
+
+        self._disc_widgets: tuple[QWidget, ...] = (
+            self.region_lbl,
+            self.region_combo,
+            self.distributor_lbl,
+            self.distributor_entry,
+        )
+        for widget in self._disc_widgets:
+            widget.hide()
+
         release_group_lbl = QLabel("Release Group", self)
         release_group_lbl.setToolTip(
             "The group name on your output. Pre-filled from Settings > General, "
@@ -253,7 +303,9 @@ class RenameEncode(BaseWizardPage):
         self.release_group_entry.setPlaceholderText("No group tag")
         self.release_group_entry.textEdited.connect(self.update_generated_name)
 
-        token_override_lbl = QLabel("Override File Name Tokens", self)
+        self.token_override_lbl = token_override_lbl = QLabel(
+            "Override File Name Tokens", self
+        )
         view_tokens_popup_btn = QToolButton(self)
         QTAThemeSwap().register(
             view_tokens_popup_btn, "ph.eye-light", icon_size=QSize(20, 20)
@@ -288,6 +340,11 @@ class RenameEncode(BaseWizardPage):
         options_layout.addWidget(self.frame_size_combo, 1, 1)
         options_layout.addWidget(localization_lbl, 0, 2)
         options_layout.addWidget(self.localization_combo, 1, 2)
+        # the same cells: a disc shows these, a file the two above
+        options_layout.addWidget(self.region_lbl, 0, 1)
+        options_layout.addWidget(self.region_combo, 1, 1)
+        options_layout.addWidget(self.distributor_lbl, 0, 2)
+        options_layout.addWidget(self.distributor_entry, 1, 2)
         options_layout.addWidget(re_release_lbl, 2, 0)
         options_layout.addWidget(self.re_release_combo, 3, 0)
         options_layout.addWidget(self.repack_reason_lbl, 2, 1)
@@ -313,7 +370,7 @@ class RenameEncode(BaseWizardPage):
         group_box_layout.setContentsMargins(0, 0, 0, 0)
         group_box_layout.addWidget(self.options_scroll_area)
 
-        output_group_box = QGroupBox("Output")
+        self.output_group_box = output_group_box = QGroupBox("Output")
         output_group_box.setSizePolicy(
             QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Maximum
         )
@@ -322,7 +379,12 @@ class RenameEncode(BaseWizardPage):
         self.output_entry.setToolTip("Suggested name, updates automatically")
         self.output_entry.setReadOnly(True)
 
+        # shown for a full disc, where the generated name may rename nothing
+        self.disc_note = QLabel(self, wordWrap=True)
+        self.disc_note.hide()
+
         output_layout.addWidget(self.output_entry)
+        output_layout.addWidget(self.disc_note)
 
         layout = QVBoxLayout(self)
         layout.addWidget(input_group_box)
@@ -331,10 +393,24 @@ class RenameEncode(BaseWizardPage):
         layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
     def initializePage(self) -> None:
-        # this is a movie so there's only ever 1 to rename, grab it with index 0
-        media_file = self.context.media_input.file_list[0]
-        self.media_label.setText(media_file.stem)
-        self.media_label.setToolTip(media_file.stem)
+        # a movie is one file, index 0; a disc is named by its folder, not by
+        # the clip standing in for it
+        media_input = self.context.media_input
+        release_name = media_input.release_name()
+        self.media_label.setText(release_name)
+        self.media_label.setToolTip(release_name)
+        if media_input.is_disc():
+            what = "image" if media_input.discs[0].is_image else "folder"
+            self.disc_note.setText(
+                f"Full disc: only the disc's {what} is renamed. Files inside a "
+                "disc are never renamed."
+                if self.config.settings.disc.rename_root_folder
+                else "Full disc: nothing is renamed. The name above is only "
+                "used for titles. Enable <b>Rename Disc Folder</b> in the movie "
+                f"settings to rename the disc's {what} to it."
+            )
+        self.disc_note.setVisible(media_input.is_disc())
+        self._set_disc_mode(media_input.is_disc())
 
         choices = detect_movie_choices(self.context, self.config.settings)
         for combo, value in (
@@ -349,7 +425,12 @@ class RenameEncode(BaseWizardPage):
         self.remux_checkbox.setChecked(choices.remux)
         self.hybrid_checkbox.setChecked(choices.hybrid)
 
-        self.token_override.setText(self.config.settings.movie.filename_token)
+        self.token_override.setText(self._default_token())
+        if media_input.is_disc():
+            self.region_combo.setCurrentText(choices.region)
+            self.distributor_entry.setText(choices.distributor)
+            self._update_region(choices.region)
+            self._update_distributor(choices.distributor)
 
         if choices.quality:
             quality_idx = self.quality_combo.findText(str(choices.quality))
@@ -369,27 +450,41 @@ class RenameEncode(BaseWizardPage):
 
         if not self._name_validations() or not self._quality_validations():
             return False
-        effective_renames = movie_rename_map(
-            self.context.media_input, self.output_entry.text().strip()
-        )
-        # If there are no actual renames, skip the preview and worker.
-        if not effective_renames:
-            return self._complete_validation()
-
+        media_input = self.context.media_input
+        output_name = self.output_entry.text().strip()
+        plan: RenamePlan | None
         try:
-            plan = RenamePlan.build(
-                effective_renames,
-                self.context.media_input.input_path,
-            )
+            if media_input.is_disc():
+                # only the disc's folder or image, and only when asked for
+                plan = (
+                    disc_rename_plan(media_input, output_name)
+                    if self.config.settings.disc.rename_root_folder
+                    else None
+                )
+            else:
+                renames = movie_rename_map(media_input, output_name)
+                plan = (
+                    RenamePlan.build(renames, media_input.input_path)
+                    if renames
+                    else None
+                )
         except ValueError as error:
             QMessageBox.warning(self, "Invalid Rename", str(error))
             return False
+        # If there are no actual renames, skip the preview and worker.
+        if plan is None:
+            return self._complete_validation()
 
         preview_dialog = RenamePreviewDialog(self)
-        preview_dialog.set_renames(plan.file_targets)
+        preview_dialog.set_renames(
+            plan.file_targets,
+            (plan.directory_targets or None) if media_input.is_disc() else None,
+        )
         if preview_dialog.exec() != QDialog.DialogCode.Accepted:
             return False
 
+        # a mounted image cannot be renamed; it is mounted again on completion
+        media_input.unmount_disc_images()
         self._rename_operation.start(plan, "Renaming media...")
         return False
 
@@ -471,7 +566,8 @@ class RenameEncode(BaseWizardPage):
         and pre-fills from, so the two now answer alike.
         """
         return detect_filename_claims(
-            [self.context.media_input.file_list[0].stem],
+            # the folder name for a disc: its clip is called `00001`
+            [self.context.media_input.release_name()],
             self.config.settings.movie.claims,
             self.context.custom_edition_info,
         )
@@ -569,6 +665,50 @@ class RenameEncode(BaseWizardPage):
             return False
         return True
 
+    def _default_token(self) -> str:
+        return default_name_token(self.config.settings, self.context.media_input)
+
+    def _set_disc_mode(self, is_disc: bool) -> None:
+        """Show what can describe a full disc, and hide what cannot.
+
+        An untouched disc has no frame size, localization, streaming service,
+        REMUX or HYBRID claim to make; it has a region and a distributor.
+        """
+        for widget in (
+            self.frame_size_lbl,
+            self.frame_size_combo,
+            self.localization_lbl,
+            self.localization_combo,
+            self.service_combo_lbl,
+            self.service_combo,
+            self.remux_checkbox,
+            self.hybrid_checkbox,
+        ):
+            widget.setHidden(is_disc)
+        for widget in self._disc_widgets:
+            widget.setVisible(is_disc)
+        if not is_disc:
+            for name in ("region", "distributor"):
+                self.backend.override_tokens.pop(name, None)
+            self.output_group_box.setTitle("Output")
+            self.token_override_lbl.setText("Override File Name Tokens")
+            return
+        disc_type = self.context.media_input.discs[0].disc_type
+        kind = "DVD" if disc_type is DiscType.DVD else "Blu-ray"
+        self.output_group_box.setTitle(f"{kind} Disc Name")
+        self.token_override_lbl.setText(f"Override {kind} Disc Name Tokens")
+
+    @Slot(str)
+    def _update_region(self, text: str) -> None:
+        # written even when blank: clearing a detected region is the user
+        # saying the release has none, which has to beat the detection
+        self.backend.override_tokens["region"] = text.strip().upper()
+        self.update_generated_name()
+
+    @Slot(str)
+    def _update_distributor(self, text: str) -> None:
+        self._update_override_tokens("distributor", text.strip())
+
     @Slot(int)
     def _update_edition_combo(self, _: int | None = None) -> None:
         self._update_override_tokens(
@@ -656,7 +796,7 @@ class RenameEncode(BaseWizardPage):
     def update_generated_name(self, _: int | None = None) -> None:
         """Update the generated name based on current selections."""
 
-        token = self.config.settings.movie.filename_token
+        token = self._default_token()
         if self.override_group.isChecked():
             token = self.token_override.text()
         else:

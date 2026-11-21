@@ -9,6 +9,7 @@ import shutil
 import time
 from typing import ClassVar
 
+from nfoforge.backend.utils.working_dir import FRAMEFORGE_INDEX_DIR_NAME
 from nfoforge.config.paths import ConfigPaths
 from nfoforge.enums.indexer import Indexer
 from nfoforge.logger.nfo_forge_logger import LOG
@@ -32,7 +33,7 @@ class FrameForgeIndexCache:
     and rebuild them when required, so separate manifests are unnecessary.
     """
 
-    CACHE_DIR_NAME = "frameforge_indexes"
+    CACHE_DIR_NAME = FRAMEFORGE_INDEX_DIR_NAME
     MAX_ENTRIES: ClassVar[int] = 10
     _STEM_MAX_LENGTH = 48
     _HASH_LENGTH = 12

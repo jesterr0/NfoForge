@@ -86,7 +86,8 @@ class SeriesReleaseInfo:
         path = self.search_path
         if not path:
             return ""
-        if self.is_pack and self.input_is_directory:
+        # a folder's dotted name has no extension to strip
+        if self.input_is_directory and (self.is_pack or path == self.input_path):
             return path.name
         return path.stem if path.suffix else path.name
 
@@ -137,6 +138,9 @@ class SeriesReleaseInfo:
 def build_series_release_info(media_input: MediaInputPayload) -> SeriesReleaseInfo:
     file_list = list(media_input.file_list)
     primary_file = file_list[0] if file_list else media_input.input_path
+    # a disc's clip names say nothing about the release; its folder does
+    is_disc = media_input.is_disc() and media_input.input_path is not None
+    name_paths = [media_input.input_path] if is_disc else file_list
     mappings = media_input.series_episode_map or {}
 
     seasons: list[int] = []
@@ -175,7 +179,9 @@ def build_series_release_info(media_input: MediaInputPayload) -> SeriesReleaseIn
     need_seasons = not seasons
     need_episodes = not episode_starts
     if need_seasons or need_episodes:
-        for file_path in file_list or ([primary_file] if primary_file else []):
+        for file_path in name_paths or ([primary_file] if primary_file else []):
+            if file_path is None:
+                continue
             parsed = guessit(file_path.name, options={"type": "episode"})
             if need_seasons:
                 season = _fallback_season(file_path.name, parsed.get("season"))
@@ -199,7 +205,9 @@ def build_series_release_info(media_input: MediaInputPayload) -> SeriesReleaseIn
         media_type=media_input.media_type,
         input_path=media_input.input_path,
         primary_file=primary_file,
-        title_path=media_input.input_path if episode_count > 1 else primary_file,
+        title_path=(
+            media_input.input_path if episode_count > 1 or is_disc else primary_file
+        ),
         season=season,
         season_end=season_end,
         episode_start=episode_start,

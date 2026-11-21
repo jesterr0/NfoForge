@@ -9,6 +9,7 @@ class Dependencies(CaseInsensitiveEnum):
     FFPROBE = auto_enum()
     FRAME_FORGE = auto_enum()
     MKBRR = auto_enum()
+    BDINFO = auto_enum()
 
     @override
     def __str__(self) -> str:
@@ -17,6 +18,7 @@ class Dependencies(CaseInsensitiveEnum):
             Dependencies.FFPROBE: "FFPROBE",
             Dependencies.FRAME_FORGE: "FrameForge",
             Dependencies.MKBRR: "mkbrr",
+            Dependencies.BDINFO: "BDInfo",
         }
         return dep_map[self]
 
@@ -41,6 +43,11 @@ class Dependencies(CaseInsensitiveEnum):
                 "cfg_var": "mkbrr",
                 "app_folder": "mkbrr",
                 "executable": "mkbrr",
+            },
+            Dependencies.BDINFO: {
+                "cfg_var": "bdinfo",
+                "app_folder": "bdinfo-rs",
+                "executable": "bdinfo-rs",
             },
         }
         return dep_map[self]

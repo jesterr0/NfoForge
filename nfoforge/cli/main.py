@@ -104,7 +104,12 @@ def build_parser() -> argparse.ArgumentParser:
     upload = commands.add_parser(
         "upload", help="Take a release from a path all the way to its trackers."
     )
-    upload.add_argument("path", type=Path, metavar="PATH", help="File or folder.")
+    upload.add_argument(
+        "path",
+        type=Path,
+        metavar="PATH",
+        help="File, folder, full disc folder, or disc image (.iso).",
+    )
     upload.add_argument("--preset", metavar="NAME", help="Fill options from a preset.")
     upload.add_argument(
         "--trackers",
@@ -123,6 +128,22 @@ def build_parser() -> argparse.ArgumentParser:
     ids.add_argument("--tvdb-id", metavar="ID")
     ids.add_argument("--season", type=int, metavar="N")
     ids.add_argument("--episode", type=int, metavar="N")
+    ids.add_argument(
+        "--playlist",
+        metavar="ID",
+        help="For a full disc with several main candidates: the playlist "
+        "(Blu-ray, e.g. 00800) or title set (DVD, e.g. 02) to release.",
+    )
+    ids.add_argument(
+        "--region",
+        metavar="CODE",
+        help="For a full disc: its region (e.g. GBR), when the name does not say.",
+    )
+    ids.add_argument(
+        "--distributor",
+        metavar="NAME",
+        help="For a full disc: its distributor (e.g. Criterion).",
+    )
     naming = upload.add_argument_group("renaming and tokens")
     rename = naming.add_mutually_exclusive_group()
     rename.add_argument(
@@ -314,6 +335,12 @@ def _workflow(
 # --------------------------------------------------------------------------
 # commands
 # --------------------------------------------------------------------------
+def _disc_overrides(args: argparse.Namespace) -> dict[str, str]:
+    """`--region` and `--distributor`, as the token overrides they are."""
+    given = {"region": args.region, "distributor": args.distributor}
+    return {name: value.strip() for name, value in given.items() if value}
+
+
 def cmd_upload(
     args: argparse.Namespace, config: ConfigManager, out: TextIO, err: TextIO
 ) -> ExitCode:
@@ -329,9 +356,11 @@ def cmd_upload(
         "tvdb_id": args.tvdb_id,
         "season": args.season,
         "episode": args.episode,
+        "playlist": args.playlist,
         "rename": args.rename,
         "filename_token": args.filename_token,
-        "token_overrides": _pairs(args.override, "--override") or None,
+        "token_overrides": _disc_overrides(args) | _pairs(args.override, "--override")
+        or None,
         "prompt_tokens": _pairs(args.token, "--token") or None,
         "screenshot_count": args.screenshot_count,
         "screenshot_dir": args.screenshot_dir,
@@ -367,7 +396,7 @@ def cmd_search(
 ) -> ExitCode:
     path = args.path.expanduser()
     try:
-        files = collect_media_files(path)
+        files = collect_media_files(path, settle_playlist=False)
     except WorkflowError as error:
         raise CliError(str(error)) from error
     query = (

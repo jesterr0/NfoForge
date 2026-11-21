@@ -9,10 +9,13 @@ from tomlkit.items import AbstractTable
 from nfoforge.backend.tokens import TokenSelection
 from nfoforge.config.codec import TomlConfigCodec
 from nfoforge.config.models import (
+    DEFAULT_BLURAY_NAME_TEMPLATE,
+    DEFAULT_DVD_NAME_TEMPLATE,
     ApiKeysSettings,
     AppConfig,
     ClaimSwitches,
     DependencySettings,
+    DiscSettings,
     DynamicRangeSettings,
     GeneralSettings,
     GlobalManagementSettings,
@@ -259,6 +262,9 @@ class TypedTomlOperations:
                 self.settings.dependencies.mkbrr
             )
             dependencies_data["enable_mkbrr"] = self.settings.dependencies.enable_mkbrr
+            dependencies_data["bdinfo"] = self.resolve_dependency(
+                self.settings.dependencies.bdinfo
+            )
 
             # api keys
             api_keys_data = self._ensure_toml_table(self._toml_data, "api_keys")
@@ -905,6 +911,16 @@ class TypedTomlOperations:
             movie_management["mvr_token"] = self.settings.movie.filename_token
             movie_management["mvr_title_token"] = self.settings.movie.title_token
 
+            # disc management
+            disc_management = self._ensure_toml_table(
+                self._toml_data, "disc_management"
+            )
+            disc_management["rename_root_folder"] = (
+                self.settings.disc.rename_root_folder
+            )
+            disc_management["bluray_name_token"] = self.settings.disc.bluray_name_token
+            disc_management["dvd_name_token"] = self.settings.disc.dvd_name_token
+
             # series management
             series_management = self._toml_table(self._toml_data, "series_management")
             series_management["tvr_enabled"] = self.settings.series.enabled
@@ -1232,6 +1248,11 @@ class TypedTomlOperations:
                 Path(dependencies_data["mkbrr"]) if dependencies_data["mkbrr"] else None
             )
             enable_mkbrr = bool(dependencies_data["enable_mkbrr"])
+            bdinfo = (
+                Path(dependencies_data["bdinfo"])
+                if dependencies_data.get("bdinfo")
+                else None
+            )
 
             # trackers
             tracker_data = self._toml_mapping(toml_data, "tracker")
@@ -1709,6 +1730,13 @@ class TypedTomlOperations:
             # movie management
             movie_management = self._toml_mapping(toml_data, "movie_management")
 
+            # disc management: absent from a config written before discs
+            disc_management = (
+                self._toml_mapping(toml_data, "disc_management")
+                if "disc_management" in toml_data
+                else {}
+            )
+
             # series management
             series_management = self._toml_mapping(toml_data, "series_management")
 
@@ -1803,6 +1831,7 @@ class TypedTomlOperations:
                     frame_forge=frame_forge,
                     mkbrr=mkbrr,
                     enable_mkbrr=enable_mkbrr,
+                    bdinfo=bdinfo,
                 ),
                 trackers=TrackerSettings(
                     order=tracker_order,
@@ -1843,6 +1872,19 @@ class TypedTomlOperations:
                     claims=_load_claims(movie_management, "mvr"),
                     filename_token=str(movie_management["mvr_token"]),
                     title_token=str(movie_management["mvr_title_token"]),
+                ),
+                disc=DiscSettings(
+                    rename_root_folder=bool(
+                        disc_management.get("rename_root_folder", False)
+                    ),
+                    bluray_name_token=str(
+                        disc_management.get(
+                            "bluray_name_token", DEFAULT_BLURAY_NAME_TEMPLATE
+                        )
+                    ),
+                    dvd_name_token=str(
+                        disc_management.get("dvd_name_token", DEFAULT_DVD_NAME_TEMPLATE)
+                    ),
                 ),
                 series=SeriesSettings(
                     enabled=bool(series_management["tvr_enabled"]),

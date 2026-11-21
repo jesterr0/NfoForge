@@ -41,6 +41,7 @@ from nfoforge.packages.custom_types import (
 from nfoforge.plugins.api import MetadataMediaKind
 from nfoforge.plugins.manager import PluginManager
 from tests.conftest import SourceLessBundle, write_sample_media
+from tests.disc_helpers import make_dvd
 
 
 def _config_payload() -> Any:
@@ -806,3 +807,34 @@ def test_an_image_source_destination_is_not_turned_into_a_host() -> None:
     assert restored.shared_data.uploaded_image_hosts[TrackerSelection.AITHER] is (
         ImageSource.URLS
     )
+
+
+def test_a_disc_release_round_trips_with_its_reports(
+    sample_media: Path, tmp_path: Path
+) -> None:
+    from nfoforge.core.disc import choose_playlist, detect_disc
+
+    disc = detect_disc(make_dvd(tmp_path / "Movie.DVD9", {"01": [1, 100]}))
+    assert disc is not None
+    choose_playlist(disc)
+    disc.ifo_mediainfo, disc.vob_mediainfo = "ifo text", "vob text"
+    source = _new_context()
+    _populate(source, sample_media)
+    source.media_input.discs.append(disc)
+
+    document = context_to_dict(source)
+    restored = _new_context()
+    context_from_dict(document, restored)
+
+    assert restored.media_input.is_disc()
+    assert restored.media_input.discs == [disc]
+
+    # a job saved before discs existed has no such key and is not a disc
+    del document["media_input"]["discs"]
+    older = _new_context()
+    context_from_dict(document, older)
+    assert not older.media_input.is_disc()
+
+    document["media_input"]["discs"] = [{"root": "x"}]
+    with pytest.raises(JobCodecError, match="disc details"):
+        context_from_dict(document, _new_context())

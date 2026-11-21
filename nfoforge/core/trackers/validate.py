@@ -19,8 +19,10 @@ from nfoforge.backend.template_selector import TemplateSelectorBackEnd
 from nfoforge.backend.trackers.media_support import (
     UNIT3D_TRACKERS,
     UNSUPPORTED_SERIES_TRACKERS,
+    supports_disc,
 )
 from nfoforge.context.processing_context import ProcessingContext
+from nfoforge.core.disc.model import DiscType
 from nfoforge.enums.media_type import MediaType
 from nfoforge.enums.tracker_selection import TrackerSelection
 from nfoforge.payloads.series import (
@@ -138,6 +140,22 @@ def series_unsupported_trackers(
     if media_type is not MediaType.SERIES:
         return []
     return [tracker for tracker in trackers if tracker in UNSUPPORTED_SERIES_TRACKERS]
+
+
+def disc_unsupported_trackers(
+    trackers: Iterable[TrackerSelection],
+    disc_type: DiscType | None,
+    *,
+    image: bool = False,
+) -> list[TrackerSelection]:
+    """The trackers that do not take a full disc of this kind (or as an image)."""
+    if disc_type is None:
+        return []
+    return [
+        tracker
+        for tracker in trackers
+        if not supports_disc(tracker, disc_type, image=image)
+    ]
 
 
 def multi_season_pack_warning(

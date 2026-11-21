@@ -13,6 +13,7 @@ from nfoforge.backend.utils.file_utilities import release_stem
 from nfoforge.backend.utils.http_client import new_http_session
 from nfoforge.backend.utils.resolution import VideoResolutionAnalyzer
 from nfoforge.backend.utils.tvmaze_client import TVmazeClient, normalize_imdb_id
+from nfoforge.core.disc import DiscRelease
 from nfoforge.enums.media_type import MediaType
 from nfoforge.enums.tracker_selection import TrackerSelection
 from nfoforge.enums.trackers.torrentleech import TLCategories
@@ -36,6 +37,7 @@ def tl_upload(
     tvdb_id: str | None = None,
     season: int | None = None,
     episode: int | None = None,
+    disc: DiscRelease | None = None,
 ) -> bool | None:
     uploader = TLUploader(
         announce_key=announce_key,
@@ -53,6 +55,7 @@ def tl_upload(
         media_type=media_type,
         is_pack=is_pack,
         is_anime=is_anime,
+        disc=disc,
     )
 
 
@@ -91,6 +94,7 @@ class TLUploader:
         media_type: MediaType,
         is_pack: bool,
         is_anime: bool = False,
+        disc: DiscRelease | None = None,
     ) -> bool | None:
         files = self._get_files(nfo, torrent_file)
         get_resolution = VideoResolutionAnalyzer(mediainfo_obj).get_resolution()
@@ -100,6 +104,7 @@ class TLUploader:
             media_type,
             is_pack,
             is_anime,
+            disc,
         )
         if tracker_title:
             data["name"] = tracker_title
@@ -162,11 +167,12 @@ class TLUploader:
         media_type: MediaType,
         is_pack: bool = False,
         is_anime: bool = False,
+        disc: DiscRelease | None = None,
     ) -> dict[str, str | int]:
         data: dict[str, str | int] = {
             "announcekey": self.announce_key,
             "category": self._detect_category(
-                title, resolution, media_type, is_pack, is_anime
+                title, resolution, media_type, is_pack, is_anime, disc
             ),
         }
         data.update(self._metadata_fields(media_type, is_pack, is_anime))
@@ -264,9 +270,17 @@ class TLUploader:
         media_type: MediaType,
         is_pack: bool = False,
         is_anime: bool = False,
+        disc: DiscRelease | None = None,
     ) -> int:
         if is_anime:
             return int(TLCategories.ANIME.value)
+
+        if disc is not None and media_type is MediaType.MOVIE:
+            if disc.is_dvd:
+                return int(TLCategories.MOVIE_DVD.value)
+            if disc.uhd:
+                return int(TLCategories.MOVIE_4K.value)
+            return int(TLCategories.MOVIE_BLURAY.value)
 
         title_lowered = title.lower()
         if media_type is MediaType.SERIES:

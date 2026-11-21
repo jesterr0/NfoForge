@@ -1,6 +1,10 @@
+from collections.abc import Iterable
 from pathlib import Path
+import re
 import sys
 import warnings
+
+from nfoforge.enums.tracker_selection import TrackerSelection
 
 
 def _get_working_directories() -> tuple[Path, bool]:
@@ -54,23 +58,28 @@ def asset_root() -> Path:
     return _PROJECT_ROOT / ASSET_DIR_NAME
 
 
-# The user-configurable working directory is laid out so that disposable
-# artifacts and deliberately saved work never share a parent. "Clean Up" in
-# Settings -> General reclaims space by emptying everything *except* the jobs
-# folder, so a saved job can't be destroyed by routine housekeeping.
 JOBS_DIR_NAME = "jobs"
 """Saved jobs. Never removed by the working directory clean up."""
 
 PROCESSING_DIR_NAME = "processing"
 """Per-run artifacts (screenshots, torrents, NFOs). Safe to delete."""
 
-WORKSPACE_DIR_NAME = "workspace"
-"""Parent of the two above, once the working directory lives inside `<user data>`.
+FRAMEFORGE_INDEX_DIR_NAME = "frameforge_indexes"
+"""Reusable FrameForge indexes for the working directory."""
 
-Named here rather than in the layout migration that introduces it, because it is
-the new parent of the two names above and splitting the three across modules
-would invite the layout and the working directory drifting apart.
-"""
+WORKSPACE_DIR_NAME = "workspace"
+"""Default working directory inside the application's data directory."""
+
+_RUN_FOLDER_STAMP = re.compile(r"_\d{2}\.\d{2}\.\d{4}_\d{2}\.\d{2}\.\d{2}$")
+_TRACKER_FILE_SUFFIXES = frozenset({".nfo", ".torrent"})
+_IMAGE_FILE_SUFFIXES = frozenset({".png", ".jpg", ".jpeg"})
+_LEGACY_OUTPUT_DIRS = {
+    **dict.fromkeys(
+        (str(tracker).lower() for tracker in TrackerSelection), _TRACKER_FILE_SUFFIXES
+    ),
+    "images": _IMAGE_FILE_SUFFIXES,
+    "dl_imgs": _IMAGE_FILE_SUFFIXES,
+}
 
 
 def normalise_path(path: Path) -> Path:
@@ -110,44 +119,87 @@ def processing_dir(working_dir: Path, ensure_exists: bool = False) -> Path:
     return path
 
 
-def cleanable_items(working_dir: Path, data_root: Path) -> list[Path]:
-    """Everything clean up may delete: the contents of the processing folder.
+def has_run_folder_stamp(name: str) -> bool:
+    """Match the timestamp appended by generate_unique_date_name."""
+    return _RUN_FOLDER_STAMP.search(name) is not None
 
-    Scoped to one directory rather than expressed as "everything except jobs".
-    The exclusion form reached every sibling, which caught the run folders
-    older versions wrote at the working directory root, but it also meant a
-    working directory pointed at a folder holding anything else handed that
-    content to the Clean Up button. Those legacy run folders are relocated
-    into `processing/` by the one-time layout migration instead.
 
-    The folder itself is not returned, only its entries, so it survives for
-    the next run.
+def _is_link(path: Path) -> bool:
+    return path.is_symlink() or path.is_junction()
 
-    `data_root` is the application's own per-user directory, and nothing is
-    returned when emptying the processing folder would reach it. The narrowing
-    above already makes that unreachable for any ordinary working directory;
-    this states it as an invariant instead of leaving it to depend on which
-    directory names the layout happens to use. Required rather than optional
-    so a new caller that has not thought about it fails loudly.
 
-    Same race `cleanable_size` guards one level down: the directory can be
-    removed in the window between the `is_dir()` check and `iterdir()`
-    actually running, and an unhandled `OSError` there would surface out of
-    this function and out of `cleanable_size`, which iterates its result.
-    """
-    processing = processing_dir(working_dir)
-    if normalise_path(data_root).is_relative_to(normalise_path(processing)):
-        return []
-    if not processing.is_dir():
-        return []
+def _directory_items(directory: Path) -> list[Path]:
     try:
-        return list(processing.iterdir())
+        return list(directory.iterdir())
     except OSError:
         return []
 
 
+def _is_legacy_run(directory: Path) -> bool:
+    """Require a timestamped run to contain only known generated artifacts."""
+
+    def raise_scan_error(error: OSError) -> None:
+        raise error
+
+    found_artifacts = False
+    try:
+        if not directory.is_dir() or _is_link(directory):
+            return False
+        for root, dirs, files in directory.walk(on_error=raise_scan_error):
+            if any(_is_link(root / name) for name in dirs):
+                return False
+            if root == directory:
+                if any(name.lower() not in _LEGACY_OUTPUT_DIRS for name in dirs):
+                    return False
+                suffixes = _TRACKER_FILE_SUFFIXES
+            else:
+                output_dir = root.relative_to(directory).parts[0].lower()
+                suffixes = _LEGACY_OUTPUT_DIRS[output_dir]
+            for name in files:
+                artifact = root / name
+                if artifact.suffix.lower() not in suffixes or not artifact.is_file(
+                    follow_symlinks=False
+                ):
+                    return False
+                found_artifacts = True
+    except OSError:
+        return False
+    return found_artifacts
+
+
+def cleanable_items(working_dir: Path, data_root: Path) -> list[Path]:
+    """Find generated output and cached indexes in this working directory."""
+    data_root = normalise_path(data_root)
+    removable = []
+    for directory in (
+        processing_dir(working_dir),
+        working_dir / FRAMEFORGE_INDEX_DIR_NAME,
+    ):
+        if _is_link(directory) or data_root.is_relative_to(normalise_path(directory)):
+            continue
+        removable.extend(
+            item for item in _directory_items(directory) if not _is_link(item)
+        )
+
+    # Layout migration leaves custom working directories in place. Require
+    # evidence of generated output before deleting a folder at their root.
+    for item in _directory_items(working_dir):
+        if (
+            has_run_folder_stamp(item.name)
+            and _is_legacy_run(item)
+            and not data_root.is_relative_to(normalise_path(item))
+        ):
+            removable.append(item)
+    return removable
+
+
 def cleanable_size(working_dir: Path, data_root: Path) -> int:
-    """Bytes clean up could reclaim.
+    """Bytes clean up could reclaim from the working directory."""
+    return cleanup_items_size(cleanable_items(working_dir, data_root))
+
+
+def cleanup_items_size(items: Iterable[Path]) -> int:
+    """Measure the items in a cleanup preview.
 
     Two nested guards, because a scan can lose ground at two different levels.
     A single file can vanish between being listed and being stat()'d -- the
@@ -159,16 +211,21 @@ def cleanable_size(working_dir: Path, data_root: Path) -> int:
     does not cost us the count already gathered for the rest.
     """
     total = 0
-    for item in cleanable_items(working_dir, data_root):
+    for item in items:
         try:
-            if item.is_dir():
-                for candidate in item.rglob("*"):
-                    try:
-                        if candidate.is_file():
-                            total += candidate.stat().st_size
-                    except OSError:
-                        continue
-            elif item.is_file():
+            if item.is_dir(follow_symlinks=False):
+                for root, dirs, files in item.walk():
+                    # Windows junctions are directories to Path.walk. Cleanup
+                    # unlinks them, so their targets do not count toward the size.
+                    dirs[:] = [name for name in dirs if not (root / name).is_junction()]
+                    for name in files:
+                        candidate = root / name
+                        try:
+                            if candidate.is_file(follow_symlinks=False):
+                                total += candidate.stat().st_size
+                        except OSError:
+                            continue
+            elif item.is_file(follow_symlinks=False):
                 total += item.stat().st_size
         except OSError:
             continue

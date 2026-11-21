@@ -37,6 +37,10 @@ class ReleaseRequest:
     episode: int | None = None
     """Numbering for a release whose filenames do not carry it."""
 
+    playlist: str | None = None
+    """Which playlist (Blu-ray) or title set (DVD) of a disc is the release,
+    for a disc with more than one main candidate."""
+
     rename: bool | None = None
     """Force renaming on or off. None follows the profile."""
 

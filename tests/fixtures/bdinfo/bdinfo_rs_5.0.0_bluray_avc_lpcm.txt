@@ -1,0 +1,115 @@
+Disc Label:     Men at Work 1990 1080p MVD Blu-ray AVC LPCM 2.0-Liber8
+Disc Size:      24,648,859,320 bytes
+Protection:     AACS
+BDInfo:         0.8.0.1
+
+Notes:          
+
+BDINFO HOME:
+  Cinema Squid (old)
+    http://www.cinemasquid.com/blu-ray/tools/bdinfo
+  UniqProject GitHub (new)
+    https://github.com/UniqProject/BDInfo
+
+INCLUDES FORUMS REPORT FOR:
+  AVS Forum Blu-ray Audio and Video Specifications Thread
+    http://www.avsforum.com/avs-vb/showthread.php?t=1155731
+
+
+********************
+PLAYLIST: 00004.MPLS
+********************
+
+<--- BEGIN FORUMS PASTE --->
+[code]
+                                                                                                                      Total        Video                                                                           
+Title                                                           Codec   Length    Movie Size        Disc Size         Bitrate      Bitrate      Main Audio Track                          Secondary Audio Track    
+-----                                                           ------  -------   --------------    ----------------  -----------  -----------  ------------------                        ---------------------    
+00004.MPLS                                                      AVC     01:38:42  23,541,837,120    24,648,859,320    31.80 Mbps   28.00 Mbps   LPCM 2.0 2304 kbps (48kHz/24-bit)                                  
+[/code]
+
+[code]
+DISC INFO:
+Disc Label:     Men at Work 1990 1080p MVD Blu-ray AVC LPCM 2.0-Liber8
+Disc Size:      24,648,859,320 bytes
+Protection:     AACS
+BDInfo:         0.8.0.1b
+
+PLAYLIST REPORT:
+
+Name:           00004.MPLS
+Length:         01:38:42.499 (h:m:s.ms)
+Size:           23,541,837,120 bytes
+Total Bitrate:  31.80 Mbps
+
+VIDEO:
+
+Codec                   Bitrate             Description     
+---------------         -------------       -----------     
+MPEG-4 AVC Video        28,000 kbps         1080p / 23.976 fps / 16:9 / High Profile 4.1
+
+AUDIO:
+
+Codec                           Language        Bitrate         Description     
+---------------                 -------------   -------------   -----------     
+LPCM Audio                      English          2304 kbps      2.0 / 48 kHz /  2304 kbps / 24-bit
+
+SUBTITLES:
+
+Codec                           Language        Bitrate         Description     
+---------------                 -------------   -------------   -----------     
+Presentation Graphics           English         16.63 kbps      1920x1080 / 1179 Captions
+Presentation Graphics           Spanish         12.97 kbps      1920x1080 / 834 Captions
+Presentation Graphics           French          13.90 kbps      1920x1080 / 1053 Captions
+
+FILES:
+
+Name            Time In         Length          Size            Total Bitrate   
+--------------- -------------   -------------   -------------   -------------   
+00004.M2TS      0:00:00.000     1:38:42.499     23,541,837,120  31,800 kbps     
+
+CHAPTERS:
+
+Number          Time In         Length          Avg Video Rate  Max 1-Sec Rate  Max 1-Sec Time  Max 5-Sec Rate  Max 5-Sec Time  Max 10Sec Rate  Max 10Sec Time  Avg Frame Size  Max Frame Size  Max Frame Time  
+------          -------------   -------------   --------------  --------------  --------------  --------------  --------------  --------------  --------------  --------------  --------------  --------------  
+1               0:00:00.000     0:08:19.040     23,325 kbps     39,263 kbps     00:06:54.664    37,394 kbps     00:06:51.536    36,075 kbps     00:06:52.370    121,597 bytes   318,602 bytes   00:06:08.242    
+2               0:08:19.040     0:07:30.783     30,339 kbps     39,459 kbps     00:15:14.872    37,252 kbps     00:15:12.912    35,026 kbps     00:10:18.159    158,175 bytes   433,360 bytes   00:12:52.188    
+3               0:15:49.823     0:09:39.745     31,449 kbps     41,272 kbps     00:17:32.926    39,856 kbps     00:17:21.540    39,584 kbps     00:17:21.498    163,947 bytes   405,578 bytes   00:15:50.115    
+4               0:25:29.569     0:04:17.966     28,861 kbps     35,282 kbps     00:27:25.352    34,006 kbps     00:27:24.267    33,710 kbps     00:27:23.183    150,469 bytes   355,112 bytes   00:27:58.551    
+5               0:29:47.535     0:08:49.570     32,222 kbps     42,631 kbps     00:34:52.882    38,880 kbps     00:33:46.899    36,677 kbps     00:33:46.774    167,991 bytes   427,646 bytes   00:35:54.610    
+6               0:38:37.106     0:12:15.526     31,117 kbps     41,548 kbps     00:39:32.244    37,565 kbps     00:39:31.285    36,233 kbps     00:40:11.826    162,237 bytes   312,869 bytes   00:41:50.841    
+7               0:50:52.632     0:05:52.351     29,518 kbps     37,357 kbps     00:53:41.426    35,698 kbps     00:53:39.341    34,106 kbps     00:56:34.641    153,894 bytes   287,428 bytes   00:53:24.409    
+8               0:56:44.984     0:07:25.445     27,679 kbps     36,763 kbps     00:56:45.735    35,871 kbps     00:56:45.735    34,129 kbps     00:56:44.984    144,303 bytes   291,189 bytes   00:58:46.314    
+9               1:04:10.429     0:06:27.970     26,813 kbps     36,772 kbps     01:10:19.256    33,830 kbps     01:04:36.414    33,162 kbps     01:04:32.243    139,778 bytes   308,424 bytes   01:09:09.311    
+10              1:10:38.400     0:11:38.531     28,427 kbps     38,306 kbps     01:14:02.438    35,243 kbps     01:22:11.343    34,635 kbps     01:16:29.751    148,216 bytes   394,751 bytes   01:20:03.757    
+11              1:22:16.932     0:11:03.496     28,803 kbps     37,850 kbps     01:23:26.084    35,049 kbps     01:23:24.708    33,899 kbps     01:31:49.795    150,157 bytes   375,087 bytes   01:29:44.879    
+12              1:33:20.428     0:05:22.071      8,649 kbps     35,815 kbps     01:33:20.761    34,071 kbps     01:33:20.469    32,310 kbps     01:33:20.511     45,113 bytes   317,349 bytes   01:34:05.222    
+
+STREAM DIAGNOSTICS:
+
+File            PID             Type            Codec           Language                Seconds                     Bitrate                  Bytes        Packets       
+----------      -------------   -----           ----------      -------------           --------------          ---------------         --------------  -----------     
+00004.M2TS      4113 (0x1011)   0x1B            AVC                                     5922.417                 28,001 kbps            20,728,964,961  112,742,409     
+00004.M2TS      4352 (0x1100)   0x80            LPCM            eng (English)           5922.417                  2,310 kbps             1,710,406,448    9,475,936     
+00004.M2TS      4608 (0x1200)   0x90            PGS             eng (English)           5922.417                     17 kbps                12,310,161       75,340     
+00004.M2TS      4609 (0x1201)   0x90            PGS             spa (Spanish)           5922.417                     13 kbps                 9,603,454       58,155     
+00004.M2TS      4610 (0x1202)   0x90            PGS             fra (French)            5922.417                     14 kbps                10,287,354       63,433     
+
+[/code]
+<---- END FORUMS PASTE ---->
+
+QUICK SUMMARY:
+
+Disc Label:     Men at Work 1990 1080p MVD Blu-ray AVC LPCM 2.0-Liber8
+Disc Size:      24,648,859,320 bytes
+Protection:     AACS
+Playlist:       00004.MPLS
+Size:           23,541,837,120 bytes
+Length:         01:38:42.499
+Total Bitrate:  31.80 Mbps
+Video:          MPEG-4 AVC Video / 28,000 kbps / 1080p / 23.976 fps / 16:9 / High Profile 4.1
+Audio:          English / LPCM Audio / 2.0 / 48 kHz /  2304 kbps / 24-bit
+Subtitle:       English / 16.63 kbps
+Subtitle:       Spanish / 12.97 kbps
+Subtitle:       French / 13.90 kbps
+

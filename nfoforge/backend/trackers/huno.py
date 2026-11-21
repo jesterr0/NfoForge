@@ -9,6 +9,7 @@ from pymediainfo import MediaInfo
 from nfoforge.backend.trackers.unit3d_base import Unit3dBaseSearch, Unit3dBaseUploader
 from nfoforge.backend.trackers.utils import TRACKER_HEADERS
 from nfoforge.backend.utils.http_client import new_http_session
+from nfoforge.core.disc import DiscRelease
 from nfoforge.enums.media_type import MediaType
 from nfoforge.enums.tracker_selection import TrackerSelection
 from nfoforge.enums.trackers.huno import HunoCategory, HunoResolution, HunoType
@@ -33,6 +34,7 @@ def huno_uploader(
     episode_number: int | None = None,
     episode_number_end: int | None = None,
     season_pack: bool = False,
+    disc: DiscRelease | None = None,
 ) -> bool | None:
     uploader = HunoUploader(
         media_type=media_type,
@@ -61,6 +63,7 @@ def huno_uploader(
         episode_number=episode_number,
         episode_number_end=episode_number_end,
         season_pack=season_pack,
+        disc=disc,
     )
     return upload
 

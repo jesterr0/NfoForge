@@ -29,6 +29,8 @@ from nfoforge.enums.automation import AutomationMode
 class DecisionKind(StrEnum):
     SEARCH_RESULT = "search_result"
     """Which search result is this release."""
+    PLAYLIST = "playlist"
+    """Which of a disc's main playlist candidates is the release."""
     MAL_ID = "mal_id"
     """AniList knows the release but not its MyAnimeList ID."""
     CONTINUE_WITHOUT_TVDB = "continue_without_tvdb"

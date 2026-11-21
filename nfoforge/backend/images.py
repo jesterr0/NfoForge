@@ -157,6 +157,14 @@ class ImageGeneration(ABC):
         return 1
 
 
+def _ffmpeg_timestamp(offset_seconds: float) -> str:
+    """Seconds as FFmpeg's HH:MM:SS.mmm."""
+    hours = int(offset_seconds // 3600)
+    minutes = int((offset_seconds % 3600) // 60)
+    seconds = offset_seconds % 60
+    return f"{hours:02d}:{minutes:02d}:{seconds:06.3f}"
+
+
 class BasicImageGeneration(ImageGeneration):
     def generate_images(self, **kwargs: Any) -> int:
         return self.basic_image_generation(**kwargs)
@@ -174,7 +182,6 @@ class BasicImageGeneration(ImageGeneration):
         """Basic image generation using direct seeks for optimal performance."""
 
         img_comparison = create_directories(output_directory)[0]
-        output_pattern = str(img_comparison / "%02d_output.png")
 
         total_frames = get_total_frames(mi_object)
         frame_rate = get_frame_rate(mi_object)
@@ -194,23 +201,45 @@ class BasicImageGeneration(ImageGeneration):
         random_time_offset = rand_offset / frame_rate
 
         # calculate timestamps for each frame we want
-        timestamps = []
+        targets: list[tuple[Path, float]] = []
         for i in range(total_images):
             # distribute frames evenly across the available duration
             progress = i / max(1, total_images - 1) if total_images > 1 else 0
             offset_seconds = (
                 start_seconds + (progress * duration_seconds) + random_time_offset
             )
+            targets.append((media_input, offset_seconds))
 
-            # format back to HH:MM:SS.mmm
-            hours = int(offset_seconds // 3600)
-            minutes = int((offset_seconds % 3600) // 60)
-            seconds = offset_seconds % 60
-            timestamp = f"{hours:02d}:{minutes:02d}:{seconds:06.3f}"
-            timestamps.append(timestamp)
+        return self.extract_frames(
+            targets, img_comparison, mi_object, ffmpeg_path, signal
+        )
+
+    def extract_frames(
+        self,
+        targets: list[tuple[Path, float]],
+        img_comparison: Path,
+        mi_object: MediaInfo,
+        ffmpeg_path: Path,
+        signal: ProgressSignal,
+        *,
+        keyframe_only: bool = False,
+        square_pixels: bool = False,
+    ) -> int:
+        """One PNG per `(file, seconds)` target, numbered in order.
+
+        `keyframe_only` takes the keyframe at or before each target instead
+        of decoding forward to it: VC-1 decodes garbage frames after a seek,
+        and decoding forward through UHD HEVC is slow. `square_pixels`
+        stretches an anamorphic DVD to the shape it is shown at.
+        """
+        output_pattern = str(img_comparison / "%02d_output.png")
+        total_images = len(targets)
 
         # build filter chain
         filters = []
+
+        if square_pixels:
+            filters.append("scale=trunc(iw*sar/2)*2:ih,setsar=1")
 
         # HDR tone mapping if needed
         if mi_object.video_tracks[0].other_hdr_format:
@@ -222,11 +251,13 @@ class BasicImageGeneration(ImageGeneration):
 
         # extract each frame individually using seeks
         success_count = 0
-        for i, timestamp in enumerate(timestamps):
+        for i, (media_input, offset_seconds) in enumerate(targets):
             output_file = output_pattern.replace("%02d", f"{i + 1:02d}")
+            timestamp = _ffmpeg_timestamp(offset_seconds)
 
             command = [
                 str(ffmpeg_path),
+                *(["-noaccurate_seek"] if keyframe_only else []),
                 "-ss",
                 timestamp,
                 "-i",
@@ -1163,6 +1194,32 @@ class ImagesBackEnd:
             trim=trim,
             ffmpeg_path=ffmpeg_path,
             signal=signal,
+        )
+
+    @staticmethod
+    def disc_image_generation(
+        targets: list[tuple[Path, float]],
+        output_directory: Path,
+        mi_object: MediaInfo,
+        ffmpeg_path: Path,
+        signal: ProgressSignal,
+        *,
+        keyframe_only: bool,
+        square_pixels: bool,
+    ) -> int:
+        """Screenshots of a full disc, each from the clip that holds it.
+
+        `targets` are `(clip, seconds into it)`; see `disc_frame_targets`.
+        """
+        img_comparison = create_directories(output_directory)[0]
+        return BasicImageGeneration().extract_frames(
+            targets,
+            img_comparison,
+            mi_object,
+            ffmpeg_path,
+            signal,
+            keyframe_only=keyframe_only,
+            square_pixels=square_pixels,
         )
 
     @staticmethod

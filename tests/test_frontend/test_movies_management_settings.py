@@ -384,3 +384,22 @@ def test_the_preview_shows_the_configured_group_tag_not_the_examples(
         )
         == "MYGROUP.mkv"
     )
+
+
+def test_disc_name_templates_load_save_and_never_save_blank(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    page, manager = _make_movies_management_settings(tmp_path, monkeypatch)
+    disc = manager.settings.disc
+    page._load_saved_settings()
+    assert page.bluray_name_token_input.text() == disc.bluray_name_token
+    assert not page.rename_disc_folder_check_box.isChecked()
+
+    page.bluray_name_token_input.setText("{title_clean} {source}")
+    page.dvd_name_token_input.setText("   ")
+    page.rename_disc_folder_check_box.setChecked(True)
+    page._save_settings()
+
+    assert disc.bluray_name_token == "{title_clean} {source}"  # noqa: S105 - a name template, not a credential
+    assert disc.dvd_name_token == manager.defaults.disc.dvd_name_token
+    assert disc.rename_root_folder is True

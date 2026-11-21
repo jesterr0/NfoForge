@@ -39,6 +39,14 @@ from nfoforge.backend.utils.streaming_services import abbreviate_streaming_servi
 from nfoforge.backend.utils.tvdb_episodes import tvdb_episode_list
 from nfoforge.backend.utils.working_dir import asset_root
 from nfoforge.config.models import DynamicRangeSettings, HdrType, ResolutionKey
+from nfoforge.core.disc import (
+    DISC_SOURCES,
+    Disc,
+    DiscType,
+    detect_region,
+    disc_size_class,
+    dvd_standard,
+)
 from nfoforge.enums.media_type import MediaType
 from nfoforge.enums.multi_episode_style import MultiEpisodeStyle
 from nfoforge.enums.rename import QualitySelection
@@ -337,7 +345,12 @@ class TokenReplacer:
         self.source_file = self._get_source_file()
         self.media_info_obj = self._get_primary_mediainfo()
         self.source_file_mi_obj = self._get_source_mediainfo()
-        self.guess_name = guessit(self.primary_file.name)
+        # a disc's primary file is a clip (`00001.m2ts`); its folder is what
+        # carries the release's name
+        name_path = self.primary_file
+        if self.active_file is None and self.media_input_obj.is_disc():
+            name_path = self.media_input_obj.release_name_path() or name_path
+        self.guess_name = guessit(name_path.name)
         self.guess_source_name = (
             guessit(self.source_file.name) if self.source_file else None
         )
@@ -1006,6 +1019,19 @@ class TokenReplacer:
         elif token_data.bracket_token == Tokens.SOURCE.token:
             return self._source(token_data)
 
+        elif token_data.bracket_token == Tokens.REGION.token:
+            return self._region(token_data)
+
+        elif token_data.bracket_token == Tokens.DISTRIBUTOR.token:
+            # only ever what the user typed: a distributor is never guessed
+            return self._optional_user_input("", token_data)
+
+        elif token_data.bracket_token == Tokens.DISC_SIZE.token:
+            return self._disc_size(token_data)
+
+        elif token_data.bracket_token == Tokens.DVD_STANDARD.token:
+            return self._dvd_standard(token_data)
+
         elif token_data.bracket_token == Tokens.STREAMING_SERVICE.token:
             return self._streaming_service(token_data)
 
@@ -1074,6 +1100,30 @@ class TokenReplacer:
 
         elif token_data.bracket_token == Tokens.MEDIA_INFO.token:
             return self._media_info(token_data)
+
+        elif token_data.bracket_token == Tokens.BDINFO_SUMMARY.token:
+            disc = self._disc()
+            report = disc.bdinfo if disc else None
+            return self._optional_user_input(
+                report.quick_summary if report else "", token_data
+            )
+
+        elif token_data.bracket_token == Tokens.BDINFO_FULL.token:
+            disc = self._disc()
+            report = disc.bdinfo if disc else None
+            return self._optional_user_input(report.full if report else "", token_data)
+
+        elif token_data.bracket_token == Tokens.DVD_IFO_MEDIAINFO.token:
+            disc = self._disc()
+            return self._optional_user_input(
+                disc.ifo_mediainfo if disc else "", token_data
+            )
+
+        elif token_data.bracket_token == Tokens.DVD_VOB_MEDIAINFO.token:
+            disc = self._disc()
+            return self._optional_user_input(
+                disc.vob_mediainfo if disc else "", token_data
+            )
 
         elif token_data.bracket_token == Tokens.MEDIA_INFO_SHORT.token:
             return self._media_info_short(token_data)
@@ -1731,8 +1781,8 @@ class TokenReplacer:
             return ""
 
         # a remux keeps the container's codec name (AVC/HEVC); only an encode
-        # is reported as x264/x265
-        is_remux = bool(self._detect_remux())
+        # is reported as x264/x265. A full disc is untouched, so the same.
+        is_remux = bool(self._detect_remux()) or self.media_input_obj.is_disc()
 
         track = self.media_info_obj.video_tracks[0]
         detect_video_codec = track.format
@@ -2305,7 +2355,39 @@ class TokenReplacer:
         return source_quality
 
     def _source(self, token_data: TokenData) -> str:
-        return self._optional_user_input(str(self._get_source_quality()), token_data)
+        quality = self._get_source_quality()
+        # a full disc is named as the medium: "Blu-ray", not an encode's "BluRay"
+        text = (
+            DISC_SOURCES.get(quality, str(quality))
+            if self.media_input_obj.is_disc()
+            else str(quality)
+        )
+        return self._optional_user_input(text, token_data)
+
+    def _disc(self) -> Disc | None:
+        discs = self.media_input_obj.discs
+        return discs[0] if discs else None
+
+    def _region(self, token_data: TokenData) -> str:
+        disc = self._disc()
+        region = (
+            detect_region(disc, self.media_input_obj.release_name()) if disc else ""
+        )
+        return self._optional_user_input(region, token_data)
+
+    def _disc_size(self, token_data: TokenData) -> str:
+        disc = self._disc()
+        size = str(disc_size_class(disc.disc_type, disc.size)) if disc else ""
+        return self._optional_user_input(size, token_data)
+
+    def _dvd_standard(self, token_data: TokenData) -> str:
+        disc = self._disc()
+        standard = (
+            dvd_standard(self.media_info_obj)
+            if disc and disc.disc_type is DiscType.DVD
+            else ""
+        )
+        return self._optional_user_input(standard, token_data)
 
     def _streaming_service(self, token_data: TokenData) -> str:
         """The service abbreviation, for web sources only.

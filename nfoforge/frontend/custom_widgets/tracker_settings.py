@@ -128,7 +128,7 @@ class TrackerSettingsWidget(QWidget):
     def __init__(self, config: ConfigManager, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.config = config
-        self._unsupported_trackers: frozenset[TrackerSelection] = frozenset()
+        self._unsupported_trackers: dict[TrackerSelection, str] = {}
         self._locked_trackers: frozenset[TrackerSelection] = frozenset()
         self._persist_enabled = True
 
@@ -238,7 +238,7 @@ class TrackerSettingsWidget(QWidget):
         self,
         config: ConfigManager | None = None,
         *,
-        unsupported_trackers: AbstractSet[TrackerSelection] | None = None,
+        unsupported_trackers: Mapping[TrackerSelection, str] | None = None,
         locked_trackers: AbstractSet[TrackerSelection] | None = None,
         preselected: Sequence[TrackerSelection] | None = None,
         persist_enabled: bool = True,
@@ -248,6 +248,9 @@ class TrackerSettingsWidget(QWidget):
         Editors retain ``self.config`` as their save target. A temporary source
         config is used only while loading, which lets the settings page preview
         defaults without changing where subsequent edits are written.
+
+        `unsupported_trackers` maps each tracker that cannot take this
+        release to the reason, shown as its tooltip.
 
         `locked_trackers` are shown but cannot be picked -- a resumed job uses
         this for trackers it has already uploaded to, which must never be
@@ -259,7 +262,7 @@ class TrackerSettingsWidget(QWidget):
         the checkboxes writing back into config at all.
         """
         source_config = config or self.config
-        self._unsupported_trackers = frozenset(unsupported_trackers or ())
+        self._unsupported_trackers = dict(unsupported_trackers or {})
         self._locked_trackers = frozenset(locked_trackers or ())
         self._persist_enabled = persist_enabled
         self._load_tracker_items(
@@ -292,9 +295,7 @@ class TrackerSettingsWidget(QWidget):
             locked = tracker in self._locked_trackers
             if unsupported:
                 item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEnabled)
-                item.setToolTip(
-                    f"{tracker} does not support series uploads in NfoForge yet."
-                )
+                item.setToolTip(self._unsupported_trackers[tracker])
             elif locked:
                 item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEnabled)
                 item.setToolTip(

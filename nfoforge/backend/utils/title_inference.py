@@ -11,6 +11,7 @@ from guessit import guessit
 
 from nfoforge.backend.utils import media_files
 from nfoforge.backend.utils.guessit_helpers import get_guessit_title
+from nfoforge.core.disc.detect import holds_disc
 from nfoforge.exceptions import MediaParsingError
 
 
@@ -159,6 +160,15 @@ class MediaTitleInferer:
 
         self._guess_cache.clear()
         self._candidates.clear()
+
+        # A disc's clips are called `00001.m2ts` or `VTS_01_1.VOB`: the disc
+        # folder is the release's name, and carries the filename's weight.
+        if holds_disc(path):
+            title = self._extract_guessit_title(path.name)
+            if title is not None:
+                self._add_candidate(title, TitleWeight.VIDEO_FILENAME)
+            self._score_directory_context(path, [])
+            return self._build_result(path)
 
         if video_files is None:
             collected_video_files = self._collect_video_files(path)

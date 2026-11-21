@@ -3,6 +3,7 @@ from pathlib import Path
 from pymediainfo import MediaInfo
 
 from nfoforge.backend.trackers.unit3d_base import Unit3dBaseSearch, Unit3dBaseUploader
+from nfoforge.core.disc import DiscRelease
 from nfoforge.enums.media_type import MediaType
 from nfoforge.enums.tracker_selection import TrackerSelection
 from nfoforge.enums.trackers.blutopia import (
@@ -30,6 +31,7 @@ def blu_uploader(
     season_number: int | None = None,
     episode_number: int | None = None,
     season_pack: bool = False,
+    disc: DiscRelease | None = None,
 ) -> bool | None:
     uploader = BlutopiaUploader(
         media_type=media_type,
@@ -53,6 +55,7 @@ def blu_uploader(
         season_number=season_number,
         episode_number=episode_number,
         season_pack=season_pack,
+        disc=disc,
     )
     return upload
 
