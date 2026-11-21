@@ -175,7 +175,7 @@ def test_ptp_2fa_uses_interactive_prompt_after_automatic_code(
     totp = MagicMock()
     totp.now.return_value = "123456"
     monkeypatch.setattr(
-        "nfoforge.backend.trackers.passthepopcorn.pyotp.TOTP", lambda _secret: totp
+        "nfoforge.backend.trackers.passthepopcorn.TOTP", lambda _secret: totp
     )
     uploader.prompt_2fa = lambda: "654321"
 
@@ -237,7 +237,7 @@ def test_ptp_2fa_attempts_are_bounded_and_backed_off(
     uploader._session = fake_session
 
     monkeypatch.setattr(
-        "nfoforge.backend.trackers.passthepopcorn.pyotp.TOTP",
+        "nfoforge.backend.trackers.passthepopcorn.TOTP",
         lambda _secret: MagicMock(now=lambda: "123456"),
     )
     uploader.prompt_2fa = lambda: "654321"

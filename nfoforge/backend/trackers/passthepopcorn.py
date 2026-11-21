@@ -10,7 +10,7 @@ from guessit import guessit
 import niquests
 from niquests.typing import MultiPartFilesAltType
 from pymediainfo import MediaInfo
-import pyotp
+from pyotp.totp import TOTP
 
 from nfoforge.backend.image_host_uploading.base_image_host import ImageUploadRequest
 from nfoforge.backend.image_host_uploading.img_box import ImageBoxUploader
@@ -824,7 +824,7 @@ class PTPUploader:
         self, data: dict[str, str], totp: str, tried_totp: bool
     ) -> tuple[niquests.Response, bool]:
         if not tried_totp and totp:
-            data["TfaCode"] = pyotp.TOTP(totp).now()
+            data["TfaCode"] = TOTP(totp).now()
             tried_totp = True
         else:
             if self.prompt_2fa is None:
