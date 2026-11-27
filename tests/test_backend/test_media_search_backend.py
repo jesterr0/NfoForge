@@ -1033,3 +1033,41 @@ def test_a_failed_translation_fetch_keeps_the_original_names() -> None:
 
     assert data is not None
     assert _names(data["episodes"]) == ["二千年後の君へ", "その日"]
+
+
+class _FakePagedTVDBSession(_FakeTVDBSession):
+    """Three pages of an ordering, the last one without a `links.next`."""
+
+    def get(self, url: str, **kwargs: Any) -> _Response:
+        self.get_calls.append({"url": url, **kwargs})
+        page = int(kwargs["params"]["page"])
+        pages = [[{"id": 1}, {"id": 2}], [{"id": 3}, {"id": 4}], [{"id": 5}]]
+        return _Response(
+            {
+                "data": {"id": 321, "episodes": pages[page]},
+                "links": {"next": f"{url}?page={page + 1}" if page < 2 else None},
+            }
+        )
+
+
+def test_tvdb_episodes_are_read_across_every_page(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_session = _FakePagedTVDBSession()
+    monkeypatch.setattr(
+        "nfoforge.backend.utils.http_client.niquests.Session",
+        lambda **_kwargs: fake_session,
+    )
+    client = TVDBClient("api-key", timeout=7)
+
+    result = client.get_series_episodes(321, "absolute", "eng")
+
+    assert [episode["id"] for episode in result["episodes"]] == [1, 2, 3, 4, 5]
+    assert [call["params"]["page"] for call in fake_session.get_calls] == [
+        "0",
+        "1",
+        "2",
+    ]
+    assert fake_session.get_calls[0]["url"].endswith(
+        "/series/321/episodes/absolute/eng"
+    )

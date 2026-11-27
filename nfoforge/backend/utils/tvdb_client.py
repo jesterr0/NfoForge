@@ -44,6 +44,9 @@ class TVDBClient:
     """
 
     BASE_URL = "https://api4.thetvdb.com/v4"
+    # 50 pages of 500 is 25,000 episodes: a stop for a `links.next` that
+    # never runs out, well past any real show
+    _MAX_EPISODE_PAGES = 50
 
     def __init__(self, api_key: str, timeout: int) -> None:
         self.api_key = api_key
@@ -72,12 +75,34 @@ class TVDBClient:
 
         Without it TVDB names every episode in the series' original language
         (Japanese for most anime).
+
+        TVDB serves 500 episodes a page, so a long show (One Piece runs past
+        1,200) is read page by page until `links.next` runs out; the pages'
+        episodes come back as one list under the first page's `data`.
         """
         path = f"/series/{series_id}/episodes/{season_type}"
         if language:
             path += f"/{quote(language, safe='')}"
-        result = self._request(path, params={"page": "0"})
-        return cast(dict[str, Any], result) if isinstance(result, dict) else {}
+
+        result: dict[str, Any] = {}
+        episodes: list[Any] = []
+        for page in range(self._MAX_EPISODE_PAGES):
+            envelope = self._request_envelope(path, params={"page": str(page)})
+            data = envelope.get("data")
+            if not isinstance(data, dict):
+                break
+            if not result:
+                result = cast(dict[str, Any], data)
+            page_episodes = data.get("episodes")
+            if not isinstance(page_episodes, list) or not page_episodes:
+                break
+            episodes.extend(cast(list[Any], page_episodes))
+            links = envelope.get("links")
+            if not isinstance(links, dict) or not links.get("next"):
+                break
+        if result:
+            result["episodes"] = episodes
+        return result
 
     def _authenticate(self) -> str:
         try:
@@ -114,6 +139,12 @@ class TVDBClient:
         return token
 
     def _request(self, path: str, params: Mapping[str, str] | None = None) -> Any:
+        return self._request_envelope(path, params)["data"]
+
+    def _request_envelope(
+        self, path: str, params: Mapping[str, str] | None = None
+    ) -> dict[str, Any]:
+        """The whole response body, for callers that need `links` too."""
         token = self._token or self._authenticate()
         try:
             with self.session.get(
@@ -144,7 +175,7 @@ class TVDBClient:
         if data is None or response_json.get("status") == "failure":
             message = response_json.get("message") or "unknown error"
             raise MediaSearchError(f"TVDB request failed: {message}")
-        return data
+        return cast(dict[str, Any], response_json)
 
 
 class AsyncTVDBClient:
