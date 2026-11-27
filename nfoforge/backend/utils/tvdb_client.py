@@ -8,6 +8,30 @@ import niquests
 from nfoforge.backend.utils.http_client import new_http_session
 from nfoforge.exceptions import MediaSearchError, MediaSearchUnavailableError
 
+# TVDB keys languages by ISO 639-2/T, plus a few regional codes of its own
+# (`pt` is Brazilian Portuguese, `por` is Portugal's).
+_TVDB_REGIONAL_LANGUAGES = {"pt-BR": "pt", "zh-TW": "zhtw", "zh-HK": "yue"}
+_TVDB_LANGUAGES = {
+    "af": "afr", "ar": "ara", "az": "aze", "bg": "bul", "bn": "ben",
+    "ca": "cat", "cs": "ces", "cy": "cym", "da": "dan", "de": "deu",
+    "el": "ell", "en": "eng", "es": "spa", "et": "est", "eu": "eus",
+    "fa": "fas", "fi": "fin", "fr": "fra", "ga": "gle", "gl": "glg",
+    "he": "heb", "hi": "hin", "hr": "hrv", "hu": "hun", "hy": "hye",
+    "id": "ind", "is": "isl", "it": "ita", "ja": "jpn", "ka": "kat",
+    "ko": "kor", "lt": "lit", "lv": "lav", "ms": "msa", "mt": "mlt",
+    "nl": "nld", "no": "nor", "pl": "pol", "pt": "por", "ro": "ron",
+    "ru": "rus", "sk": "slk", "sl": "slv", "sr": "srp", "sv": "swe",
+    "sw": "swa", "ta": "tam", "te": "tel", "th": "tha", "tl": "tgl",
+    "tr": "tur", "uk": "ukr", "ur": "urd", "vi": "vie", "zh": "zho",
+}  # fmt: skip
+
+
+def tvdb_language(tmdb_language: str) -> str | None:
+    """The TVDB code for a TMDB language setting (`en-US` -> `eng`)."""
+    if tmdb_language in _TVDB_REGIONAL_LANGUAGES:
+        return _TVDB_REGIONAL_LANGUAGES[tmdb_language]
+    return _TVDB_LANGUAGES.get(tmdb_language.split("-")[0].lower())
+
 
 class TVDBClient:
     """
@@ -41,8 +65,18 @@ class TVDBClient:
         )
         return cast(dict[str, Any], result) if isinstance(result, dict) else {}
 
-    def get_series_episodes(self, series_id: int, season_type: str) -> dict[str, Any]:
-        result = self._request(f"/series/{series_id}/episodes/{season_type}")
+    def get_series_episodes(
+        self, series_id: int, season_type: str, language: str | None = None
+    ) -> dict[str, Any]:
+        """One ordering's episodes; with `language`, names come translated.
+
+        Without it TVDB names every episode in the series' original language
+        (Japanese for most anime).
+        """
+        path = f"/series/{series_id}/episodes/{season_type}"
+        if language:
+            path += f"/{quote(language, safe='')}"
+        result = self._request(path, params={"page": "0"})
         return cast(dict[str, Any], result) if isinstance(result, dict) else {}
 
     def _authenticate(self) -> str:
@@ -133,12 +167,13 @@ class AsyncTVDBClient:
         return await self._run(self.client.get_series_extended, series_id)
 
     async def get_series_episodes(
-        self, series_id: int, season_type: str
+        self, series_id: int, season_type: str, language: str | None = None
     ) -> dict[str, Any]:
         return await self._run(
             self.client.get_series_episodes,
             series_id,
             season_type,
+            language,
         )
 
     async def _run(self, method: Any, *args: Any) -> Any:
