@@ -1,6 +1,10 @@
 # Changelog
 
-## [Unreleased]
+## [1.4.1] - 2026-11-21
+
+### Added
+
+- Plugins can enforce naming rules with the new `release_name_check` capability. Every enabled plugin's check runs when the rename is confirmed, before any file moves. A check can block the name, which keeps you on the Rename page, or warn, which asks whether to continue. The command line fails the run on a block, and asks a warning as the `release_name` question (`--answer release_name=yes`).
 
 ### Fixed
 

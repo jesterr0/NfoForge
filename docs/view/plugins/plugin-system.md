@@ -109,7 +109,7 @@ The full order is your plugins folder, then the examples shipped with the releas
 
 ## Capabilities and failures
 
-Wizard pages, token replacers, pre-upload processors, post-upload processors, metadata transformers, image host uploaders, and duplicate checkers are single-select capabilities. Jinja filters/functions, flat token filters, and custom edition/cut contributions from every valid plugin are combined while external plugins are enabled.
+Wizard pages, token replacers, pre-upload processors, post-upload processors, metadata transformers, image host uploaders, and duplicate checkers are single-select capabilities. Jinja filters/functions, flat token filters, custom edition/cut contributions, and release-name checks from every valid plugin are combined while external plugins are enabled.
 
 ### Wizard pages
 
@@ -174,6 +174,41 @@ Unlike built-in hosts, a plugin-provided host has no entry in **Settings -> Imag
 A duplicate checker runs once per tracker, during the upload wizard's dupe-check phase -- before tracker titles, NFOs, or torrents exist, and before any upload happens. It supplements NfoForge's built-in per-tracker duplicate search (e.g. with a private cross-tracker database) rather than replacing or gating it: nothing today auto-skips a tracker because a duplicate was found, and this capability does not change that. Set `duplicate_checker` on `PluginDefinition` to a callable receiving a `DuplicateCheckRequest` (`config`, `tracker`, `media_input`, `media_search`, `timeout`) and returning a sequence of `TrackerSearchResult` -- always a sequence, never a bare string; a plugin that fails should raise, not return an error value.
 
 Results are only merged into a tracker's dupe log when the built-in check for that tracker _succeeded_ (including "succeeded with zero hits"); if the built-in check itself failed (missing credentials, network error, an unsupported series tracker) the plugin's contribution for that tracker is not merged. A duplicate checker that raises, returns the wrong type, or runs past `timeout` is logged and treated as "nothing extra found" -- it never fails the dupe-check phase for other trackers.
+
+### Release-name checks
+
+A release-name check enforces a naming rule of your own, such as a group that only releases REPACKs and never PROPERs. It runs when the rename is confirmed. In the desktop app that is when you press **Next** on the Rename page; in the [command line](../cli/command-line.md) it is the rename stage. The names are final at that point and nothing on disk has moved yet.
+
+Set `release_name_check` on `PluginDefinition` to a callable that takes a `ReleaseNameCheckRequest` and returns a sequence of `ReleaseNameIssue`:
+
+```python
+from nfoforge.plugins.api import (
+    PluginDefinition,
+    ReleaseNameCheckRequest,
+    ReleaseNameIssue,
+    ReleaseNameSeverity,
+)
+
+def no_proper(request: ReleaseNameCheckRequest) -> list[ReleaseNameIssue]:
+    if any("PROPER" in name.upper().split(".") for name in request.names):
+        return [ReleaseNameIssue("We release REPACKs, never PROPERs.")]
+    return []
+
+plugin = PluginDefinition(
+    display_name="My Group",
+    version="1.0.0",
+    release_name_check=no_proper,
+)
+```
+
+`request.names` holds every name the release goes out under, without file extensions: a film's single name, or a pack's folder followed by each episode. A name the rename leaves unchanged is listed too. `request.config` and `request.context` are there for rules that depend on settings or metadata.
+
+Each issue has a `severity`:
+
+- `BLOCK` (the default): the name is refused. The desktop app shows the message and stays on the Rename page so you can change the name. The command line fails the run.
+- `WARN`: you are asked whether to continue. The command line asks this as the `release_name` question, so an unattended run answers it in advance with `--answer release_name=yes`.
+
+Every enabled plugin's check runs, and messages are prefixed with the plugin's display name. A check that raises, or returns something other than a sequence of `ReleaseNameIssue`, blocks the rename: a rule that could not be applied has not been passed.
 
 ### Custom edition/cut contributions
 

@@ -28,6 +28,7 @@ from nfoforge.core.workflow.events import (
 _YES_NO = {
     DecisionKind.CONTINUE_WITHOUT_TVDB,
     DecisionKind.RENAME,
+    DecisionKind.RELEASE_NAME,
     DecisionKind.SCREENSHOTS,
     DecisionKind.MULTI_SEASON_PACK,
     DecisionKind.DUPES_FOUND,

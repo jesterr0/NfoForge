@@ -52,6 +52,7 @@ from nfoforge.core.rename.choices import (
     file_user_tokens,
     quality_problem,
 )
+from nfoforge.core.rename.name_checks import series_release_names
 from nfoforge.core.rename.series import (
     SeriesNotMappedError,
     SeriesRenameError,
@@ -70,6 +71,7 @@ from nfoforge.frontend.custom_widgets.token_table import TokenTable
 from nfoforge.frontend.global_signals import GSigs
 from nfoforge.frontend.utils import build_h_line
 from nfoforge.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
+from nfoforge.frontend.utils.release_name_prompt import confirm_release_names
 from nfoforge.frontend.utils.rename_operation import RenameOperationController
 from nfoforge.frontend.wizards.wizard_base_page import BaseWizardPage
 from nfoforge.packages.custom_types import RenameNormalization
@@ -499,6 +501,14 @@ class RenameEncodeSeries(BaseWizardPage):
                 f"{len(targets.failed)} file(s) could not have a name generated "
                 f"and will be left unchanged:\n\n{names}",
             )
+
+        if not confirm_release_names(
+            self,
+            self.config,
+            self.context,
+            series_release_names(self.context.media_input, targets),
+        ):
+            return False
 
         if targets.is_empty:
             return self._complete_validation()

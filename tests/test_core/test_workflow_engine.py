@@ -17,6 +17,12 @@ from nfoforge.core.workflow.request import ReleaseRequest
 from nfoforge.core.workflow.stages import Stage
 from nfoforge.enums.automation import AutomationMode, JobState
 from nfoforge.enums.tracker_selection import TrackerSelection
+from nfoforge.plugins.api import (
+    PluginDefinition,
+    ReleaseNameCheckRequest,
+    ReleaseNameIssue,
+    ReleaseNameSeverity,
+)
 from tests.job_helpers import write_sample_media
 from tests.repo_paths import build_app_paths
 
@@ -550,3 +556,70 @@ def test_a_resume_past_input_does_not_look_for_the_release_where_it_was(
 
     assert done.state is JobState.COMPLETE, done.error
     assert process.uploaded == [str(AITHER)]
+
+
+def _name_rule(
+    config: ConfigManager, severity: ReleaseNameSeverity
+) -> list[tuple[str, ...]]:
+    """A plugin objecting to every name; returns the names it was shown."""
+    seen: list[tuple[str, ...]] = []
+
+    def check(request: ReleaseNameCheckRequest) -> list[ReleaseNameIssue]:
+        seen.append(request.names)
+        return [ReleaseNameIssue("PROPER is not allowed; use REPACK", severity)]
+
+    config.settings.general.enable_plugins = True
+    config.plugin_manager.register(
+        "rules",
+        PluginDefinition(display_name="Rules", version="1", release_name_check=check),
+        "test",
+    )
+    return seen
+
+
+@pytest.mark.usefixtures("rendered_name")
+def test_a_blocked_release_name_fails_before_the_rename(
+    config: ConfigManager, movie: Path
+) -> None:
+    seen = _name_rule(config, ReleaseNameSeverity.BLOCK)
+    process = FakeProcess()
+    workflow, _sink = _workflow(config, FakeSearch({"42": _row("42")}), process)
+
+    result = workflow.start(_request(movie, rename=True))
+
+    assert result.state is JobState.FAILED
+    assert result.stage is Stage.RENAME
+    assert "Rules: PROPER is not allowed; use REPACK" in (result.error or "")
+    assert seen == [("The.Movie.2024",)]
+    assert movie.exists()
+    assert process.uploaded == []
+
+
+@pytest.mark.usefixtures("rendered_name")
+def test_an_unanswered_release_name_warning_stops_the_run(
+    config: ConfigManager, movie: Path
+) -> None:
+    _name_rule(config, ReleaseNameSeverity.WARN)
+    workflow, _sink = _workflow(config, FakeSearch({"42": _row("42")}), FakeProcess())
+
+    result = workflow.start(_request(movie, rename=True))
+
+    assert result.state is JobState.FAILED
+    assert f"--answer {DecisionKind.RELEASE_NAME}=VALUE" in (result.error or "")
+    assert movie.exists()
+
+
+@pytest.mark.usefixtures("rendered_name")
+def test_a_release_name_warning_answered_yes_goes_on(
+    config: ConfigManager, movie: Path
+) -> None:
+    _name_rule(config, ReleaseNameSeverity.WARN)
+    workflow, _sink = _workflow(config, FakeSearch({"42": _row("42")}), FakeProcess())
+
+    result = workflow.start(
+        _request(movie, rename=True),
+        answers={str(DecisionKind.RELEASE_NAME): True},
+    )
+
+    assert result.state is JobState.COMPLETE, result.error
+    assert (movie.parent / "The.Movie.2024.mkv").is_file()
