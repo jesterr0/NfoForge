@@ -14,6 +14,7 @@ def _huno_uploader(tmp_path: Path) -> HunoUploader:
         api_key="api-key",
         torrent_file=tmp_path / "release.torrent",
         input_path=tmp_path / "Example.2026.1080p.WEB-DL-GRP.mkv",
+        media_file=tmp_path / "Example.2026.1080p.WEB-DL-GRP.mkv",
         mediainfo_obj=MagicMock(),
     )
 
@@ -119,6 +120,7 @@ def test_standard_unit3d_request_keeps_description_and_mediainfo_as_fields(
         api_key="api-key",
         torrent_file=tmp_path / "release.torrent",
         input_path=tmp_path / "Example.2026.1080p.WEB-DL-GRP.mkv",
+        media_file=tmp_path / "Example.2026.1080p.WEB-DL-GRP.mkv",
         mediainfo_obj=MagicMock(),
     )
     torrent = BytesIO(b"torrent")

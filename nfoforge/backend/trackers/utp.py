@@ -15,6 +15,7 @@ def utp_uploader(
     api_key: str,
     torrent_file: Path,
     input_path: Path,
+    media_file: Path,
     tracker_title: str | None,
     nfo: str,
     internal: bool,
@@ -33,6 +34,7 @@ def utp_uploader(
         api_key=api_key,
         torrent_file=torrent_file,
         input_path=input_path,
+        media_file=media_file,
         mediainfo_obj=mediainfo_obj,
         timeout=timeout,
     )
@@ -65,6 +67,7 @@ class UTPUploader(Unit3dBaseUploader):
         api_key: str,
         torrent_file: Path,
         input_path: Path,
+        media_file: Path,
         mediainfo_obj: MediaInfo,
         timeout: int = 60,
     ) -> None:
@@ -75,6 +78,7 @@ class UTPUploader(Unit3dBaseUploader):
             api_key=api_key,
             torrent_file=torrent_file,
             input_path=input_path,
+            media_file=media_file,
             mediainfo_obj=mediainfo_obj,
             cat_enum=UTPCategory,
             res_enum=UTPResolution,

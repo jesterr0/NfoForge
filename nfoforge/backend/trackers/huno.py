@@ -24,6 +24,7 @@ def huno_uploader(
     api_key: str,
     torrent_file: Path,
     input_path: Path,
+    media_file: Path,
     nfo: str,
     internal: bool,
     anonymous: bool,
@@ -41,6 +42,7 @@ def huno_uploader(
         api_key=api_key,
         torrent_file=torrent_file,
         input_path=input_path,
+        media_file=media_file,
         mediainfo_obj=mediainfo_obj,
         timeout=timeout,
     )
@@ -96,6 +98,7 @@ class HunoUploader(Unit3dBaseUploader):
         api_key: str,
         torrent_file: Path,
         input_path: Path,
+        media_file: Path,
         mediainfo_obj: MediaInfo,
         timeout: int = 60,
     ) -> None:
@@ -106,6 +109,7 @@ class HunoUploader(Unit3dBaseUploader):
             api_key=api_key,
             torrent_file=torrent_file,
             input_path=input_path,
+            media_file=media_file,
             mediainfo_obj=mediainfo_obj,
             cat_enum=HunoCategory,
             res_enum=HunoResolution,

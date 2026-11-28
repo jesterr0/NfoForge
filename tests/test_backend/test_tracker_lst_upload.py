@@ -17,6 +17,7 @@ def _uploader(tmp_path: Path) -> LSTUploader:
         api_key="api-key",
         torrent_file=tmp_path / "release.torrent",
         input_path=tmp_path / "Movie.2026.2160p.WEB-DL.H265-GRP.mkv",
+        media_file=tmp_path / "Movie.2026.2160p.WEB-DL.H265-GRP.mkv",
         mediainfo_obj=media_info,
     )
 

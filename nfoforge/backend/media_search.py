@@ -13,7 +13,11 @@ from unidecode import unidecode
 
 from nfoforge.backend.utils.guessit_helpers import get_guessit_title
 from nfoforge.backend.utils.http_client import new_http_session
-from nfoforge.backend.utils.tvdb_client import AsyncTVDBClient, TVDBClient
+from nfoforge.backend.utils.tvdb_client import (
+    AsyncTVDBClient,
+    TVDBClient,
+    tvdb_language,
+)
 from nfoforge.enums.media_search_mode import MediaSearchMode
 from nfoforge.enums.media_type import MediaType
 from nfoforge.enums.tmdb_genres import TMDBGenreIDsMovies, TMDBGenreIDsSeries
@@ -928,6 +932,10 @@ class MediaSearchBackEnd:
                             )
                     additional_results_index += 1
 
+            await self._translate_episode_names(
+                tvdb_parse, tvdb_id, series_data, episodes_by_type
+            )
+
             # add the episodes by type to the series data
             if episodes_by_type:
                 series_data["episodes_by_type"] = episodes_by_type
@@ -946,6 +954,75 @@ class MediaSearchBackEnd:
             return series_data
 
         return None
+
+    async def _translate_episode_names(
+        self,
+        tvdb_parse: AsyncTVDBClient,
+        tvdb_id: int,
+        series_data: dict[str, Any],
+        episodes_by_type: dict[int, dict[str, str | list[dict[str, Any]]]],
+    ) -> None:
+        """Rename every episode into the user's TMDB language, in place.
+
+        TVDB names episodes in the series' original language, so anime comes
+        back in Japanese and those names reach the episode picker and the
+        renamed files. Each ordering is fetched again in the user's language
+        and its names laid over the originals by episode id; an episode TVDB
+        has no translation for keeps its original name, and a failed fetch
+        leaves that ordering as it was.
+        """
+        language = tvdb_language(str(self.params.get("language") or ""))
+        if not language or language == series_data.get("originalLanguage"):
+            return
+
+        orderings = [
+            (str(ordering["type"]), ordering["episodes"])
+            for ordering in episodes_by_type.values()
+            if isinstance(ordering.get("episodes"), list)
+        ]
+        responses = await asyncio.gather(
+            *(
+                tvdb_parse.get_series_episodes(tvdb_id, season_type, language)
+                for season_type, _ in orderings
+            ),
+            return_exceptions=True,
+        )
+
+        translated_names: dict[Any, str] = {}
+        for (season_type, _), response in zip(orderings, responses, strict=True):
+            if isinstance(response, BaseException):
+                LOG.warning(
+                    LOG.LOG_SOURCE.BE,
+                    f"Failed to fetch {language} episode names ({season_type}) "
+                    f"for series {tvdb_id}: {response}",
+                )
+                continue
+            for episode in response.get("episodes") or []:
+                name = episode.get("name") if isinstance(episode, dict) else None
+                if isinstance(name, str) and name.strip():
+                    translated_names[episode.get("id")] = name
+
+        # episode ids are shared across orderings, so one translation covers
+        # an episode wherever it appears. The official ordering is usually
+        # the very list `episodes` holds; it is renamed once either way.
+        targets = [cast(list[dict[str, Any]], episodes) for _, episodes in orderings]
+        top_level = series_data.get("episodes")
+        if isinstance(top_level, list) and not any(top_level is t for t in targets):
+            targets.append(cast(list[dict[str, Any]], top_level))
+
+        renamed = 0
+        for episodes in targets:
+            for episode in episodes:
+                if not isinstance(episode, dict):
+                    continue
+                name = translated_names.get(episode.get("id"))
+                if name and name != episode.get("name"):
+                    episode["name"] = name
+                    renamed += 1
+        LOG.info(
+            LOG.LOG_SOURCE.BE,
+            f"Applied {renamed} {language} episode names for series {tvdb_id}",
+        )
 
     def _get_tvdb_client(self) -> AsyncTVDBClient:
         if self._tvdb_client is None:

@@ -164,6 +164,7 @@ class Unit3dBaseUploader:
         "api_key",
         "torrent_file",
         "input_path",
+        "media_file",
         "mediainfo_obj",
         "cat_enum",
         "res_enum",
@@ -179,6 +180,7 @@ class Unit3dBaseUploader:
         api_key: str,
         torrent_file: Path,
         input_path: Path,
+        media_file: Path,
         mediainfo_obj: MediaInfo,
         cat_enum: type[Enum],
         res_enum: type[Enum],
@@ -192,6 +194,7 @@ class Unit3dBaseUploader:
         self.api_key = api_key
         self.torrent_file = torrent_file
         self.input_path = input_path
+        self.media_file = media_file
         self.mediainfo_obj = mediainfo_obj
         self.timeout = timeout
 
@@ -600,7 +603,7 @@ class Unit3dBaseUploader:
         one field only.
         """
         if disc is None:
-            mediainfo = MinimalMediaInfo(self.input_path).get_full_mi_str(cleansed=True)
+            mediainfo = MinimalMediaInfo(self.media_file).get_full_mi_str(cleansed=True)
             return {"mediainfo": mediainfo or ""}
         if disc.is_bluray:
             if not disc.bdinfo_summary:

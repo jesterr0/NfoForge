@@ -10,7 +10,7 @@ error, they raise `WorkflowError`.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 import html
 from pathlib import Path
@@ -65,6 +65,12 @@ from nfoforge.core.rename.movie import (
     movie_name_problems,
     movie_rename_map,
     render_movie_name,
+)
+from nfoforge.core.rename.name_checks import (
+    blocking_issues,
+    release_name_issues,
+    series_release_names,
+    warning_issues,
 )
 from nfoforge.core.rename.series import (
     SeriesRenameError,
@@ -591,6 +597,27 @@ def match_episodes(run: Run) -> None:
 # --------------------------------------------------------------------------
 # rename
 # --------------------------------------------------------------------------
+def _check_release_names(run: Run, names: Sequence[str]) -> None:
+    """Apply the plugins' name rules before anything is renamed.
+
+    A rule that blocks fails the run. One that warns is asked, and a run
+    told not to go on fails the same way.
+    """
+    issues = release_name_issues(run.config, run.context, names)
+    blocked = blocking_issues(issues)
+    if blocked:
+        raise WorkflowError("Release name not allowed:\n" + "\n".join(blocked))
+    warned = warning_issues(issues)
+    if warned and not run.decide(
+        Decision(
+            DecisionKind.RELEASE_NAME,
+            "\n".join(warned) + "\nContinue with this name?",
+            context={"warnings": warned},
+        )
+    ):
+        raise WorkflowError("Release name declined:\n" + "\n".join(warned))
+
+
 def _execute_rename(run: Run, plan: RenamePlan) -> None:
     # a plan with no files is a disc folder: only the folder is renamed
     targets = plan.file_targets or plan.directory_targets
@@ -655,6 +682,7 @@ def rename(run: Run) -> None:
             raise WorkflowError(str(error)) from error
         for path in targets.failed:
             run.log(f"No name could be generated for {path.name}", LogLevel.WARNING)
+        _check_release_names(run, series_release_names(media_input, targets))
         if not targets.is_empty:
             _execute_rename(
                 run,
@@ -670,6 +698,7 @@ def rename(run: Run) -> None:
     if media_input.is_disc() and not settings.disc.rename_root_folder:
         # the choices still feed the titles and the NFO; the disc is left alone
         run.log("Full disc: nothing on it is renamed")
+        _check_release_names(run, [media_input.release_name()])
         commit_movie_rename(context, choices, tokens, media_input.release_name())
         return
 
@@ -684,6 +713,7 @@ def rename(run: Run) -> None:
     problems = movie_name_problems(output_name, media_input.file_list[0])
     if problems:
         raise WorkflowError(problems[0])
+    _check_release_names(run, [output_name])
     if media_input.is_disc():
         # only the root folder or the image: renaming anything inside breaks
         # the disc

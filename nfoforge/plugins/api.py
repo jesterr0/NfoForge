@@ -166,6 +166,46 @@ class DuplicateChecker(Protocol):
     ) -> Sequence[TrackerSearchResult]: ...
 
 
+class ReleaseNameSeverity(Enum):
+    """How hard a release-name check objects."""
+
+    BLOCK = "block"
+    """The name cannot go out; the user has to change it."""
+    WARN = "warn"
+    """The user is asked whether to carry on with it."""
+
+
+@dataclass(frozen=True, slots=True)
+class ReleaseNameIssue:
+    """One objection a release-name check raises."""
+
+    message: str
+    severity: ReleaseNameSeverity = ReleaseNameSeverity.BLOCK
+
+
+@dataclass(frozen=True, slots=True)
+class ReleaseNameCheckRequest:
+    """Inputs supplied to a release-name check, once per rename.
+
+    Runs when the rename is confirmed: on leaving the Rename page, and in
+    the command line's rename stage. The names are final but nothing on disk
+    has moved yet, so a `BLOCK` leaves the files as they were.
+    """
+
+    config: ConfigManager
+    context: ProcessingContext
+    names: tuple[str, ...]
+    """Every name the release goes out under, without file extensions: a
+    film's one name, or a pack's folder and each of its episodes. A name
+    that the rename leaves alone is still listed."""
+
+
+class ReleaseNameChecker(Protocol):
+    def __call__(
+        self, request: ReleaseNameCheckRequest, /
+    ) -> Sequence[ReleaseNameIssue]: ...
+
+
 @dataclass(frozen=True, slots=True)
 class CustomEditionContribution:
     """A plugin-contributed entry recognized by the `{edition}`/`{cut}` tokens.
@@ -209,6 +249,8 @@ class PluginDefinition:
     metadata_transformer: MetadataTransformer | None = None
     image_host_uploader: BaseImageHostUploader | None = None
     duplicate_checker: DuplicateChecker | None = None
+    release_name_check: ReleaseNameChecker | None = None
+    """Every enabled plugin's check runs; any one `BLOCK` stops the rename."""
     jinja2_filters: Mapping[str, Callable[..., Any]] = field(default_factory=dict)
     jinja2_functions: Mapping[str, Callable[..., Any]] = field(default_factory=dict)
     flat_filters: Mapping[str, FlatFilter] = field(default_factory=dict)

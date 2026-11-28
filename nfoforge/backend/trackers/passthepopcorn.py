@@ -50,6 +50,7 @@ def ptp_uploader(
     announce_url: str,
     torrent_file: Path,
     input_path: Path,
+    media_file: Path,
     nfo: str,
     mediainfo_obj: MediaInfo,
     media_search_payload: MediaSearchPayload,
@@ -99,6 +100,7 @@ def ptp_uploader(
         media_search_payload=media_search_payload,
         torrent_file=torrent_file,
         input_path=input_path,
+        media_file=media_file,
         nfo=nfo,
         group_id=group_id,
         disc=disc,
@@ -303,6 +305,7 @@ class PTPUploader:
         media_search_payload: MediaSearchPayload,
         torrent_file: Path,
         input_path: Path,
+        media_file: Path,
         nfo: str,
         group_id: str | None = None,
         disc: DiscRelease | None = None,
@@ -318,7 +321,7 @@ class PTPUploader:
             "other_codec": self._get_codec(input_path, disc),
             "resolution": self._resolution(),
             "container": "Other",  # sending container as Other to fill with other_container
-            "other_container": self._get_container(input_path, disc),
+            "other_container": self._get_container(media_file, disc),
             "source": "Other",  # sending the source as Other to fill with other_source
             "other_source": self._source(input_path, disc),
             "release_desc": nfo,
@@ -621,13 +624,13 @@ class PTPUploader:
             resolution = PTPResolution.OTHER.value
         return str(resolution)
 
-    def _get_container(self, input_path: Path, disc: DiscRelease | None = None) -> str:
+    def _get_container(self, media_file: Path, disc: DiscRelease | None = None) -> str:
         if disc is not None:
             if disc.image:
                 return str(PTPContainer.ISO.value)
             container = PTPContainer.M2TS if disc.is_bluray else PTPContainer.VOB_IFO
             return str(container.value)
-        extension = input_path.suffix
+        extension = media_file.suffix.lower()
         if extension == ".mkv":
             return str(PTPContainer.MKV.value)
         elif extension == ".mp4":

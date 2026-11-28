@@ -24,6 +24,9 @@ from nfoforge.plugins.api import (
     PostUploadRequest,
     PreUploadDecision,
     PreUploadRequest,
+    ReleaseNameCheckRequest,
+    ReleaseNameIssue,
+    ReleaseNameSeverity,
     TokenReplaceRequest,
 )
 
@@ -87,6 +90,21 @@ class PluginLoadIssue:
 
     source: str
     reason: str
+
+
+@dataclass(frozen=True, slots=True)
+class PluginReleaseNameIssue:
+    """A release-name objection, with the plugin that raised it."""
+
+    plugin_name: str
+    issue: ReleaseNameIssue
+
+    @property
+    def blocks(self) -> bool:
+        return self.issue.severity is ReleaseNameSeverity.BLOCK
+
+    def __str__(self) -> str:
+        return f"{self.plugin_name}: {self.issue.message}"
 
 
 @dataclass(slots=True)
@@ -319,6 +337,54 @@ class PluginManager:
             )
         return outcome.value
 
+    def run_release_name_checks(
+        self, request: ReleaseNameCheckRequest
+    ) -> list[PluginReleaseNameIssue]:
+        """Every plugin's objections to the release's names.
+
+        All checks run, not one chosen in Settings: each is a rule of its
+        own, and a release has to pass every rule. A check that crashes or
+        answers in the wrong shape blocks: a rule that could not be applied
+        has not been passed.
+        """
+        issues: list[PluginReleaseNameIssue] = []
+        for record in self.definitions_with("release_name_check"):
+            name = record.definition.display_name
+            checker = record.definition.release_name_check
+            # type-narrowing only: `definitions_with` returned just the
+            # records that provide one
+            assert checker is not None  # noqa: S101
+            try:
+                result = checker(request)
+            except Exception as error:
+                issues.append(
+                    PluginReleaseNameIssue(
+                        name,
+                        ReleaseNameIssue(
+                            f"its name check failed, so the name cannot be "
+                            f"approved ({type(error).__name__}: {error})"
+                        ),
+                    )
+                )
+                continue
+            if (
+                not isinstance(result, Sequence)
+                or isinstance(result, str | bytes)
+                or not all(isinstance(item, ReleaseNameIssue) for item in result)
+            ):
+                issues.append(
+                    PluginReleaseNameIssue(
+                        name,
+                        ReleaseNameIssue(
+                            "its name check must return a sequence of "
+                            "ReleaseNameIssue, so the name cannot be approved"
+                        ),
+                    )
+                )
+                continue
+            issues.extend(PluginReleaseNameIssue(name, item) for item in result)
+        return issues
+
     def transform_metadata(
         self, plugin_id: str, request: MetadataTransformRequest
     ) -> MediaSearchPayload:
@@ -454,6 +520,7 @@ class PluginManager:
             definition.metadata_transformer,
             definition.image_host_uploader,
             definition.duplicate_checker,
+            definition.release_name_check,
             definition.jinja2_filters,
             definition.jinja2_functions,
             definition.flat_filters,
@@ -510,6 +577,7 @@ class PluginManager:
             "post_upload",
             "metadata_transformer",
             "duplicate_checker",
+            "release_name_check",
         ):
             value = getattr(definition, name)
             if value is not None and not callable(value):

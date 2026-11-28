@@ -64,6 +64,7 @@ from nfoforge.frontend.custom_widgets.token_table import TokenTable
 from nfoforge.frontend.global_signals import GSigs
 from nfoforge.frontend.utils import build_h_line
 from nfoforge.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
+from nfoforge.frontend.utils.release_name_prompt import confirm_release_names
 from nfoforge.frontend.utils.rename_operation import RenameOperationController
 from nfoforge.frontend.wizards.wizard_base_page import BaseWizardPage
 from nfoforge.packages.custom_types import RenameNormalization
@@ -452,6 +453,8 @@ class RenameEncode(BaseWizardPage):
             return False
         media_input = self.context.media_input
         output_name = self.output_entry.text().strip()
+        if not confirm_release_names(self, self.config, self.context, [output_name]):
+            return False
         plan: RenamePlan | None
         try:
             if media_input.is_disc():

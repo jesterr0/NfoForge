@@ -7,7 +7,11 @@ import niquests
 import pytest
 
 from nfoforge.backend.media_search import MediaSearchBackEnd, TmdbAlternativeTitle
-from nfoforge.backend.utils.tvdb_client import AsyncTVDBClient, TVDBClient
+from nfoforge.backend.utils.tvdb_client import (
+    AsyncTVDBClient,
+    TVDBClient,
+    tvdb_language,
+)
 from nfoforge.enums.media_search_mode import MediaSearchMode
 from nfoforge.enums.media_type import MediaType
 from nfoforge.enums.tmdb_genres import TMDBGenreIDsMovies, TMDBGenreIDsSeries
@@ -930,3 +934,140 @@ def test_alternative_titles_failure_scrubs_the_api_key(
         backend.fetch_alternative_titles("603", MediaType.MOVIE)
 
     assert "super-secret-key" not in str(error.value)
+
+
+class _FakeTranslatingTVDB:
+    """TVDB for an anime: originals in Japanese, `eng` mostly translated."""
+
+    def __init__(self, fail_types: tuple[str, ...] = ()) -> None:
+        self.fail_types = fail_types
+        self.episode_calls: list[tuple[str, str | None]] = []
+
+    def close(self) -> None:
+        return None
+
+    async def get_series_extended(self, series_id: int) -> dict[str, Any]:
+        return {
+            "id": series_id,
+            "originalLanguage": "jpn",
+            "seasonTypes": [
+                {"id": 1, "type": "official"},
+                {"id": 3, "type": "absolute"},
+            ],
+            "episodes": [
+                {"id": 1, "name": "二千年後の君へ"},
+                {"id": 2, "name": "その日"},
+            ],
+        }
+
+    async def get_series_episodes(
+        self, series_id: int, season_type: str, language: str | None = None
+    ) -> dict[str, Any]:
+        self.episode_calls.append((season_type, language))
+        if language and season_type in self.fail_types:
+            raise MediaSearchError("TVDB request failed: boom")
+        if language == "eng":
+            # episode 2 has no English title on TVDB
+            return {
+                "episodes": [
+                    {"id": 1, "name": "To You, in 2000 Years"},
+                    {"id": 2, "name": None},
+                ]
+            }
+        return {
+            "episodes": [
+                {"id": 1, "name": "二千年後の君へ"},
+                {"id": 2, "name": "その日"},
+            ]
+        }
+
+
+def _names(episodes: Any) -> list[str]:
+    return [episode["name"] for episode in episodes]
+
+
+def test_tvdb_language_maps_tmdb_settings_to_tvdb_codes() -> None:
+    assert tvdb_language("en-US") == "eng"
+    assert tvdb_language("de-AT") == "deu"
+    assert tvdb_language("pt-BR") == "pt"
+    assert tvdb_language("pt-PT") == "por"
+    assert tvdb_language("zh-TW") == "zhtw"
+    assert tvdb_language("xx-XX") is None
+
+
+def test_tvdb_episode_names_follow_the_tmdb_language() -> None:
+    backend = MediaSearchBackEnd(language="en-US")
+    fake = _FakeTranslatingTVDB()
+    backend._tvdb_client = fake  # type: ignore[assignment]
+
+    data = asyncio.run(backend.parse_tvdb_data(None, 267440))
+
+    assert data is not None
+    expected = ["To You, in 2000 Years", "その日"]
+    assert _names(data["episodes"]) == expected
+    for ordering in data["episodes_by_type"].values():
+        assert _names(ordering["episodes"]) == expected
+    assert ("official", "eng") in fake.episode_calls
+    assert ("absolute", "eng") in fake.episode_calls
+
+
+def test_tvdb_episode_names_stay_original_in_the_series_language() -> None:
+    backend = MediaSearchBackEnd(language="ja-JP")
+    fake = _FakeTranslatingTVDB()
+    backend._tvdb_client = fake  # type: ignore[assignment]
+
+    data = asyncio.run(backend.parse_tvdb_data(None, 267440))
+
+    assert data is not None
+    assert _names(data["episodes"]) == ["二千年後の君へ", "その日"]
+    assert all(language is None for _, language in fake.episode_calls)
+
+
+def test_a_failed_translation_fetch_keeps_the_original_names() -> None:
+    backend = MediaSearchBackEnd(language="en-US")
+    backend._tvdb_client = _FakeTranslatingTVDB(  # type: ignore[assignment]
+        fail_types=("official", "absolute")
+    )
+
+    data = asyncio.run(backend.parse_tvdb_data(None, 267440))
+
+    assert data is not None
+    assert _names(data["episodes"]) == ["二千年後の君へ", "その日"]
+
+
+class _FakePagedTVDBSession(_FakeTVDBSession):
+    """Three pages of an ordering, the last one without a `links.next`."""
+
+    def get(self, url: str, **kwargs: Any) -> _Response:
+        self.get_calls.append({"url": url, **kwargs})
+        page = int(kwargs["params"]["page"])
+        pages = [[{"id": 1}, {"id": 2}], [{"id": 3}, {"id": 4}], [{"id": 5}]]
+        return _Response(
+            {
+                "data": {"id": 321, "episodes": pages[page]},
+                "links": {"next": f"{url}?page={page + 1}" if page < 2 else None},
+            }
+        )
+
+
+def test_tvdb_episodes_are_read_across_every_page(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_session = _FakePagedTVDBSession()
+    monkeypatch.setattr(
+        "nfoforge.backend.utils.http_client.niquests.Session",
+        lambda **_kwargs: fake_session,
+    )
+    client = TVDBClient("api-key", timeout=7)
+
+    result = client.get_series_episodes(321, "absolute", "eng")
+
+    assert [episode["id"] for episode in result["episodes"]] == [1, 2, 3, 4, 5]
+    assert [call["params"]["page"] for call in fake_session.get_calls] == [
+        "0",
+        "1",
+        "2",
+    ]
+    assert fake_session.get_calls[0]["url"].endswith(
+        "/series/321/episodes/absolute/eng"
+    )
