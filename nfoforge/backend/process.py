@@ -2826,6 +2826,7 @@ class ProcessBackEnd:
                 announce_url=ptp_payload.announce_url,
                 torrent_file=torrent_file,
                 input_path=input_path,
+                media_file=first_file,
                 nfo=nfo,
                 mediainfo_obj=mediainfo_obj,
                 media_search_payload=media_search_obj,

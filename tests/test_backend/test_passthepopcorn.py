@@ -110,6 +110,7 @@ def test_ptp_upload_post_has_a_timeout(
             media_search_payload=media_search_payload,
             torrent_file=torrent_file,
             input_path=tmp_path / "Example.2026.1080p.WEB-DL-GRP",
+            media_file=tmp_path / "Example.2026.1080p.WEB-DL-GRP.mkv",
             nfo="nfo contents",
             group_id="12345",
         )
@@ -151,6 +152,7 @@ def test_ptp_upload_does_not_close_the_shared_session(
             media_search_payload=media_search_payload,
             torrent_file=torrent_file,
             input_path=tmp_path / "Example.2026.1080p.WEB-DL-GRP",
+            media_file=tmp_path / "Example.2026.1080p.WEB-DL-GRP.mkv",
             nfo="nfo contents",
             group_id="12345",
         )
@@ -292,3 +294,24 @@ def test_ptp_type_uses_miniseries_for_series_without_provider_kind(
     payload = MediaSearchPayload(media_type=MediaType.SERIES)
 
     assert _uploader(tmp_path)._get_type(payload) == "Miniseries"
+
+
+@pytest.mark.parametrize(
+    ("filename", "expected"),
+    [
+        ("Movie.2026.1080p.WEB-DL.mkv", "MKV"),
+        ("Movie.2026.1080p.WEB-DL.MKV", "MKV"),
+        ("Movie.2026.1080p.WEB-DL.mp4", "MP4"),
+        ("Movie.2026.1080p.WEB-DL.mpg", "MPG"),
+        ("Movie.2026.1080p.WEB-DL.avi", "* Auto-detect"),
+    ],
+)
+def test_container_comes_from_the_media_file_not_the_input_folder(
+    tmp_path: Path, filename: str, expected: str
+) -> None:
+    uploader = _uploader(tmp_path)
+    folder = tmp_path / "Movie.2026.1080p.WEB-DL-GRP"
+
+    assert uploader._get_container(folder / filename) == expected
+    # the folder alone has no extension, which is what used to be read
+    assert uploader._get_container(folder) == "* Auto-detect"
