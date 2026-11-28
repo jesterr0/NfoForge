@@ -44,6 +44,7 @@ def _uploader(
         api_key="api-key",
         torrent_file=tmp_path / "upload.torrent",
         input_path=tmp_path / filename,
+        media_file=tmp_path / filename,
         mediainfo_obj=cast(MediaInfo, object()),
     )
 
@@ -74,6 +75,7 @@ def _uploader_with_real_mediainfo(
         api_key="api-key",
         torrent_file=tmp_path / "upload.torrent",
         input_path=input_path,
+        media_file=input_path,
         mediainfo_obj=_mediainfo_obj(),
     )
 
@@ -280,6 +282,7 @@ def test_wrapper_forwards_personal_release_to_upload(
         "media_type": MediaType.MOVIE,
         "api_key": "api-key",
         "torrent_file": tmp_path / "upload.torrent",
+        "media_file": tmp_path / "Example.Movie.2026.1080p.WEB-DL.H264.mkv",
         "input_path": tmp_path / "Example.Movie.2026.1080p.WEB-DL.H264.mkv",
         "tracker_title": "Example Movie 2026",
         "nfo": "",

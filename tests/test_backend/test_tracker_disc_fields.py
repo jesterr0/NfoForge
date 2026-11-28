@@ -2,6 +2,7 @@
 
 from pathlib import Path
 from typing import Any, cast
+from unittest.mock import patch
 
 from pymediainfo import MediaInfo
 import pytest
@@ -109,6 +110,7 @@ def test_beyondhd_sends_the_bdinfo_summary_as_mediainfo(tmp_path: Path) -> None:
         torrent_file=tmp_path / "x.torrent",
         # a folder name that says nothing about the disc
         input_path=tmp_path / "Some Folder",
+        media_file=tmp_path / "Some Folder",
         media_type=MediaType.MOVIE,
         disc=BLURAY,
     )
@@ -124,6 +126,7 @@ def _unit3d(tmp_path: Path, cls: type[Unit3dBaseUploader] = Unit3dBaseUploader) 
         "api_key": "key",
         "torrent_file": tmp_path / "x.torrent",
         "input_path": tmp_path / "Some Folder",
+        "media_file": tmp_path / "Some Folder",
         "mediainfo_obj": cast(MediaInfo, object()),
     }
     if cls is Unit3dBaseUploader:
@@ -186,6 +189,7 @@ def test_hdbits_takes_a_bluray_with_empty_techinfo(tmp_path: Path) -> None:
         session_cookie="c",
         torrent_file=tmp_path / "x.torrent",
         input_path=tmp_path / "Some Folder",
+        media_file=tmp_path / "Some Folder",
         media_type=MediaType.MOVIE,
         mediainfo_obj=cast(MediaInfo, object()),
     )
@@ -318,3 +322,20 @@ def test_trackers_not_yet_confirmed_get_no_disc_ids(tmp_path: Path) -> None:
     disc = DiscRelease(DiscType.BDMV, DiscSize.BD25, uhd=False, region="USA")
 
     assert uploader._disc_ids(disc) == {}
+
+
+def test_unit3d_reads_mediainfo_from_the_media_file_not_the_input_folder(
+    tmp_path: Path,
+) -> None:
+    folder = tmp_path / "Example.Movie.2005.720p.BluRay.x264-GROUP"
+    media_file = folder / "Example.Movie.2005.720p.BluRay.x264-GROUP.mkv"
+    uploader = _unit3d(tmp_path)
+    uploader.input_path = folder
+    uploader.media_file = media_file
+
+    with patch("nfoforge.backend.trackers.unit3d_base.MinimalMediaInfo") as minimal:
+        minimal.return_value.get_full_mi_str.return_value = "mi"
+        fields = uploader._technical_fields(None, None)
+
+    minimal.assert_called_once_with(media_file)
+    assert fields == {"mediainfo": "mi"}

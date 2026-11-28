@@ -88,6 +88,7 @@ def _uploader(torrent_file: Path) -> HunoUploader:
         api_key="api-key",
         torrent_file=torrent_file,
         input_path=torrent_file.parent / "Example.2026.1080p.WEB-DL-GRP",
+        media_file=torrent_file.parent / "Example.2026.1080p.WEB-DL-GRP",
         mediainfo_obj=MagicMock(),
     )
 
@@ -204,6 +205,7 @@ def test_beyondhd_408_response_is_retryable(tmp_path: Path) -> None:
         api_key="api-key",
         torrent_file=tmp_path / "release.torrent",
         input_path=tmp_path / "Example.2026.1080p.WEB-DL-GRP",
+        media_file=tmp_path / "Example.2026.1080p.WEB-DL-GRP",
         media_type=MediaType.MOVIE,
     )
     mock_response = MagicMock(ok=False, status_code=408, reason="Request Timeout")
@@ -226,6 +228,7 @@ def _bhd_upload_raising(status_code: int, tmp_path: Path) -> TrackerError:
         api_key="api-key",
         torrent_file=tmp_path / "release.torrent",
         input_path=tmp_path / "Example.2026.1080p.WEB-DL-GRP",
+        media_file=tmp_path / "Example.2026.1080p.WEB-DL-GRP",
         media_type=MediaType.MOVIE,
     )
     mock_response = MagicMock(ok=False, status_code=status_code, reason="error")

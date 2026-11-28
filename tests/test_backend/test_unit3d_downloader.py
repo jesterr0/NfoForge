@@ -16,6 +16,7 @@ def _uploader(torrent_file: Path) -> HunoUploader:
         api_key="api-key",
         torrent_file=torrent_file,
         input_path=torrent_file.parent / "Example.2026.1080p.WEB-DL-GRP",
+        media_file=torrent_file.parent / "Example.2026.1080p.WEB-DL-GRP",
         mediainfo_obj=MagicMock(),
     )
 

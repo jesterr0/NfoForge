@@ -99,6 +99,7 @@ def hdb_uploader(
     session_cookie: str,
     torrent_file: Path,
     input_path: Path,
+    media_file: Path,
     media_type: MediaType,
     mediainfo_obj: MediaInfo,
     tracker_title: str | None,
@@ -119,6 +120,7 @@ def hdb_uploader(
         session_cookie=session_cookie,
         torrent_file=torrent_file,
         input_path=input_path,
+        media_file=media_file,
         media_type=media_type,
         mediainfo_obj=mediainfo_obj,
         timeout=timeout,
@@ -158,6 +160,7 @@ class HDBUploader:
         "passkey",
         "torrent_file",
         "input_path",
+        "media_file",
         "media_type",
         "mediainfo_obj",
         "timeout",
@@ -171,6 +174,7 @@ class HDBUploader:
         session_cookie: str,
         torrent_file: Path,
         input_path: Path,
+        media_file: Path,
         media_type: MediaType,
         mediainfo_obj: MediaInfo,
         timeout: int = 60,
@@ -179,6 +183,7 @@ class HDBUploader:
         self.passkey = passkey
         self.torrent_file = torrent_file
         self.input_path = input_path
+        self.media_file = media_file
         self.media_type = media_type
         self.mediainfo_obj = mediainfo_obj
         self.timeout = timeout
@@ -217,7 +222,7 @@ class HDBUploader:
         # {bdinfo_summary}); HDBits wants the MediaInfo field left empty
         if disc is not None:
             return ""
-        return MinimalMediaInfo(self.input_path).get_full_mi_str(cleansed=True) or ""
+        return MinimalMediaInfo(self.media_file).get_full_mi_str(cleansed=True) or ""
 
     def upload(
         self,

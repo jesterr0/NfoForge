@@ -34,6 +34,7 @@ def test_beyondhd_upload_requests_json(
         api_key="api-key",
         torrent_file=tmp_path / "release.torrent",
         input_path=tmp_path / "Movie.2026.1080p.WEB-DL-GRP.mkv",
+        media_file=tmp_path / "Movie.2026.1080p.WEB-DL-GRP.mkv",
         media_type=MediaType.MOVIE,
     )
 

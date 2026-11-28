@@ -229,6 +229,7 @@ def test_beyondhd_series_type_source_category_and_pack_payload(tmp_path: Path) -
         api_key="api-key",
         torrent_file=tmp_path / "upload.torrent",
         input_path=tmp_path / "Example.Show.S00E01.1080p.WEB-DL.x264.mkv",
+        media_file=tmp_path / "Example.Show.S00E01.1080p.WEB-DL.x264.mkv",
         media_type=MediaType.SERIES,
     )
 
@@ -283,6 +284,7 @@ def test_unit3d_series_type_detection_prefers_release_source(
         api_key="api-key",
         torrent_file=tmp_path / "upload.torrent",
         input_path=tmp_path / filename,
+        media_file=tmp_path / filename,
         mediainfo_obj=cast(MediaInfo, object()),
     )
 
@@ -301,6 +303,7 @@ def test_unit3d_series_web_in_title_only_resolves_encode(
         api_key="api-key",
         torrent_file=tmp_path / "upload.torrent",
         input_path=tmp_path / "Spider.Web.S01E01.1080p.x264-GRP.mkv",
+        media_file=tmp_path / "Spider.Web.S01E01.1080p.x264-GRP.mkv",
         mediainfo_obj=cast(MediaInfo, object()),
     )
 
@@ -317,6 +320,7 @@ def test_unit3d_movie_encode_without_web_marker_still_resolves_encode(
         api_key="api-key",
         torrent_file=tmp_path / "upload.torrent",
         input_path=tmp_path / "Movie.2020.1080p.x264.mkv",
+        media_file=tmp_path / "Movie.2020.1080p.x264.mkv",
         mediainfo_obj=cast(MediaInfo, object()),
     )
 
@@ -348,6 +352,7 @@ def test_supported_unit3d_trackers_resolve_series_tv_category(
         api_key="api-key",
         torrent_file=tmp_path / "upload.torrent",
         input_path=tmp_path / "Example.Show.S01E01.1080p.WEB-DL.H.264.mkv",
+        media_file=tmp_path / "Example.Show.S01E01.1080p.WEB-DL.H.264.mkv",
         mediainfo_obj=cast(MediaInfo, object()),
     )
 
@@ -366,6 +371,7 @@ def test_unit3d_single_episode_payload_includes_episode_number(
         api_key="api-key",
         torrent_file=tmp_path / "upload.torrent",
         input_path=input_path,
+        media_file=input_path,
         mediainfo_obj=cast(MediaInfo, object()),
     )
 
@@ -393,6 +399,7 @@ def test_unit3d_season_pack_payload_sends_episode_zero(
         api_key="api-key",
         torrent_file=tmp_path / "upload.torrent",
         input_path=input_path,
+        media_file=input_path,
         mediainfo_obj=cast(MediaInfo, object()),
     )
 
@@ -426,6 +433,7 @@ def test_unit3d_movie_payload_excludes_series_fields(
         api_key="api-key",
         torrent_file=tmp_path / "upload.torrent",
         input_path=input_path,
+        media_file=input_path,
         mediainfo_obj=cast(MediaInfo, object()),
     )
 
@@ -447,6 +455,7 @@ def test_reelflix_does_not_resolve_series_tv_category(tmp_path: Path) -> None:
         api_key="api-key",
         torrent_file=tmp_path / "upload.torrent",
         input_path=tmp_path / "Example.Show.S01E01.1080p.WEB-DL.H.264.mkv",
+        media_file=tmp_path / "Example.Show.S01E01.1080p.WEB-DL.H.264.mkv",
         mediainfo_obj=cast(MediaInfo, object()),
     )
 
@@ -743,6 +752,7 @@ def test_unit3d_trackers_lists_every_unit3d_uploader(tmp_path: Path) -> None:
             api_key="api-key",
             torrent_file=tmp_path / "upload.torrent",
             input_path=tmp_path / "Example.Movie.2024.1080p.WEB-DL.H.264.mkv",
+            media_file=tmp_path / "Example.Movie.2024.1080p.WEB-DL.H.264.mkv",
             mediainfo_obj=cast(MediaInfo, object()),
         ).tracker_name
         for uploader_cls in Unit3dBaseUploader.__subclasses__()

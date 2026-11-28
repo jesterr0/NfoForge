@@ -93,6 +93,7 @@ def bhd_uploader(
     api_key: str,
     torrent_file: Path,
     input_path: Path,
+    media_file: Path,
     tracker_title: str | None,
     media_type: MediaType,
     imdb_id: str | None,
@@ -115,6 +116,7 @@ def bhd_uploader(
         api_key=api_key,
         torrent_file=torrent_file,
         input_path=input_path,
+        media_file=media_file,
         media_type=media_type,
         timeout=timeout,
         disc=disc,
@@ -167,6 +169,7 @@ class BHDUploader:
         "_upload_url",
         "torrent_file",
         "input_path",
+        "media_file",
         "media_type",
         "is_pack",
         "is_special",
@@ -179,6 +182,7 @@ class BHDUploader:
         api_key: str,
         torrent_file: Path,
         input_path: Path,
+        media_file: Path,
         media_type: MediaType,
         is_pack: bool = False,
         is_special: bool = False,
@@ -190,6 +194,7 @@ class BHDUploader:
         )
         self.torrent_file = torrent_file
         self.input_path = input_path
+        self.media_file = media_file
         self.media_type = media_type
         self.is_pack = is_pack
         self.is_special = is_special
@@ -474,7 +479,7 @@ class BHDUploader:
             if not text:
                 raise TrackerError("BeyondHD needs the disc's BDInfo or IFO report")
             return text
-        return MinimalMediaInfo(self.input_path).get_full_mi_str(cleansed=True)
+        return MinimalMediaInfo(self.media_file).get_full_mi_str(cleansed=True)
 
 
 class BHDSearch:

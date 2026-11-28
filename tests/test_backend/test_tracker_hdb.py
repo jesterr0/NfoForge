@@ -38,6 +38,7 @@ def _uploader(
         session_cookie="PHPSESSID=abc; uid=123",
         torrent_file=torrent_file,
         input_path=torrent_file.parent / "Example.2026.1080p.BluRay.REMUX.AVC-GRP.mkv",
+        media_file=torrent_file.parent / "Example.2026.1080p.BluRay.REMUX.AVC-GRP.mkv",
         media_type=media_type,
         mediainfo_obj=_mediainfo("AVC"),
     )
@@ -165,6 +166,7 @@ def test_load_session_cookie_ignores_malformed_segments(tmp_path: Path) -> None:
         session_cookie="  ; PHPSESSID=abc ; garbage ; =novalue ;",
         torrent_file=torrent_file,
         input_path=torrent_file.parent / "Example.mkv",
+        media_file=torrent_file.parent / "Example.mkv",
         media_type=MediaType.MOVIE,
         mediainfo_obj=_mediainfo("AVC"),
     )

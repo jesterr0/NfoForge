@@ -5,6 +5,7 @@
 ### Fixed
 
 - Episode titles from TVDB now follow the TMDB Language setting. Anime such as Attack on Titan used to show Japanese episode names in the episode picker and in renamed files. Episodes TVDB has no translation for keep their original name.
+- Uploading a folder to a UNIT3D tracker, BeyondHD or HDBits no longer fails with "An error occured while opening ... with libmediainfo". The upload read MediaInfo from the folder instead of the video inside it. ([#357](https://github.com/jesterr0/NfoForge/issues/357))
 - Long series now load every episode in the DVD, absolute and other alternate orderings. TVDB serves 500 episodes per page, and only the first page was read, so One Piece's absolute order stopped at episode 500.
 
 ## [1.4.0] - 2026-11-21
